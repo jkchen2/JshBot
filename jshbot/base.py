@@ -8,7 +8,7 @@ import logging
 from jshbot import servers
 from jshbot.exceptions import ErrorTypes, BotException
 
-__version__ = '0.1.1'
+__version__ = '0.1.2'
 EXCEPTION = 'Base'
 uses_configuration = False
 local_dictionary = {}
@@ -31,7 +31,7 @@ def get_commands():
     commands['owner'] = ([
         'halt', 'restart', 'ip', 'backup', 'announcement &'],[])
     commands['mod'] = ([
-        'info', 'block :', 'unblock :', 'clear', 'add :', 'remove :', 'mute :',
+        'info', 'block ^', 'unblock ^', 'clear', 'add :', 'remove :', 'mute :',
         'unmute :'],[
         ('info', 'i'), ('clear', 'c')])
     commands['base'] = ([
@@ -122,7 +122,8 @@ async def get_response(bot, message, parsed_command, direct):
                 "embarrassing but funny joke.",
                 "Made with ~~love~~ pure hatred.",
                 "At least he's using version control."])
-            response += "\nhttps://github.com/jkchen2/JshBot"
+            response += ("\nhttps://github.com/jkchen2/JshBot\n"
+                    "https://github.com/jkchen2/JshBot-plugins")
         elif plan_index == 2: # uptime
             uptime_total_seconds = int(time.time()) - bot.time
             uptime_struct = time.gmtime(uptime_total_seconds)
@@ -159,7 +160,7 @@ async def get_response(bot, message, parsed_command, direct):
         if not servers.is_mod(bot, message.server, message.author.id):
             response = "You must be a moderator to use these commands."
 
-        elif message.channel.is_private:
+        elif direct:
             response = "You cannot use these commands in a direct message."
 
         else:
@@ -176,11 +177,11 @@ async def get_response(bot, message, parsed_command, direct):
                         message.server, message.server.owner.id, **server_data)
             elif plan_index in (1, 2): # block or unblock
                 add = plan_index == 1
-                identity = (options['block'] if add else options['unblock'])
+                identity = arguments
                 servers.modify_user_group(bot, message.server,
                         identity, add, 'blocked')
                 name = servers.get_id(bot, identity, message.server, True)
-                response = '{} is {} blocked'.format(name,
+                response = '{} is {} blocked.'.format(name,
                         'now' if add else 'no longer')
             elif plan_index == 3: # clear
                 response = '```\n'
@@ -264,11 +265,16 @@ async def get_response(bot, message, parsed_command, direct):
             if options['plugin'] not in bot.plugins:
                 response = options['plugin'] + " not found."
             else:
-                response = "```\nPlugin information for: {}\n{}\n```".format(
-                        options['plugin'],
-                        dir(bot.plugins[options['plugin']][0]))
+                plugin = bot.plugins[options['plugin']][0]
+                version = getattr(plugin, '__version__', 'Unknown')
+                has_flag = getattr(plugin, 'uses_configuration', False)
+                response = ("```\nPlugin information for: {0}\n"
+                        "Version: {1}\n"
+                        "Config: {2}\n"
+                        "Dir: {3}\n```").format(options['plugin'],
+                                version, has_flag, dir(plugin))
         elif plan_index == 1: # List plugins
-            response = '```\n{}\n```'.format(str(list(bot.plugins.keys())))
+            response = '```\n{}\n```'.format(list(bot.plugins.keys()))
 
         elif plan_index == 2: # Exec
 
@@ -305,15 +311,30 @@ async def get_response(bot, message, parsed_command, direct):
                 if len(result) >= 1998:
                     raise BotException(ErrorTypes.RECOVERABLE, EXCEPTION,
                             "Exec result is too long.")
-                response = '`{}`'.format(result)
+                if '\n' in result: # Better formatting
+                    response = '```python\n{}\n```'.format(result)
+                else: # One line response
+                    response = '`{}`'.format(result)
 
-        elif plan_index == 3:
-            response = "Not in quite yet, sorry."
+        elif plan_index == 3: # Latency
+            message_type = 3
+            response = "Testing latency time..."
+            extra = ('ping', time.time() * 1000)
 
     else:
         response = "This should not be seen. Your command was: " + base
 
     return (response, tts, message_type, extra)
+
+async def handle_active_message(bot, message_reference, extra):
+    '''
+    This function is called if the given message was marked as active
+    (message_type of 3).
+    '''
+    if extra[0] == 'ping':
+        latency_time = "Latency time: {:.2f} ms".format(
+                (time.time() * 1000) - extra[1])
+        await bot.edit_message(message_reference, latency_time)
 
 def get_general_help(bot):
     '''
@@ -418,4 +439,12 @@ async def on_server_join(bot, server):
     # Add server to the list
     logging.debug("Joining server")
     servers.add_server(bot, server)
+
+async def on_message_edit(bot, before, after):
+    '''
+    Integrates with the core to handle edited messages to change responses.
+    '''
+    if before.id in bot.edit_dictionary:
+        message_reference = bot.edit_dictionary.pop(before.id)
+        await bot.on_message(after, replacement_message=message_reference)
 

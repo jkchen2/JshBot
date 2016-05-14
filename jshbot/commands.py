@@ -27,7 +27,7 @@ def convert_blueprints(blueprints):
                 break
             required = plan[0] == '?'
             argument = plan[-1] == ':'
-            plan = plan.strip('?').strip(':')
+            plan = plan.strip('?:')
             new_plan[0].append((required, plan, argument))
         new_blueprints.append(new_plan)
     return new_blueprints
@@ -96,3 +96,17 @@ async def execute(bot, message, parsed_command):
 
     # Execute plugin's get_response
     return await (plugin.get_response(bot, message, parsed_command, direct))
+
+async def handle_active_message(bot, message_reference, parsed_command, extra):
+    '''
+    Executes the handle_active_message function for the proper plugin with
+    the extra arguments.
+    '''
+    # Get plugin
+    base = parsed_command[0]
+    plugin_name = bot.commands[base][1]
+    plugin = bot.plugins[plugin_name][0]
+    
+    # Execute plugin's handle_active_message
+    await plugin.handle_active_message(bot, message_reference, extra)
+

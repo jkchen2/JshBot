@@ -42,7 +42,9 @@ def get_id(bot, identity, server=None, name=False):
     Gets the ID number or name of the given identity. Looks through the server
     if it is specified, otherwise it looks through all members the bot can see.
     '''
-    if identity.startswith('<@') and identity.endswith('>'):
+    if identity.startswith('<@!') and identity.endswith('>'):
+        identity = identity[3:-1]
+    elif identity.startswith('<@') and identity.endswith('>'):
         identity = identity[2:-1]
     if server:
         members = server.members

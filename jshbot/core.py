@@ -18,7 +18,7 @@ class Bot(discord.Client):
     
     def __init__(self, debug):
         self.version = '0.3.0-alpha'
-        self.date = 'May 9th, 2016'
+        self.date = 'May 14th, 2016'
         self.time = int(time.time())
         self.readable_time = time.strftime('%c')
         self.debug = debug
@@ -80,29 +80,57 @@ class Bot(discord.Client):
         Checks that the message has text, matches an invoker, and that the
         server/channel/user is not muted or blocked. Admins/moderators override.
         If the message is a direct message, respond if there is a valid invoker.
+        Returns the formatted content for the specific invoker, otherwise if
+        the bot cannot respond, returns None.
         '''
 
         # Ignore empty messages and messages by bots
         if (not message.content or message.author.bot or 
                 message.author.id == self.user.id):
-            return False
+            return None
 
-        # Bot responds to mentions only
+        # Check that the message starts with a valid invoker
+        content = message.content
+        has_regular_invoker = False
+        has_mention_invoker = False
+        has_name_invoker = False
+        has_nick_invoker = False
+        for invoker in self.configurations['core']['command_invokers']:
+            if content.startswith(invoker):
+                has_regular_invoker = True
+                break
+        if not has_regular_invoker:
+            has_mention_invoker = content.startswith(
+                    ('<@' + self.user.id + '>', '<@!' + self.user.id + '>'))
+            if not has_mention_invoker:
+                clean_content = content.lower()
+                has_name_invoker = clean_content.startswith(
+                        self.user.name.lower() + ' ')
+                if not has_name_invoker and not message.channel.is_private:
+                    has_nick_invoker = clean_content.startswith(
+                            message.server.me.nick.lower() + ' ')
+                    if has_nick_invoker: # Clean up content (nickname)
+                        content = content[len(message.server.me.nick):].strip()
+                else: # Clean up content (name)
+                    content = content[len(self.user.name):].strip()
+            else: # Clean up content (mention)
+                content = content.partition(' ')[2].strip()
+        else: # Clean up content (invoker)
+            content = content.partition(invoker)[2].strip()
+        
+        # Bot must respond to mentions only
         if self.configurations['core']['mention_mode']:
-            if (not message.content.startswith(self.user.mention) or
-                    len(message.content.split(' ', 1)) == 1):
-                return False
-
-        # Any command invoker will do
-        else:
-            if (message.content[0] not in 
-                    self.configurations['core']['command_invokers'] and
-                    not message.content.startswith(self.user.mention)):
-                return False
+            if not (has_mention_invoker or has_name_invoker or
+                    has_nick_invoker):
+                return None
+        else: # Any invoker will do
+            if not (has_regular_invoker or has_mention_invoker or
+                    has_name_invoker or has_nick_invoker):
+                return None                
 
         # Respond to direct messages
         if message.channel.is_private:
-            return True
+            return content
 
         author_id = message.author.id
         server_data = self.servers_data[message.server.id]
@@ -112,32 +140,29 @@ class Bot(discord.Client):
             channel_id = message.channel.id
             if ((author_id in self.configurations['core']['owners']) or
                     (author_id in server_data['moderators'])):
-                return True
+                return content
             # Server/channel muted, or user is blocked
             if ((server_data['muted']) or
                     (channel_id in server_data['muted_channels']) or
                     (author_id in server_data['blocked'])):
-                return False
+                return None
         except KeyError as e: # Bot may not have updated fast enough
             logging.warn("Failed to find server in can_respond(): " + str(e))
             servers.check_all(self)
-            time.sleep(5) # remove later
             return self.can_respond(message)
 
-        return True # Clear to respond
+        return content # Clear to respond
 
-    async def on_message(self, message):
+    async def on_message(self, message, replacement_message=None):
         plugins.broadcast_event(self, 2, message)
 
         # Ensure bot can respond properly
-        if not self.can_respond(message):
+        content = self.can_respond(message)
+        if not content:
             return
 
         # Ensure command is valid
-        if message.content.startswith(self.user.mention):
-            split_content = message.content.split(' ', 2)[1:]
-        else:
-            split_content = message.content[1:].split(' ', 1)
+        split_content = content.split(' ', 1)
         if len(split_content) == 1: # No spaces
             split_content.append('')
         base, parameters = split_content
@@ -147,7 +172,8 @@ class Bot(discord.Client):
             return
 
         # Bot is clear to get response. Send typing to signify
-        if self.configurations['core']['send_typing']:
+        if (not replacement_message and 
+                self.configurations['core']['send_typing']):
             await self.send_typing(message.channel)
 
         # Parse command and reply
@@ -166,8 +192,13 @@ class Bot(discord.Client):
                     type(e).__name__, e)
             response = (error, False, 0, None)
 
-        message_reference = await self.send_message(
-                message.channel, response[0], tts=response[1])
+        # If a replacement message is given, edit it
+        if replacement_message:
+            message_reference = await self.edit_message(
+                    replacement_message, response[0])
+        else:
+            message_reference = await self.send_message(
+                    message.channel, response[0], tts=response[1])
 
         # A response looks like this:
         # (text, tts, message_type, extra)
@@ -177,13 +208,23 @@ class Bot(discord.Client):
         # 2 - terminal (deletes itself after 'extra' seconds)
         # 3 - active (pass the reference back to the plugin to edit)
         # If message_type is >= 1, do not add to the edit dictionary
-        # TODO: Add normal message response to the edit dictionary
         
-        if response[2] == 2: # Terminal
+        if response[2] == 0: # Normal
+            # Edited commands are handled in base.py
+            wait_time = self.configurations['core']['edit_timeout']
+            if wait_time:
+                self.edit_dictionary[message.id] = message_reference
+                await asyncio.sleep(wait_time)
+                if message.id in self.edit_dictionary:
+                    del self.edit_dictionary[message.id]
+        elif response[2] == 2: # Terminal
             if not response[3]:
                 response[3] = 10
             await asyncio.sleep(int(response[3]))
             await self.delete_message(message_reference)
+        elif response[2] == 3: # Active
+            await commands.handle_active_message(self, message_reference, 
+                    parsed_command, response[3])
 
     async def on_ready(self):
         plugins.broadcast_event(self, 0)

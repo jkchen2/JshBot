@@ -3,5 +3,6 @@
     "token": "",
     "send_typing": true,
     "mention_mode": false,
+    "edit_timeout": 120,
     "command_invokers": ["!", ".", "=", "]", "/"]
 }
