@@ -29,18 +29,19 @@ def get_commands():
         ('plugin', 'p'), ('list', 'l'), ('exec', 'execute', 'python', 'py'),
         ('latency', 'ping')])
     commands['owner'] = ([
-        'halt', 'restart', 'ip', 'backup'],[])
+        'halt', 'restart', 'ip', 'backup', 'announcement &'],[])
     commands['mod'] = ([
         'info', 'block :', 'unblock :', 'clear', 'add :', 'remove :', 'mute :',
         'unmute :'],[
         ('info', 'i'), ('clear', 'c')])
     commands['base'] = ([
-        'version', 'source', 'uptime', 'help: &', 'help'],[
+        'version', 'source', 'uptime', 'help: &', 'help', 'announcement'],[
         ('version', 'ver', 'v'), ('source', 'src', 'git'), ('help', 'h')])
 
     shortcuts['clear'] = ('mod -clear', '')
     shortcuts['help'] = ('base -help {}', '&')
     shortcuts['restart'] = ('owner -restart', '')
+    shortcuts['announcement'] = ('base -announcement', '')
 
     manual['ping'] = {
         'description': 'Command to ping the bot for a response.',
@@ -60,7 +61,8 @@ def get_commands():
             ('-halt', 'Stops the bot.'),
             ('-restart', 'Restarts the bot.'),
             ('-ip', 'Gets the internal IP address of the bot.'),
-            ('-backup', 'Sends each owner a copy of the bot data files.')],
+            ('-backup', 'Sends each owner a copy of the bot data files.'),
+            ('-announcement <text>', 'Sets the announcement text.')],
         'shortcuts': [('restart', '-restart')]}
     manual['mod'] = {
         'description': 'Commands for server bot moderators.',
@@ -85,8 +87,12 @@ def get_commands():
             ('-help <command> (topic index)', 'Gets the help about the '
                 'given command, with extra information on a specific option '
                 'if a valid topic index is provided.'),
-            ('-help', 'Gets the general help page.')],
-        'shortcuts': [('help <arguments>', '-help <arguments>')]}
+            ('-help', 'Gets the general help page.'),
+            ('-announcement', 'Gets the current announcement from the owners '
+                'about the bot.')],
+        'shortcuts': [
+            ('help <arguments>', '-help <arguments>'),
+            ('announcement', '-announcement')]}
 
     return (commands, shortcuts, manual)
 
@@ -128,7 +134,7 @@ async def get_response(bot, message, parsed_command, direct):
             "days\n{hours} hours\n{minutes} minutes\n{seconds} "
             "seconds").format(initial=bot.readable_time, days=days, 
                     hours=hours, minutes=minutes, seconds=seconds)
-        elif plan_index >= 3: # help, detailed or general
+        elif plan_index in (3, 4): # help, detailed or general
             if plan_index == 3: # Detailed
                 response = get_help(bot, options['help'], 
                         topic=arguments if arguments else None)
@@ -141,6 +147,12 @@ async def get_response(bot, message, parsed_command, direct):
                 extra = 15
             else:
                 response = '' # Clear response
+        elif plan_index == 5: # Announcement
+            if ('announcement' not in bot.servers_data or 
+                    not bot.servers_data['announcement']):
+                response = "No announcement right now!"
+            else:
+                response = bot.servers_data['announcement']
 
     elif base == 'mod':
 
@@ -239,6 +251,9 @@ async def get_response(bot, message, parsed_command, direct):
                 response = "Local IP: " + ip
             elif plan_index == 3: # backup
                 response = "Coming soontmtmtmtmtmtmtm"
+            elif plan_index == 4: # Announcement
+                bot.servers_data['announcement'] = arguments
+                response = "Announcement set!"
 
     elif base == 'debug':
 

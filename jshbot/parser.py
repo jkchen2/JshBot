@@ -214,6 +214,12 @@ def fill_shortcut(bot, parameters, blueprint, modifiers):
     split = re.split('( +)', parameters)
     split.append('-')
 
+    if not modifiers:
+        blueprint_split = blueprint.split(' ', 1)
+        if len(blueprint_split) == 1:
+            blueprint_split.append('')
+        return blueprint_split
+
     it = 0
     format_list = []
     for modifier in modifiers: # :^&+#

@@ -7,30 +7,30 @@ from jshbot.exceptions import BotException, ErrorTypes
 
 EXCEPTION = 'Commands'
 
-def convert_plans(plans):
+def convert_blueprints(blueprints):
     '''
-    Converts user-friendly(ish) plans into the system-friendly version.
+    Converts user-friendly(ish) blueprints into the system-friendly version.
     Convert: "?opt1 opt2: ::+"
     To: [[(True, "opt1", False), (False, "opt2", True)], '::+']
     Convert: "*"
     To: [[], '*']
     '''
-    new_plans = []
+    new_blueprints = []
     required = True
     argument = False
-    for plan in plans: # Convert each individual plan
-        split = plan.split()
+    for blueprint in blueprints: # Convert each individual plan
+        blueprint_split = blueprint.split()
         new_plan = [[], '']
-        for block in split: # Parse each option
-            if block[0] in (':', '^', '&', '+', '#'): # Last part
-                new_plan[1] = block
+        for plan in blueprint_split: # Parse each option
+            if plan[0] in (':', '^', '&', '+', '#'): # Last part
+                new_plan[1] = plan
                 break
-            required = block[0] == '?'
-            argument = block[-1] == ':'
-            block = block.strip('?').strip(':')
-            new_plan[0].append((required, block, argument))
-        new_plans.append(new_plan)
-    return new_plans
+            required = plan[0] == '?'
+            argument = plan[-1] == ':'
+            plan = plan.strip('?').strip(':')
+            new_plan[0].append((required, plan, argument))
+        new_blueprints.append(new_plan)
+    return new_blueprints
 
 def add_commands(bot, new_commands, plugin):
     '''
@@ -42,16 +42,16 @@ def add_commands(bot, new_commands, plugin):
         return
 
     # Check that there are no command name collisions
-    for key in new_commands:
-        is_shortcut = type(new_commands[key][0]) is str
+    for key, command in new_commands.items():
+        is_shortcut = type(command[0]) is str
         if key in bot.commands:
             raise BotException(ErrorTypes.FATAL, EXCEPTION,
                     "Attempting to add a command that already exists", key)
         if is_shortcut:
-            bot.commands[key] = new_commands[key]
+            bot.commands[key] = command
         else:
-            new_plans = convert_plans(new_commands[key][0]) # Convert and add
-            bot.commands[key] = ((new_plans, new_commands[key][1]), plugin)
+            new_blueprints = convert_blueprints(command[0])
+            bot.commands[key] = ((new_blueprints, command[1]), plugin)
 
 def add_manual(bot, manual):
     '''
