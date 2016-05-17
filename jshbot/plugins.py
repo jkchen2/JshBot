@@ -57,8 +57,8 @@ def get_plugins(bot):
 
     # Get functions to broadcast
     events = ['on_ready', 'on_error', 'on_message', 'on_socket_raw_receive',
-            'on_socket_raw_send', 'on_message_delete', 'on_message_edit', 
-            'on_channel_delete', 'on_channel_create', 'on_channel_update', 
+            'on_socket_raw_send', 'on_message_delete', 'on_message_edit',
+            'on_channel_delete', 'on_channel_create', 'on_channel_update',
             'on_member_join', 'on_member_update', 'on_server_join',
             'on_server_remove', 'on_server_update', 'on_server_role_create',
             'on_server_role_delete', 'on_server_role_update',

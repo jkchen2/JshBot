@@ -133,11 +133,11 @@ async def get_response(bot, message, parsed_command, direct):
             seconds = uptime_struct.tm_sec
             response = ("The bot has been on since **{initial}**\n{days} "
             "days\n{hours} hours\n{minutes} minutes\n{seconds} "
-            "seconds").format(initial=bot.readable_time, days=days, 
+            "seconds").format(initial=bot.readable_time, days=days,
                     hours=hours, minutes=minutes, seconds=seconds)
         elif plan_index in (3, 4): # help, detailed or general
             if plan_index == 3: # Detailed
-                response = get_help(bot, options['help'], 
+                response = get_help(bot, options['help'],
                         topic=arguments if arguments else None)
             else: # General
                 response = get_general_help(bot)
@@ -149,7 +149,7 @@ async def get_response(bot, message, parsed_command, direct):
             else:
                 response = '' # Clear response
         elif plan_index == 5: # Announcement
-            if ('announcement' not in bot.servers_data or 
+            if ('announcement' not in bot.servers_data or
                     not bot.servers_data['announcement']):
                 response = "No announcement right now!"
             else:
@@ -200,7 +200,7 @@ async def get_response(bot, message, parsed_command, direct):
                 "You ANIMALS. At least I'm not one.",
                 "Scroll up if you want to be on a list.",
                 "I'll bet the NSA will have a fun time scrolling up.",
-                "So much wasted space...", 
+                "So much wasted space...",
                 "This is pretty annoying, huh? Well TOO BAD.",
                 "No time to delete!"])
                 response += '```\n'
@@ -231,7 +231,7 @@ async def get_response(bot, message, parsed_command, direct):
 
         if not servers.is_owner(bot, message.author.id):
             response = "You must be the bot owner to use these commands."
-        
+
         else:
 
             if plan_index == 0: # halt
@@ -377,7 +377,7 @@ def get_help(bot, base, topic=None):
             topic_pair = manual_entry['usage'][topic_index - 1]
             return '```\n{}{} {}\n\t{}```'.format(
                     invoker, base, topic_pair[0], topic_pair[1])
-    
+
     # Handle regular help
     # Description, usage, aliases, shortcuts, other
     aliases = bot.commands[base][0][1]

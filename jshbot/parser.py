@@ -15,7 +15,7 @@ def get_argument_block(split, index, get_all=False):
     elif split[index][0] == '"': # Loop until quote closed
         combined = ''
         for it in range(index, len(split) - 1):
-            if (split[it][-1] == '"' and len(split[it]) > 1 and 
+            if (split[it][-1] == '"' and len(split[it]) > 1 and
                     split[it][-2] != '\\'): # Closed
                 if it > index:
                     return (combined[1:] + split[it][:-1], it)
@@ -97,7 +97,7 @@ def match_blueprint(options, arguments, last_option, blueprints):
     # ("?opt1 opt2: opt3") to [(T, "opt1", F), (F, "opt2", T), (F, "opt3", F)]
 
     # TODO: Consider checking last first?
-    
+
     # Loop through all blueprints
     # Each blueprint is a list of individual plans
     for blueprint_index, blueprint in enumerate(blueprints):
@@ -131,7 +131,7 @@ def match_blueprint(options, arguments, last_option, blueprints):
                     # There must be no argument, the option must have an
                     #   associated positional argument attached to it, and
                     #   it is the LAST option that was parsed
-                    if (not plan[2] and 
+                    if (not plan[2] and
                             options[plan[1]] and
                             plan[1] == last_option):
                         no_last_argument = True
@@ -168,7 +168,7 @@ def match_blueprint(options, arguments, last_option, blueprints):
 
             # Get whether or not arguments should be grouped
             group_arguments = blueprint[1] and blueprint[1] in ('^', '&')
-            
+
             # Determine which arguments to use based on no_last_argument and
             #   group_arguments
             arguments_index = 0
@@ -196,7 +196,7 @@ def match_blueprint(options, arguments, last_option, blueprints):
                     continue # Incorrect number of trailing arguments
             elif not blueprint[1] and len(arguments[arguments_index]) > 0:
                 continue # Requires no trailing arguments, but found some
-                    
+
             # All criteria satisfied
             return (blueprint_index, no_last_argument, arguments_index)
 
@@ -209,7 +209,7 @@ def fill_shortcut(bot, parameters, blueprint, modifiers):
     Example: fill_shortcut('"my tag" tag text', 'tag -create {} {}', ':^')
     Returns: ('tag', '-create "my tag" tag text')
     '''
-    
+
     # Split parameters
     split = re.split('( +)', parameters)
     split.append('-')
@@ -305,7 +305,7 @@ def parse(bot, base, parameters, command_pair, shortcut):
         # Print out the syntax of the command
         raise BotException(ErrorTypes.RECOVERABLE, EXCEPTION,
                 "Invalid syntax.", bot.usage_reminder(base))
-    
+
     # Remove positional argument of last option if it exists in the dictionary
     if no_last_argument and last_option in options:
         options[last_option] = ''

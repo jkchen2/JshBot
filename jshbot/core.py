@@ -15,7 +15,7 @@ from jshbot.exceptions import ErrorTypes, BotException
 EXCEPTION = 'Core'
 
 class Bot(discord.Client):
-    
+
     def __init__(self, debug):
         self.version = '0.3.0-alpha'
         self.date = 'May 14th, 2016'
@@ -63,7 +63,7 @@ class Bot(discord.Client):
                 raise BotException(ErrorTypes.RECOVERABLE, EXCEPTION,
                         "Server {} could not be found.".format(server_id))
         asyncio.ensure_future(self.send_message(channel, message))
-    
+
     def get_token(self):
         return self.configurations['core']['token']
 
@@ -85,7 +85,7 @@ class Bot(discord.Client):
         '''
 
         # Ignore empty messages and messages by bots
-        if (not message.content or message.author.bot or 
+        if (not message.content or message.author.bot or
                 message.author.id == self.user.id):
             return None
 
@@ -117,7 +117,7 @@ class Bot(discord.Client):
                 content = content.partition(' ')[2].strip()
         else: # Clean up content (invoker)
             content = content.partition(invoker)[2].strip()
-        
+
         # Bot must respond to mentions only
         if self.configurations['core']['mention_mode']:
             if not (has_mention_invoker or has_name_invoker or
@@ -126,7 +126,7 @@ class Bot(discord.Client):
         else: # Any invoker will do
             if not (has_regular_invoker or has_mention_invoker or
                     has_name_invoker or has_nick_invoker):
-                return None                
+                return None
 
         # Respond to direct messages
         if message.channel.is_private:
@@ -172,7 +172,7 @@ class Bot(discord.Client):
             return
 
         # Bot is clear to get response. Send typing to signify
-        if (not replacement_message and 
+        if (not replacement_message and
                 self.configurations['core']['send_typing']):
             await self.send_typing(message.channel)
 
@@ -208,7 +208,7 @@ class Bot(discord.Client):
         # 2 - terminal (deletes itself after 'extra' seconds)
         # 3 - active (pass the reference back to the plugin to edit)
         # If message_type is >= 1, do not add to the edit dictionary
-        
+
         if response[2] == 0: # Normal
             # Edited commands are handled in base.py
             wait_time = self.configurations['core']['edit_timeout']
@@ -223,7 +223,7 @@ class Bot(discord.Client):
             await asyncio.sleep(int(response[3]))
             await self.delete_message(message_reference)
         elif response[2] == 3: # Active
-            await commands.handle_active_message(self, message_reference, 
+            await commands.handle_active_message(self, message_reference,
                     parsed_command, response[3])
 
     async def on_ready(self):
