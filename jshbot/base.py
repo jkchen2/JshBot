@@ -8,7 +8,7 @@ import logging
 from jshbot import servers
 from jshbot.exceptions import ErrorTypes, BotException
 
-__version__ = '0.1.2'
+__version__ = '0.1.3'
 EXCEPTION = 'Base'
 uses_configuration = False
 local_dictionary = {}
@@ -281,40 +281,50 @@ async def get_response(bot, message, parsed_command, direct):
             global local_dictionary # Use local environment
             if not local_dictionary: # First time setup
                 local_dictionary['bot'] = bot
+                local_dictionary['result'] = ''
+            local_dictionary['message'] = message
             pass_in = (globals(), local_dictionary)
 
-            try: # Try to execute arguments
-                if arguments[0] == '`' and arguments[-1] == '`':
-                    arguments = arguments[1:-1]
-                assignable_code = 'result = (' + arguments + ')'
-                use_await = arguments.startswith('await')
-                try: # Try getting an assignment statement working
-                    if use_await:
-                        await exec(assignable_code, *pass_in)
-                    else:
-                        exec(assignable_code, *pass_in)
-                except SyntaxError: # May need to get rid of result
-                    if use_await:
-                        await exec(arguments, *pass_in)
-                    else:
-                        exec(arguments, *pass_in)
-                    local_dictionary['result'] = 'Executed. (no output)'
+            # Sanitize input
+            if arguments[0] == '`' and arguments[-1] == '`':
+                arguments = arguments[1:-1]
 
-            except Exception as e:
-                response = '`Error: {}`'.format(str(e))
-
+            # Check if the previous result should be sent as a file
+            if arguments in ('saf', 'file'):
+                await send_result_as_file(
+                        bot, message.channel, local_dictionary['result'])
+                #response = "Sending file..."
             else:
-                if not local_dictionary['result']:
-                    result = 'Executed. (returned None)'
+                try: # Try to execute arguments
+                    assignable_code = 'result = (' + arguments + ')'
+                    use_await = arguments.startswith('await')
+                    try: # Try getting an assignment statement working
+                        if use_await:
+                            await eval(assignable_code, *pass_in)
+                        else:
+                            exec(assignable_code, *pass_in)
+                    except SyntaxError: # May need to get rid of result
+                        if use_await:
+                            await eval(arguments, *pass_in)
+                        else:
+                            exec(arguments, *pass_in)
+                        local_dictionary['result'] = 'Executed. (no output)'
+
+                except Exception as e:
+                    response = '`Error: {}`'.format(str(e))
+
                 else:
-                    result = str(local_dictionary['result'])
-                if len(result) >= 1998:
-                    raise BotException(ErrorTypes.RECOVERABLE, EXCEPTION,
-                            "Exec result is too long.")
-                if '\n' in result: # Better formatting
-                    response = '```python\n{}\n```'.format(result)
-                else: # One line response
-                    response = '`{}`'.format(result)
+                    if not local_dictionary['result']:
+                        result = 'Executed. (returned None)'
+                    else:
+                        result = str(local_dictionary['result'])
+                    if len(result) >= 1998:
+                        raise BotException(ErrorTypes.RECOVERABLE, EXCEPTION,
+                                "Exec result is too long. (try 'file')")
+                    if '\n' in result: # Better formatting
+                        response = '```python\n{}\n```'.format(result)
+                    else: # One line response
+                        response = '`{}`'.format(result)
 
         elif plan_index == 3: # Latency
             message_type = 3
@@ -335,6 +345,19 @@ async def handle_active_message(bot, message_reference, extra):
         latency_time = "Latency time: {:.2f} ms".format(
                 (time.time() * 1000) - extra[1])
         await bot.edit_message(message_reference, latency_time)
+
+async def send_result_as_file(bot, channel, result):
+    '''
+    Helper function for debug that sends the result as a text file if it is
+    over 2000 characters long.
+    '''
+    if result:
+        print(result)
+        with open('result.txt', 'w') as result_file:
+            result_file.write(str(result))
+        await bot.send_file(channel, 'result.txt')
+    else:
+        await bot.send_message(channel, "Last result is empty.")
 
 def get_general_help(bot):
     '''
@@ -430,6 +453,8 @@ def get_usage_reminder(bot, base):
     response += '```'
 
     return response
+
+# Standard discord.py event functions
 
 async def on_server_remove(bot, server):
     logging.debug("Removing a server")
