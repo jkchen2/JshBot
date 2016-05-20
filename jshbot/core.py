@@ -2,6 +2,7 @@ import asyncio
 import discord
 import logging
 import os.path
+import copy
 import time
 import sys
 import os
@@ -16,9 +17,9 @@ EXCEPTION = 'Core'
 
 class Bot(discord.Client):
 
-    def __init__(self, debug):
+    def __init__(self, start_file, debug):
         self.version = '0.3.0-alpha'
-        self.date = 'May 14th, 2016'
+        self.date = 'May 19th, 2016'
         self.time = int(time.time())
         self.readable_time = time.strftime('%c')
         self.debug = debug
@@ -32,15 +33,19 @@ class Bot(discord.Client):
 
         super().__init__()
 
-        self.path = os.path.split(os.path.realpath(__file__))[0][:-7]
+        self.path = os.path.split(os.path.realpath(start_file))[0]
         logging.debug("Setting directory to {}".format(self.path));
 
         logging.debug("Loading plugins and commands...")
         self.commands = {} # Set by get_plugins
         self.manual = {} # Set by get_plugins
-        self.data = {} # Set by individual plugins
         self.plugins = plugins.get_plugins(self)
-        self.directories = data.get_directories(self)
+
+        logging.debug("Setting up data...")
+        self.data = {'global_users':{}, 'global_plugins':{}}
+        self.volatile_data = {'global_users':{}, 'global_plugins':{}}
+        #self.volatile_data = copy.copy(self.data)
+
         logging.debug("Loading configurations...")
         self.configurations = configurations.get_configurations(self)
         logging.debug("Loading server data...")
@@ -95,7 +100,14 @@ class Bot(discord.Client):
         has_mention_invoker = False
         has_name_invoker = False
         has_nick_invoker = False
-        for invoker in self.configurations['core']['command_invokers']:
+        if message.channel: # Get custom invokers if they exist
+            invokers = data.get(
+                    self, 'base', 'command_invokers', message.server.id)
+            if not invokers:
+                invokers = self.configurations['core']['command_invokers']
+        else:
+            invokers = self.configurations['core']['command_invokers']
+        for invoker in invokers:
             if content.startswith(invoker):
                 has_regular_invoker = True
                 break
@@ -119,7 +131,9 @@ class Bot(discord.Client):
             content = content.partition(invoker)[2].strip()
 
         # Bot must respond to mentions only
-        if self.configurations['core']['mention_mode']:
+        if (self.configurations['core']['mention_mode'] or
+                data.get(self, 'base', 'mention_mode',
+                    message.server.id, default=False)):
             if not (has_mention_invoker or has_name_invoker or
                     has_nick_invoker):
                 return None
@@ -133,22 +147,25 @@ class Bot(discord.Client):
             return content
 
         author_id = message.author.id
+        server_data = data.get(self, 'base', None, message.server.id,
+                default={})
         server_data = self.servers_data[message.server.id]
 
         try:
             # Owners/moderators override everything
             channel_id = message.channel.id
-            if ((author_id in self.configurations['core']['owners']) or
-                    (author_id in server_data['moderators'])):
+            if (author_id in self.configurations['core']['owners'] or
+                    author_id in server_data.get('moderators', []) or
+                    author_id == message.server.owner.id):
                 return content
             # Server/channel muted, or user is blocked
             if ((server_data['muted']) or
-                    (channel_id in server_data['muted_channels']) or
-                    (author_id in server_data['blocked'])):
+                    (channel_id in server_data.get('muted_channels', [])) or
+                    (author_id in server_data.get('blocked', []))):
                 return None
         except KeyError as e: # Bot may not have updated fast enough
             logging.warn("Failed to find server in can_respond(): " + str(e))
-            servers.check_all(self)
+            data.check_all(self)
             return self.can_respond(message)
 
         return content # Clear to respond
@@ -217,20 +234,24 @@ class Bot(discord.Client):
                 await asyncio.sleep(wait_time)
                 if message.id in self.edit_dictionary:
                     del self.edit_dictionary[message.id]
+
         elif response[2] == 2: # Terminal
             if not response[3]:
                 response[3] = 10
             await asyncio.sleep(int(response[3]))
             await self.delete_message(message_reference)
+
         elif response[2] == 3: # Active
             await commands.handle_active_message(self, message_reference,
                     parsed_command, response[3])
 
     async def on_ready(self):
-        plugins.broadcast_event(self, 0)
-
         # Make sure server data is ready
         servers.check_all(self)
+        data.check_all(self)
+        data.get_data(self)
+
+        plugins.broadcast_event(self, 0)
 
         if self.debug:
             logging.debug("=== {} online ===".format(self.user.name))
@@ -287,7 +308,7 @@ class Bot(discord.Client):
         Saves all data. For now, this will just be the servers file.
         '''
         logging.debug("Saving data...")
-        servers.save_data(self)
+        data.save_data(self)
         logging.debug("Saving data complete.")
 
     def restart(self):
@@ -300,13 +321,16 @@ class Bot(discord.Client):
         logging.debug("Writing data on shutdown...")
         self.save_data()
         logging.debug("Closing down!")
-        asyncio.ensure_future(self.logout())
+        try:
+            asyncio.ensure_future(self.logout())
+        except:
+            pass
         sys.exit()
 
-def initialize(debug=False):
+def initialize(start_file, debug=False):
     if debug:
         logging.basicConfig(stream=sys.stdout, level=logging.DEBUG)
-    bot = Bot(debug)
+    bot = Bot(start_file, debug)
     bot.run(bot.get_token())
     logging.error("Bot disconnected. Shutting down...")
     bot.shutdown()

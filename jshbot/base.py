@@ -4,8 +4,9 @@ import random
 import socket
 import time
 import logging
+import inspect
 
-from jshbot import servers
+from jshbot import servers, data
 from jshbot.exceptions import ErrorTypes, BotException
 
 __version__ = '0.1.3'
@@ -25,7 +26,7 @@ def get_commands():
 
     commands['ping'] = (['&'], [])
     commands['debug'] = ([
-        'plugin:', 'plugin list', 'exec ^', 'latency'],[
+        'plugin:', 'plugin list', 'latency', '^'],[
         ('plugin', 'p'), ('list', 'l'), ('exec', 'execute', 'python', 'py'),
         ('latency', 'ping')])
     commands['owner'] = ([
@@ -169,6 +170,7 @@ async def get_response(bot, message, parsed_command, direct):
                 server_data = bot.servers_data[message.server.id]
                 response = ('```\n'
                 'Information for server {0}\n'
+                'ID: {0.id}\n'
                 'Owner: {1}\n'
                 'Moderators: {moderators}\n'
                 'Blocked users: {blocked}\n'
@@ -258,6 +260,7 @@ async def get_response(bot, message, parsed_command, direct):
 
     elif base == 'debug':
 
+        #if not data.is_owner(bot, message.server.id, message.author.id):
         if not servers.is_owner(bot, message.author.id):
             response = "You must be a bot owner to use these commands."
 
@@ -276,18 +279,27 @@ async def get_response(bot, message, parsed_command, direct):
         elif plan_index == 1: # List plugins
             response = '```\n{}\n```'.format(list(bot.plugins.keys()))
 
-        elif plan_index == 2: # Exec
+        elif plan_index == 2: # Latency
+            message_type = 3
+            response = "Testing latency time..."
+            extra = ('ping', time.time() * 1000)
+
+        elif plan_index == 3: # Exec
 
             global local_dictionary # Use local environment
             if not local_dictionary: # First time setup
+                def say(text):
+                    asyncio.ensure_future(
+                            bot.send_message(message.channel, str(text)))
                 local_dictionary['bot'] = bot
+                local_dictionary['inspect'] = inspect
                 local_dictionary['result'] = ''
+                local_dictionary['say'] = say
             local_dictionary['message'] = message
-            pass_in = (globals(), local_dictionary)
+            pass_in = ({}, local_dictionary)
 
             # Sanitize input
-            if arguments[0] == '`' and arguments[-1] == '`':
-                arguments = arguments[1:-1]
+            arguments = arguments.strip('`')
 
             # Check if the previous result should be sent as a file
             if arguments in ('saf', 'file'):
@@ -295,27 +307,29 @@ async def get_response(bot, message, parsed_command, direct):
                         bot, message.channel, local_dictionary['result'])
                 #response = "Sending file..."
             else:
+                used_exec = False
                 try: # Try to execute arguments
-                    assignable_code = 'result = (' + arguments + ')'
-                    use_await = arguments.startswith('await')
-                    try: # Try getting an assignment statement working
-                        if use_await:
-                            await eval(assignable_code, *pass_in)
-                        else:
-                            exec(assignable_code, *pass_in)
-                    except SyntaxError: # May need to get rid of result
-                        if use_await:
-                            await eval(arguments, *pass_in)
-                        else:
+                    #assignable_code = 'result = (' + arguments + ')'
+
+                    if '\n' in arguments:
+                        exec(arguments, *pass_in)
+                        used_exec = True 
+                    else:
+                        try:
+                            local_dictionary['result'] = eval(
+                                    arguments, *pass_in)
+                        except SyntaxError: # May need to use exec
                             exec(arguments, *pass_in)
-                        local_dictionary['result'] = 'Executed. (no output)'
+                            used_exec = True
 
                 except Exception as e:
                     response = '`Error: {}`'.format(str(e))
 
-                else:
-                    if not local_dictionary['result']:
-                        result = 'Executed. (returned None)'
+                else: # Get response if it exists
+                    if used_exec:
+                        result = 'Executed.'
+                    elif not local_dictionary['result']:
+                        result = 'Evaluated. (returned None)'
                     else:
                         result = str(local_dictionary['result'])
                     if len(result) >= 1998:
@@ -325,11 +339,6 @@ async def get_response(bot, message, parsed_command, direct):
                         response = '```python\n{}\n```'.format(result)
                     else: # One line response
                         response = '`{}`'.format(result)
-
-        elif plan_index == 3: # Latency
-            message_type = 3
-            response = "Testing latency time..."
-            extra = ('ping', time.time() * 1000)
 
     else:
         response = "This should not be seen. Your command was: " + base
@@ -352,7 +361,6 @@ async def send_result_as_file(bot, channel, result):
     over 2000 characters long.
     '''
     if result:
-        print(result)
         with open('result.txt', 'w') as result_file:
             result_file.write(str(result))
         await bot.send_file(channel, 'result.txt')

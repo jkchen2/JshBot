@@ -4,6 +4,7 @@ import logging
 import os.path
 import importlib.util
 import sys
+import time
 
 # Debug
 import traceback
@@ -36,7 +37,9 @@ def get_plugins(bot):
 
     # Get plugin commands
     for plugin in plugins_list:
-        if plugin[0] in ('.', '_') or plugin == 'base': # Dang swap files
+        if (plugin[0] in ('.', '_') or
+                plugin == 'base' or
+                not plugin.endswith('.py')):
             continue
         try:
             spec = importlib.util.spec_from_file_location(
@@ -81,7 +84,7 @@ def broadcast_event(bot, event_index, *args):
     Loops through all of the plugins and looks to see if the event index
     specified is associated it. If it is, call that function with args.
     '''
-    for plugin_name, plugin_pair in bot.plugins.items():
+    for plugin_pair in bot.plugins.values():
         function = plugin_pair[1][event_index]
         if function:
             asyncio.ensure_future(function(bot, *args))
