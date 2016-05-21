@@ -4,5 +4,6 @@
     "send_typing": true,
     "mention_mode": false,
     "edit_timeout": 120,
+    "save_interval": 30,
     "command_invokers": ["!", ".", "=", "]", "/"]
 }
