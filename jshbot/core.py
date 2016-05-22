@@ -10,7 +10,7 @@ import os
 # Debug
 import traceback
 
-from jshbot import configurations, plugins, commands, servers, parser, data
+from jshbot import configurations, plugins, commands, parser, data
 from jshbot.exceptions import ErrorTypes, BotException
 
 EXCEPTION = 'Core'
@@ -37,19 +37,17 @@ class Bot(discord.Client):
         logging.debug("Setting directory to {}".format(self.path));
 
         logging.debug("Loading plugins and commands...")
-        self.commands = {} # Set by get_plugins
-        self.manual = {} # Set by get_plugins
+        self.commands = {}
+        self.manual = {}
         self.plugins = plugins.get_plugins(self)
 
         logging.debug("Setting up data...")
         self.data = {'global_users':{}, 'global_plugins':{}}
-        self.volatile_data = {'global_users':{}, 'global_plugins':{}}
-        #self.volatile_data = copy.copy(self.data)
+        self.volatile_data = copy.copy(self.data)
+        self.data_changed = False
 
         logging.debug("Loading configurations...")
         self.configurations = configurations.get_configurations(self)
-        logging.debug("Loading server data...")
-        self.servers_data = servers.get_servers_data(self)
 
         # Extras
         self.edit_dictionary = {}
@@ -101,9 +99,12 @@ class Bot(discord.Client):
         has_name_invoker = False
         has_nick_invoker = False
         if message.channel: # Get custom invokers if they exist
-            invokers = data.get(
-                    self, 'base', 'command_invokers', message.server.id)
-            if not invokers:
+            server_data = data.get(self, 'base', None, message.server.id,
+                    default={})
+            invokers = [server_data.get('command_invoker', None)]
+            #invokers = [data.get(
+            #        self, 'base', 'command_invoker', message.server.id)]
+            if not invokers[0]:
                 invokers = self.configurations['core']['command_invokers']
         else:
             invokers = self.configurations['core']['command_invokers']
@@ -133,7 +134,7 @@ class Bot(discord.Client):
         # Bot must respond to mentions only
         if (self.configurations['core']['mention_mode'] or
                 data.get(self, 'base', 'mention_mode',
-                    message.server.id, default=False)):
+                    server_id=message.server.id, default=False)):
             if not (has_mention_invoker or has_name_invoker or
                     has_nick_invoker):
                 return None
@@ -147,26 +148,24 @@ class Bot(discord.Client):
             return content
 
         author_id = message.author.id
-        server_data = data.get(self, 'base', None, message.server.id,
-                default={})
-        server_data = self.servers_data[message.server.id]
 
         try:
             # Owners/moderators override everything
+            # This is faster than calling the function in jshbot.data
             channel_id = message.channel.id
             if (author_id in self.configurations['core']['owners'] or
                     author_id in server_data.get('moderators', []) or
                     author_id == message.server.owner.id):
                 return content
             # Server/channel muted, or user is blocked
-            if ((server_data['muted']) or
+            if (server_data.get('muted', False) or
                     (channel_id in server_data.get('muted_channels', [])) or
                     (author_id in server_data.get('blocked', []))):
                 return None
         except KeyError as e: # Bot may not have updated fast enough
             logging.warn("Failed to find server in can_respond(): " + str(e))
             data.check_all(self)
-            return self.can_respond(message)
+            return None # Don't recurse for safety
 
         return content # Clear to respond
 
@@ -247,9 +246,8 @@ class Bot(discord.Client):
 
     async def on_ready(self):
         # Make sure server data is ready
-        servers.check_all(self)
         data.check_all(self)
-        data.get_data(self)
+        data.load_data(self)
 
         plugins.broadcast_event(self, 0)
 
@@ -257,6 +255,8 @@ class Bot(discord.Client):
             logging.debug("=== {} online ===".format(self.user.name))
         else:
             print("=== {} online ===".format(self.user.name))
+
+        await self.save_loop()
 
     async def on_error(self, event, *args, **kwargs):
         plugins.broadcast_event(self, 1, event, *args, **kwargs)
@@ -303,10 +303,21 @@ class Bot(discord.Client):
     async def on_typing(self, channel, user, when):
         plugins.broadcast_event(self, 23, channel, user, when)
 
+    async def save_loop(self):
+        '''
+        Runs the loop that periodically saves data.
+        '''
+        try:
+            interval = int(self.configurations['core']['save_interval'])
+            interval = 0 if interval <= 0 else interval * 60
+        except:
+            logging.warn("Saving interval not found in the configuration file.")
+            interval = 0
+        while interval:
+            await asyncio.sleep(interval)
+            self.save_data()
+
     def save_data(self):
-        '''
-        Saves all data. For now, this will just be the servers file.
-        '''
         logging.debug("Saving data...")
         data.save_data(self)
         logging.debug("Saving data complete.")

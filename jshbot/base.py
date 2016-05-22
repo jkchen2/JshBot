@@ -27,13 +27,12 @@ def get_commands():
     commands['ping'] = (['&'], [])
     commands['debug'] = ([
         'plugin:', 'plugin list', 'latency', '^'],[
-        ('plugin', 'p'), ('list', 'l'), ('exec', 'execute', 'python', 'py'),
-        ('latency', 'ping')])
+        ('plugin', 'p'), ('list', 'l'), ('latency', 'ping')])
     commands['owner'] = ([
         'halt', 'restart', 'ip', 'backup', 'announcement &'],[])
     commands['mod'] = ([
-        'info', 'block ^', 'unblock ^', 'clear', 'add :', 'remove :', 'mute :',
-        'unmute :'],[
+        'info', 'block ^', 'unblock ^', 'clear', 'add ^', 'remove ^', 'mute :',
+        'unmute :', 'invoker &'],[
         ('info', 'i'), ('clear', 'c')])
     commands['base'] = ([
         'version', 'source', 'uptime', 'help: &', 'help', 'announcement'],[
@@ -53,8 +52,8 @@ def get_commands():
         'usage': [
             ('-plugin <plugin>', 'Show information about the plugin.'),
             ('-plugin -list', 'Lists all active plugins.'),
-            ('-exec <expression>', 'Executes the given expression.'),
-            ('-latency', 'Gets ping time to current server.')],
+            ('-latency', 'Gets ping time to current server.'),
+            ('<expression>', 'Executes or evalulates the given expression.')],
         'other': 'Be careful with these commands! They can break the bot.'}
     manual['owner'] = {
         'description': 'Commands for the owner only.',
@@ -158,7 +157,7 @@ async def get_response(bot, message, parsed_command, direct):
 
     elif base == 'mod':
 
-        if not servers.is_mod(bot, message.server, message.author.id):
+        if not data.is_mod(bot, message.server, message.author.id):
             response = "You must be a moderator to use these commands."
 
         elif direct:
@@ -168,23 +167,50 @@ async def get_response(bot, message, parsed_command, direct):
 
             if plan_index == 0: # info
                 server_data = bot.servers_data[message.server.id]
+                server_data = data.get(bot, 'base', None,
+                        server_id=message.server.id, default={})
+                moderators = server_data.get('moderators', [])
+                blocked = server_data.get('blocked', [])
+                muted = server_data.get('muted', [])
+                muted_channels = server_data.get('muted_channels', [])
+                command_invoker = server_data.get('command_invoker', None)
+                mention_mode = server_data.get('mention_mode', False)
                 response = ('```\n'
                 'Information for server {0}\n'
                 'ID: {0.id}\n'
-                'Owner: {1}\n'
+                'Owner: {0.owner.id}\n'
                 'Moderators: {moderators}\n'
                 'Blocked users: {blocked}\n'
                 'Muted: {muted}\n'
-                'Muted channels: {muted_channels}\n```').format(
-                        message.server, message.server.owner.id, **server_data)
+                'Muted channels: {muted_channels}\n'
+                'Command invoker: {command_invoker}\n'
+                'Mention mode: {mention_mode}\n```').format(
+                        message.server, **locals())
+
             elif plan_index in (1, 2): # block or unblock
-                add = plan_index == 1
-                identity = arguments
-                servers.modify_user_group(bot, message.server,
-                        identity, add, 'blocked')
-                name = servers.get_id(bot, identity, message.server, True)
-                response = '{} is {} blocked.'.format(name,
-                        'now' if add else 'no longer')
+                user = data.get_id(bot, arguments, message.server,
+                        member=True)
+                block = plan_index == 1
+                blocked = data.is_blocked(bot, message.server, user.id,
+                        strict=True)
+                mod = data.is_mod(bot, message.server, user.id)
+                if mod:
+                    response = "Cannot block or unblock a moderator."
+                elif block:
+                    if blocked:
+                        response = "User is already blocked."
+                    else:
+                        data.list_data_append(bot, 'base', 'blocked', user.id,
+                                server_id=message.server.id)
+                        response = "User is now blocked."
+                else:
+                    if not blocked:
+                        response = "User is already unblocked."
+                    else:
+                        data.list_data_remove(bot, 'base', 'blocked', user.id,
+                                server_id=message.server.id)
+                        response = "User is now unblocked."
+
             elif plan_index == 3: # clear
                 response = '```\n'
                 for i in range(0, 80):
@@ -206,32 +232,83 @@ async def get_response(bot, message, parsed_command, direct):
                 "This is pretty annoying, huh? Well TOO BAD.",
                 "No time to delete!"])
                 response += '```\n'
-            elif plan_index in (4, 5): # add or remove
-                if servers.is_admin(bot, message.server, message.author.id):
-                    add = plan_index == 4
-                    user_id = servers.modify_user_group(bot, message.server,
-                            arguments[0], add, 'moderators')
-                    name = servers.get_id(bot, user_id, message.server, True)
-                    response = '{} is {} a moderator.'.format(name,
-                            'now' if add else 'no longer')
+
+            elif plan_index in (4, 5): # add or remove moderator
+                if not data.is_admin(bot, message.server, message.author.id):
+                    response = "You must be an admin to use these commands."
                 else:
-                    raise BotException(ErrorTypes.RECOVERABLE, EXCEPTION,
-                            "You must be an admin to use these commands.")
+                    user_id = data.get_id(bot, arguments, server=message.server)
+                    user_is_mod = data.is_mod(bot, message.server, user_id,
+                            strict=True)
+                    blocked = data.is_blocked(bot, message.server, user_id,
+                            strict=True)
+                    if blocked:
+                        response = "User is blocked."
+                    elif plan_index == 4: # add
+                        if user_is_mod:
+                            response = "User is already a moderator."
+                        else:
+                            data.list_data_append(bot, 'base', 'moderators',
+                                    user_id, server_id=message.server.id)
+                            response = "User is now a moderator."
+                    else: # remove
+                        if not user_is_mod:
+                            response = "User is not in the moderators list."
+                        else:
+                            data.list_data_remove(bot, 'base', 'moderators',
+                                    user_id, server_id=message.server.id)
+                            response = "User is no longer a moderator."
+
             elif plan_index in (6, 7): # mute or unmute
-                if arguments[0] in ('channel', 'server'):
-                    mute = plan_index == 6
-                    change = (message.channel if arguments[0] == 'channel' else
-                            message.channel.server)
-                    change_id = servers.modify_mute_status(bot, change, mute)
-                    arguments[0] = arguments[0].capitalize()
-                    response = '{} is {} muted.'.format(arguments[0],
-                            'now' if mute else 'no longer')
-                else:
+                try:
+                    type_index = ('channel', 'server').index(arguments[0])
+                except ValueError:
                     response = "The type must be \"channel\" or \"server\"."
+                else:
+                    mute_key = ('muted_channels', 'muted')[type_index]
+                    server_id = message.server.id
+                    mute = plan_index == 6
+
+                    if type_index == 0: # channel
+                        muted = message.channel.id in data.get(bot, 'base',
+                                mute_key, server_id=server_id, default=[])
+                        if mute:
+                            if muted:
+                                response = "Channel is already muted."
+                            else:
+                                data.list_data_append(bot, 'base', mute_key,
+                                        message.server.id, server_id=server_id)
+                                response = "Channel muted."
+                        else: # unmute
+                            if not muted:
+                                response = "Channel is already unmuted."
+                            else:
+                                data.list_data_remove(bot, 'base', mute_key,
+                                        message.server.id, server_id=server_id)
+                                response = "Channel unmuted."
+
+                    else: # server
+                        muted = data.get(bot, 'base', mute_key,
+                                server_id=server_id, default=False)
+                        if not (muted ^ mute):
+                            response = "Server is {} muted.".format(
+                                    'already' if muted else 'not')
+                        else:
+                            data.add(bot, 'base', mute_key, mute,
+                                    server_id=server_id)
+                            response = "Server {}muted.".format(
+                                    '' if mute else 'un')
+
+            elif plan_index == 8: # invoker
+                data.add(bot, 'base', 'command_invoker',
+                        arguments if arguments else None,
+                        server_id=message.server.id)
+                response = "Custom command invoker {}.".format(
+                        'set' if arguments else 'cleared')
 
     elif base == 'owner':
 
-        if not servers.is_owner(bot, message.author.id):
+        if not data.is_owner(bot, message.author.id):
             response = "You must be the bot owner to use these commands."
 
         else:
@@ -261,10 +338,10 @@ async def get_response(bot, message, parsed_command, direct):
     elif base == 'debug':
 
         #if not data.is_owner(bot, message.server.id, message.author.id):
-        if not servers.is_owner(bot, message.author.id):
+        if message.author.id not in bot.configurations['core']['owners']:
             response = "You must be a bot owner to use these commands."
 
-        if plan_index == 0: # Plugin information
+        elif plan_index == 0: # Plugin information
             if options['plugin'] not in bot.plugins:
                 response = options['plugin'] + " not found."
             else:
@@ -277,7 +354,7 @@ async def get_response(bot, message, parsed_command, direct):
                         "Dir: {3}\n```").format(options['plugin'],
                                 version, has_flag, dir(plugin))
         elif plan_index == 1: # List plugins
-            response = '```\n{}\n```'.format(list(bot.plugins.keys()))
+            response = '```\n{}```'.format(list(bot.plugins.keys()).sort())
 
         elif plan_index == 2: # Latency
             message_type = 3
@@ -305,15 +382,13 @@ async def get_response(bot, message, parsed_command, direct):
             if arguments in ('saf', 'file'):
                 await send_result_as_file(
                         bot, message.channel, local_dictionary['result'])
-                #response = "Sending file..."
             else:
                 used_exec = False
-                try: # Try to execute arguments
-                    #assignable_code = 'result = (' + arguments + ')'
 
+                try: # Try to execute arguments
                     if '\n' in arguments:
                         exec(arguments, *pass_in)
-                        used_exec = True 
+                        used_exec = True
                     else:
                         try:
                             local_dictionary['result'] = eval(
@@ -328,7 +403,7 @@ async def get_response(bot, message, parsed_command, direct):
                 else: # Get response if it exists
                     if used_exec:
                         result = 'Executed.'
-                    elif not local_dictionary['result']:
+                    elif local_dictionary['result'] is None:
                         result = 'Evaluated. (returned None)'
                     else:
                         result = str(local_dictionary['result'])
