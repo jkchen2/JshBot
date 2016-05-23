@@ -16,11 +16,15 @@ def check_all(bot):
         if server.id not in bot.data: # Mirrored with volatile data
             bot.data[server.id] = {}
             bot.volatile_data[server.id] = {}
+        elif server.id not in bot.volatile_data: # Just volatile data
+            bot.volatile_data[server.id] = {}
 
-def get_location(bot, server_id, channel_id, user_id, volatile, get=False):
+def get_location(bot, server_id, channel_id, user_id, volatile, create=True):
     '''
     Gets the location given the server_id, channel_id, and user_id. If the
-    get flag is True, no elements will be created when obtaining the location.
+    create flag is False, no elements will be created when getting the location.
+    This also returns the key used to get to the data. It will be a server ID,
+    'global_users' or 'global_plugins'.
     '''
 
     data = bot.volatile_data if volatile else bot.data
@@ -28,37 +32,40 @@ def get_location(bot, server_id, channel_id, user_id, volatile, get=False):
     if server_id: # Look in the specific server
         if server_id in data:
             current = data[server_id]
+            key = server_id
         else: # Server not found - refresh listing
             check_all(bot)
             raise BotException(ErrorTypes.RECOVERABLE, EXCEPTION,
                     "Server {} not found.".format(server_id))
         if channel_id:
             if channel_id not in current:
-                if get:
+                if not create:
                     return {}
                 current[channel_id] = {}
             current = current[channel_id]
         if user_id:
             if user_id not in current:
-                if get:
+                if not create:
                     return {}
                 current[user_id] = {}
             current = current[user_id]
 
     elif user_id: # Check for global user data
-        if user_id not in data['global_users']:
-            if get:
+        key = 'global_users'
+        if user_id not in data[key]:
+            if not create:
                 return {}
-            data['global_users'][user_id] = {}
-        current = data['global_users'][user_id]
+            data[key][user_id] = {}
+        current = data[key][user_id]
 
     else: # Check for global plugin data
-        current = data['global_plugins']
+        key = 'global_plugins'
+        current = data[key]
 
-    return current
+    return (current, key)
 
 def get(bot, plugin_name, key, server_id=None, channel_id=None,
-        user_id=None, default=None, volatile=False):
+        user_id=None, default=None, volatile=False, create=False):
     '''
     Gets the data with the given key from the given plugin and specified
     location. If no specified location is given, the global component is
@@ -70,11 +77,25 @@ def get(bot, plugin_name, key, server_id=None, channel_id=None,
     specific location.
     '''
 
-    current = get_location(bot, server_id, channel_id, user_id, volatile,
-            get=True)
+    current, location_key = get_location(bot, server_id, channel_id, user_id,
+            volatile, create=create)
+
+    current_plugin = current.get(plugin_name, None)
+    if create and current_plugin is None:
+        current[plugin_name] = {}
+        current_plugin = current[plugin_name]
+        if not volatile and location_key not in bot.data_changed:
+            bot.data_changed.append(location_key)
 
     if key:
-        return current.get(plugin_name, {}).get(str(key), default)
+        if create and key not in current_plugin:
+            current_plugin[key] = default
+            if not volatile and location_key not in bot.data_changed:
+                bot.data_changed.append(location_key)
+        if current_plugin is None:
+            return default
+        else:
+            return current_plugin.get(key, default)
     else:
         return current.get(plugin_name, default)
 
@@ -85,14 +106,15 @@ def add(bot, plugin_name, key, value, server_id=None, channel_id=None,
     in the same way as get(). If the value exists, this will overwrite it.
     '''
 
-    current = get_location(bot, server_id, channel_id, user_id, volatile)
+    current, location_key = get_location(bot, server_id, channel_id, user_id,
+            volatile)
 
     if plugin_name not in current:
         current[plugin_name] = {}
     current[plugin_name][key] = value
 
-    if not volatile:
-        bot.data_changed = True
+    if not volatile and location_key not in bot.data_changed:
+        bot.data_changed.append(location_key)
 
 def remove(bot, plugin_name, key, server_id=None, channel_id=None,
         user_id=None, default=None, safe=False, volatile=False):
@@ -106,7 +128,8 @@ def remove(bot, plugin_name, key, server_id=None, channel_id=None,
     for the given location. Use with caution.
     '''
 
-    current = get_location(bot, server_id, channel_id, user_id, volatile)
+    current, location_key = get_location(bot, server_id, channel_id, user_id,
+            volatile)
     if (not current or
             plugin_name not in current or
             key not in current[plugin_name]):
@@ -116,8 +139,8 @@ def remove(bot, plugin_name, key, server_id=None, channel_id=None,
             raise BotException(ErrorTypes.RECOVERABLE, EXCEPTION,
                     "Key '{}' not found.".format(key))
 
-    if not volatile:
-        bot.data_changed = True
+    if not volatile and location_key not in bot.data_changed:
+        bot.data_changed.append(location_key)
 
     elif key:
         return current[plugin_name].pop(key)
@@ -133,7 +156,8 @@ def list_data_append(bot, plugin_name, key, value, server_id=None, channel_id=No
     inside the list.
     '''
 
-    current = get_location(bot, server_id, channel_id, user_id, volatile)
+    current, location_key = get_location(bot, server_id, channel_id, user_id,
+            volatile)
     if plugin_name not in current:
         current[plugin_name] = {}
     if key not in current[plugin_name]: # List doesn't exist
@@ -145,8 +169,8 @@ def list_data_append(bot, plugin_name, key, value, server_id=None, channel_id=No
                     "Data is not a list.")
         elif duplicates or value not in current:
             current.append(value)
-        if not volatile:
-            bot.data_changed = True
+        if not volatile and location_key not in bot.data_changed:
+            bot.data_changed.append(location_key)
 
 def list_data_remove(bot, plugin_name, key, value=None, server_id=None,
         channel_id=None, user_id=None, default=None, safe=False,
@@ -156,7 +180,8 @@ def list_data_remove(bot, plugin_name, key, value=None, server_id=None,
     is not specified, it will pop the first element.
     '''
 
-    current = get_location(bot, server_id, channel_id, user_id, volatile)
+    current, location_key = get_location(bot, server_id, channel_id, user_id,
+            volatile)
     if (not current or
             plugin_name not in current or
             key not in current[plugin_name]):
@@ -179,8 +204,8 @@ def list_data_remove(bot, plugin_name, key, value=None, server_id=None,
             raise BotException(ErrorTypes.RECOVERABLE, EXCEPTION,
                     "List is empty.")
 
-    if not volatile:
-        bot.data_changed = True
+    if not volatile and location_key not in bot.data_changed:
+        bot.data_changed.append(location_key)
     if value is None:
         return current.pop()
     else: # Pop value
@@ -200,23 +225,31 @@ def save_data(bot, force=False):
     volatile_data, though.
     '''
 
+    # TODO: Add backup before save
+
     if bot.data_changed or force: # Only save if something changed or forced
         # Loop through keys
         keys = []
         directory = bot.path + '/data/'
-        for key, value in bot.data.items():
-            keys.append(key)
-            with open(directory + key + '.json', 'w') as current_file:
-                json.dump(value, current_file, indent=4)
 
-        # Check to see if any server was removed
-        files = os.listdir(directory)
-        for check_file in files:
-            if check_file.endswith('.json') and check_file[:-5] not in keys:
-                logging.debug("Removing file {}".format(check_file))
-                os.remove(directory + check_file)
+        if force: # Save all data
+            for key, value in bot.data.items():
+                keys.append(key)
+                with open(directory + key + '.json', 'w') as current_file:
+                    json.dump(value, current_file, indent=4)
+            # Check to see if any server was removed
+            files = os.listdir(directory)
+            for check_file in files:
+                if check_file.endswith('.json') and check_file[:-5] not in keys:
+                    logging.debug("Removing file {}".format(check_file))
+                    os.remove(directory + check_file)
 
-        bot.data_changed = False
+        else: # Save data that has changed
+            for key in bot.data_changed:
+                with open(directory + key + '.json', 'w') as current_file:
+                    json.dump(bot.data[key], current_file, indent=4)
+
+        bot.data_changed = []
 
 def load_data(bot):
     '''
@@ -261,7 +294,6 @@ def clean_location(bot, plugins, channels, users, location):
                     del location[key]
         else: # Plugin
             if key not in plugins: # Unreachable data
-                print("Key {} not found in plugins".format(key))
                 del location[key]
 
 def clean_data(bot):
@@ -288,6 +320,8 @@ def clean_data(bot):
 
         else: # Global plugins or users
             clean_location(bot, plugins, [], [], bot.data[key])
+
+    save_data(bot, force=True)
 
 def is_mod(bot, server, user_id, strict=False):
     '''
@@ -328,34 +362,50 @@ def is_blocked(bot, server, user_id, strict=False):
     else:
         return user_id in blocked_list and not is_mod(bot, server, user_id)
 
-def get_id(bot, identity, server=None, name=False, member=False):
+def get_id(bot, identity, server=None, name=False, nick=False, mention=False,
+        member=False, strict=False):
     '''
-    Gets the ID number or name of the given identity. Looks through the server
-    if it is specified, otherwise it looks through all members the bot can see.
+    Gets the ID number, name, nick, mention, or member of the given identity.
+    Looks through the server if it is specified, otherwise it looks through
+    all members the bot can see. If the strict parameter is True, it will only
+    look in the defined server.
     '''
-    if identity.startswith('<@!') and identity.endswith('>'):
-        identity = identity[3:-1]
-    elif identity.startswith('<@') and identity.endswith('>'):
-        identity = identity[2:-1]
+    if identity.startswith('<@') and identity.endswith('>'):
+        clean_identity = identity.strip('<@!>')
+    else:
+        clean_identity = identity
     if server:
         members = server.members
-    else:
+    elif not strict:
         members = bot.get_all_members()
+    else:
+        raise BotException(ErrorTypes.RECOVERABLE, EXCEPTION,
+                "No server specified for strict user search.")
     result = discord.utils.get(members, id=identity) # No conflict
     if result is None: # Potential conflict
-        result = discord.utils.get(members, name=identity)
+        result = discord.utils.get(members, name=clean_identity)
     if result is None: # Potentially a lot of conflict
-        result = discord.utils.get(members, nick=identity)
+        result = discord.utils.get(members, nick=clean_identity)
 
     if result:
         if member:
             return result
         elif name:
             return result.name
+        elif nick:
+            return result.nick if result.nick else result.name
+        elif mention:
+            return '<@' + result.id + '>'
         else:
             return result.id
     else:
         raise BotException(ErrorTypes.RECOVERABLE, EXCEPTION,
                 "{} not found.".format(identity))
 
+def add_server(bot, server):
+    '''
+    Adds the server to the data dictionary.
+    '''
+    bot.data[server.id] = {}
+    bot.data_changed = True
 

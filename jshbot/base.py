@@ -6,7 +6,7 @@ import time
 import logging
 import inspect
 
-from jshbot import servers, data
+from jshbot import data
 from jshbot.exceptions import ErrorTypes, BotException
 
 __version__ = '0.1.3'
@@ -32,7 +32,7 @@ def get_commands():
         'halt', 'restart', 'ip', 'backup', 'announcement &'],[])
     commands['mod'] = ([
         'info', 'block ^', 'unblock ^', 'clear', 'add ^', 'remove ^', 'mute :',
-        'unmute :', 'invoker &'],[
+        'unmute :', 'invoker &', 'mention'],[
         ('info', 'i'), ('clear', 'c')])
     commands['base'] = ([
         'version', 'source', 'uptime', 'help: &', 'help', 'announcement'],[
@@ -74,7 +74,10 @@ def get_commands():
             ('-add <user>', 'Adds the user to the moderators list.'),
             ('-remove <user>', 'Removes the user from the moderators list.'),
             ('-mute <type>', 'Mutes the given type.'),
-            ('-unmute <type>', 'Unmutes the given type.')],
+            ('-unmute <type>', 'Unmutes the given type.'),
+            ('-invoker <invoker>', 'Sets or clears the custom command invoker '
+                'for the server.'),
+            ('-mention', 'Toggles mention mode for the server.')],
         'shorcuts': [('clear', '-clear')],
         'other': 'The type for mute and unmute must either be "server" or '
             '"channel"'}
@@ -149,11 +152,11 @@ async def get_response(bot, message, parsed_command, direct):
             else:
                 response = '' # Clear response
         elif plan_index == 5: # Announcement
-            if ('announcement' not in bot.servers_data or
-                    not bot.servers_data['announcement']):
+            announcement = data.get(bot, 'base', 'announcement')
+            if not announcement:
                 response = "No announcement right now!"
             else:
-                response = bot.servers_data['announcement']
+                response = announcement
 
     elif base == 'mod':
 
@@ -166,7 +169,6 @@ async def get_response(bot, message, parsed_command, direct):
         else:
 
             if plan_index == 0: # info
-                server_data = bot.servers_data[message.server.id]
                 server_data = data.get(bot, 'base', None,
                         server_id=message.server.id, default={})
                 moderators = server_data.get('moderators', [])
@@ -306,6 +308,14 @@ async def get_response(bot, message, parsed_command, direct):
                 response = "Custom command invoker {}.".format(
                         'set' if arguments else 'cleared')
 
+            elif plan_index == 9: # mention
+                current_mode = data.get(bot, 'base', 'mention_mode',
+                        server_id=message.server.id, default=False)
+                data.add(bot, 'base', 'mention_mode', not current_mode,
+                        server_id=message.server.id)
+                response = "Mention mode {}activated.".format(
+                        'de' if current_mode else '')
+
     elif base == 'owner':
 
         if not data.is_owner(bot, message.author.id):
@@ -332,13 +342,12 @@ async def get_response(bot, message, parsed_command, direct):
             elif plan_index == 3: # backup
                 response = "Coming soontmtmtmtmtmtmtm"
             elif plan_index == 4: # Announcement
-                bot.servers_data['announcement'] = arguments
+                data.add(bot, 'base', 'announcement', arguments)
                 response = "Announcement set!"
 
     elif base == 'debug':
 
-        #if not data.is_owner(bot, message.server.id, message.author.id):
-        if message.author.id not in bot.configurations['core']['owners']:
+        if not data.is_owner(bot, message.author.id):
             response = "You must be a bot owner to use these commands."
 
         elif plan_index == 0: # Plugin information
@@ -354,7 +363,9 @@ async def get_response(bot, message, parsed_command, direct):
                         "Dir: {3}\n```").format(options['plugin'],
                                 version, has_flag, dir(plugin))
         elif plan_index == 1: # List plugins
-            response = '```\n{}```'.format(list(bot.plugins.keys()).sort())
+            plugins = list(bot.plugins.keys())
+            plugins.sort()
+            response = '```\n{}```'.format(plugins)
 
         elif plan_index == 2: # Latency
             message_type = 3
@@ -539,14 +550,10 @@ def get_usage_reminder(bot, base):
 
 # Standard discord.py event functions
 
-async def on_server_remove(bot, server):
-    logging.debug("Removing a server")
-    servers.remove_server(bot, server)
-
 async def on_server_join(bot, server):
     # Add server to the list
     logging.debug("Joining server")
-    servers.add_server(bot, server)
+    data.add_server(bot, server)
 
 async def on_message_edit(bot, before, after):
     '''

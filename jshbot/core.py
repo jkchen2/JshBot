@@ -19,7 +19,7 @@ class Bot(discord.Client):
 
     def __init__(self, start_file, debug):
         self.version = '0.3.0-alpha'
-        self.date = 'May 19th, 2016'
+        self.date = 'May 22nd, 2016'
         self.time = int(time.time())
         self.readable_time = time.strftime('%c')
         self.debug = debug
@@ -43,8 +43,8 @@ class Bot(discord.Client):
 
         logging.debug("Setting up data...")
         self.data = {'global_users':{}, 'global_plugins':{}}
-        self.volatile_data = copy.copy(self.data)
-        self.data_changed = False
+        self.volatile_data = copy.deepcopy(self.data)
+        self.data_changed = []
 
         logging.debug("Loading configurations...")
         self.configurations = configurations.get_configurations(self)
@@ -133,8 +133,7 @@ class Bot(discord.Client):
 
         # Bot must respond to mentions only
         if (self.configurations['core']['mention_mode'] or
-                data.get(self, 'base', 'mention_mode',
-                    server_id=message.server.id, default=False)):
+                server_data.get('mention_mode', False)):
             if not (has_mention_invoker or has_name_invoker or
                     has_nick_invoker):
                 return None
@@ -182,6 +181,7 @@ class Bot(discord.Client):
         if len(split_content) == 1: # No spaces
             split_content.append('')
         base, parameters = split_content
+        base = base.lower()
         command_pair, shortcut = commands.get_command_pair(self, base)
         if not command_pair: # Suitable command not found
             logging.debug("Suitable command not found: " + base)
@@ -317,20 +317,20 @@ class Bot(discord.Client):
             await asyncio.sleep(interval)
             self.save_data()
 
-    def save_data(self):
+    def save_data(self, force=False):
         logging.debug("Saving data...")
-        data.save_data(self)
+        data.save_data(self, force=force)
         logging.debug("Saving data complete.")
 
     def restart(self):
         logging.debug("Attempting to restart the bot...")
-        self.save_data()
+        self.save_data(force=True)
         asyncio.ensure_future(self.logout())
         os.system('python3.5 ' + self.path + '/start.py')
 
     def shutdown(self):
         logging.debug("Writing data on shutdown...")
-        self.save_data()
+        self.save_data(force=True)
         logging.debug("Closing down!")
         try:
             asyncio.ensure_future(self.logout())
