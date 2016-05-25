@@ -118,6 +118,8 @@ def match_blueprint(options, arguments, last_option, blueprints):
             # If it is, we can continue. If not, check to see if this is
             #   the last option to be parsed, as there may be overlap in
             #   positional and trailing arguments
+            if not plan[0]:
+                total_required += 1
             if plan[1] in options:
 
                 if plan[1] == last_option:
@@ -156,8 +158,8 @@ def match_blueprint(options, arguments, last_option, blueprints):
 
             if not blueprint[0] and len(options) > 0:
                 continue # Option number mismatch
-            elif not blueprint[0]: # No options, use all arguments
-                no_last_argument = True
+            elif not blueprint[0] or total_required == 0:
+                no_last_argument = True # No options, use all arguments
 
             # Final check that the last option does or does not require a
             #   positional argument attached to it

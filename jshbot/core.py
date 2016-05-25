@@ -19,7 +19,7 @@ class Bot(discord.Client):
 
     def __init__(self, start_file, debug):
         self.version = '0.3.0-alpha'
-        self.date = 'May 22nd, 2016'
+        self.date = 'May 25th, 2016'
         self.time = int(time.time())
         self.readable_time = time.strftime('%c')
         self.debug = debug
@@ -98,15 +98,14 @@ class Bot(discord.Client):
         has_mention_invoker = False
         has_name_invoker = False
         has_nick_invoker = False
-        if message.channel: # Get custom invokers if they exist
+        if not message.channel.is_private: # Get custom invokers if they exist
             server_data = data.get(self, 'base', None, message.server.id,
                     default={})
             invokers = [server_data.get('command_invoker', None)]
-            #invokers = [data.get(
-            #        self, 'base', 'command_invoker', message.server.id)]
             if not invokers[0]:
                 invokers = self.configurations['core']['command_invokers']
         else:
+            server_data = {}
             invokers = self.configurations['core']['command_invokers']
         for invoker in invokers:
             if content.startswith(invoker):
@@ -119,7 +118,8 @@ class Bot(discord.Client):
                 clean_content = content.lower()
                 has_name_invoker = clean_content.startswith(
                         self.user.name.lower() + ' ')
-                if not has_name_invoker and not message.channel.is_private:
+                if (not has_name_invoker and not message.channel.is_private and
+                        message.server.me.nick):
                     has_nick_invoker = clean_content.startswith(
                             message.server.me.nick.lower() + ' ')
                     if has_nick_invoker: # Clean up content (nickname)
@@ -172,7 +172,12 @@ class Bot(discord.Client):
         plugins.broadcast_event(self, 2, message)
 
         # Ensure bot can respond properly
-        content = self.can_respond(message)
+        try:
+            content = self.can_respond(message)
+        except Exception as e: # General error
+            logging.error(e)
+            traceback.print_exc()
+            return
         if not content:
             return
 
@@ -190,7 +195,12 @@ class Bot(discord.Client):
         # Bot is clear to get response. Send typing to signify
         if (not replacement_message and
                 self.configurations['core']['send_typing']):
-            await self.send_typing(message.channel)
+            # To prevent the bot from hanging here, we'll have it return a task.
+            typing_task = asyncio.ensure_future(
+                    self.send_typing(message.channel))
+            #await self.send_typing(message.channel)
+        else:
+            typing_task = None
 
         # Parse command and reply
         try:
@@ -213,6 +223,9 @@ class Bot(discord.Client):
             message_reference = await self.edit_message(
                     replacement_message, response[0])
         else:
+            #if typing_task and typing_task.:
+            if typing_task:
+                typing_task.cancel()
             message_reference = await self.send_message(
                     message.channel, response[0], tts=response[1])
 
@@ -342,7 +355,13 @@ def initialize(start_file, debug=False):
     if debug:
         logging.basicConfig(stream=sys.stdout, level=logging.DEBUG)
     bot = Bot(start_file, debug)
-    bot.run(bot.get_token())
+    try:
+        bot.run(bot.get_token())
+    except Exception as e:
+        logging.error(e)
+        traceback.print_exc()
+        print("Darn")
+
     logging.error("Bot disconnected. Shutting down...")
     bot.shutdown()
 

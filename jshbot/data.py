@@ -147,8 +147,8 @@ def remove(bot, plugin_name, key, server_id=None, channel_id=None,
     else: # Remove all data associated with that plugin for the given location
         return current.pop(plugin_name)
 
-def list_data_append(bot, plugin_name, key, value, server_id=None, channel_id=None,
-        user_id=None, volatile=False, duplicates=True):
+def list_data_append(bot, plugin_name, key, value, server_id=None,
+        channel_id=None, user_id=None, volatile=False, duplicates=True):
     '''
     Works like add, but manipulates the list at the location instead to append
     the given key. It creates the list if it doesn't exist. If the duplicates
@@ -362,8 +362,8 @@ def is_blocked(bot, server, user_id, strict=False):
     else:
         return user_id in blocked_list and not is_mod(bot, server, user_id)
 
-def get_id(bot, identity, server=None, name=False, nick=False, mention=False,
-        member=False, strict=False):
+def get_member(bot, identity, server=None, attribute=None, safe=False,
+        strict=False):
     '''
     Gets the ID number, name, nick, mention, or member of the given identity.
     Looks through the server if it is specified, otherwise it looks through
@@ -371,9 +371,7 @@ def get_id(bot, identity, server=None, name=False, nick=False, mention=False,
     look in the defined server.
     '''
     if identity.startswith('<@') and identity.endswith('>'):
-        clean_identity = identity.strip('<@!>')
-    else:
-        clean_identity = identity
+        identity = identity.strip('<@!>')
     if server:
         members = server.members
     elif not strict:
@@ -383,24 +381,27 @@ def get_id(bot, identity, server=None, name=False, nick=False, mention=False,
                 "No server specified for strict user search.")
     result = discord.utils.get(members, id=identity) # No conflict
     if result is None: # Potential conflict
-        result = discord.utils.get(members, name=clean_identity)
+        result = discord.utils.get(members, name=identity)
     if result is None: # Potentially a lot of conflict
-        result = discord.utils.get(members, nick=clean_identity)
+        result = discord.utils.get(members, nick=identity)
 
     if result:
-        if member:
-            return result
-        elif name:
-            return result.name
-        elif nick:
-            return result.nick if result.nick else result.name
-        elif mention:
-            return '<@' + result.id + '>'
+        if attribute:
+            if hasattr(result, attribute):
+                return getattr(result, attribute)
+            elif safe:
+                return None
+            else:
+                raise BotException(ErrorTypes.RECOVERABLE, EXCEPTION,
+                        "Invalid attribute, '{}'.".format(attribute))
         else:
-            return result.id
+            return result
     else:
-        raise BotException(ErrorTypes.RECOVERABLE, EXCEPTION,
-                "{} not found.".format(identity))
+        if safe:
+            return None
+        else:
+            raise BotException(ErrorTypes.RECOVERABLE, EXCEPTION,
+                    "{} not found.".format(identity))
 
 def add_server(bot, server):
     '''

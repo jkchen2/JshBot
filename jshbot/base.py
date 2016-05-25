@@ -190,8 +190,7 @@ async def get_response(bot, message, parsed_command, direct):
                         message.server, **locals())
 
             elif plan_index in (1, 2): # block or unblock
-                user = data.get_id(bot, arguments, message.server,
-                        member=True)
+                user = data.get_member(bot, arguments, message.server)
                 block = plan_index == 1
                 blocked = data.is_blocked(bot, message.server, user.id,
                         strict=True)
@@ -239,7 +238,8 @@ async def get_response(bot, message, parsed_command, direct):
                 if not data.is_admin(bot, message.server, message.author.id):
                     response = "You must be an admin to use these commands."
                 else:
-                    user_id = data.get_id(bot, arguments, server=message.server)
+                    user_id = data.get_member(bot, arguments,
+                            server=message.server, attribute='id')
                     user_is_mod = data.is_mod(bot, message.server, user_id,
                             strict=True)
                     blocked = data.is_blocked(bot, message.server, user_id,
