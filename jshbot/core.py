@@ -2,6 +2,7 @@ import asyncio
 import discord
 import logging
 import os.path
+import random
 import copy
 import time
 import sys
@@ -14,6 +15,19 @@ from jshbot import configurations, plugins, commands, parser, data
 from jshbot.exceptions import ErrorTypes, BotException
 
 EXCEPTION = 'Core'
+
+exception_insults = [
+    'Ow.',
+    'Ah, shucks.',
+    'Wow, nice one.',
+    'That wasn\'t supposed to happen.',
+    'Tell Jsh to fix his bot.',
+    'I was really hoping that wouldn\'t happen, but it did.',
+    'segmentation fault (core dumped)',
+    '0xABADBABE 0xFEE1DEAD',
+    ':bomb: Sorry, a system error occured.',
+    ':bomb: :bomb: :bomb: :bomb:',
+    'But... the future refused to be awaited.']
 
 class Bot(discord.Client):
 
@@ -204,30 +218,29 @@ class Bot(discord.Client):
 
         # Parse command and reply
         try:
-            print(message.author.name + ': ' + message.content)
+            logging.debug(message.author.name + ': ' + message.content)
             parsed_command = parser.parse(
                     self, base, parameters, command_pair, shortcut)
-            print('\t' + str(parsed_command))
+            logging.debug('\t' + str(parsed_command))
             response = await (commands.execute(self, message, parsed_command))
         except BotException as e: # Respond with error message
             response = (str(e), False, 0, None)
         except Exception as e: # General error
             logging.error(e)
             traceback.print_exc()
-            error = 'Uh oh. The bot encountered an exception: {0}: {1}'.format(
-                    type(e).__name__, e)
+            insult = random.choice(exception_insults)
+            error = '{0}\n`{1}: {2}`'.format(insult,  type(e).__name__, e)
             response = (error, False, 0, None)
 
         # If a replacement message is given, edit it
+        if typing_task:
+            typing_task.cancel()
         if replacement_message:
-            message_reference = await self.edit_message(
-                    replacement_message, response[0])
+            message_reference = await self.edit_message(replacement_message,
+                    response[0])
         else:
-            #if typing_task and typing_task.:
-            if typing_task:
-                typing_task.cancel()
-            message_reference = await self.send_message(
-                    message.channel, response[0], tts=response[1])
+            message_reference = await self.send_message(message.channel,
+                    response[0], tts=response[1])
 
         # A response looks like this:
         # (text, tts, message_type, extra)
@@ -355,13 +368,7 @@ def initialize(start_file, debug=False):
     if debug:
         logging.basicConfig(stream=sys.stdout, level=logging.DEBUG)
     bot = Bot(start_file, debug)
-    try:
-        bot.run(bot.get_token())
-    except Exception as e:
-        logging.error(e)
-        traceback.print_exc()
-        print("Darn")
-
+    bot.run(bot.get_token())
     logging.error("Bot disconnected. Shutting down...")
     bot.shutdown()
 

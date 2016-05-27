@@ -144,13 +144,10 @@ async def get_response(bot, message, parsed_command, direct):
                         topic=arguments if arguments else None)
             else: # General
                 response = get_general_help(bot)
-            await bot.send_message(message.author, response)
-            if not message.channel.is_private: # Terminal reminder message
+            if not direct: # Terminal reminder message
+                await bot.send_message(message.author, response)
                 response = "Check your direct messages!"
-                message_type = 2
-                extra = 15
-            else:
-                response = '' # Clear response
+                message_type = 2 # Default 10 seconds
         elif plan_index == 5: # Announcement
             announcement = data.get(bot, 'base', 'announcement')
             if not announcement:
@@ -160,34 +157,34 @@ async def get_response(bot, message, parsed_command, direct):
 
     elif base == 'mod':
 
-        if not data.is_mod(bot, message.server, message.author.id):
-            response = "You must be a moderator to use these commands."
-
-        elif direct:
+        if direct:
             response = "You cannot use these commands in a direct message."
+
+        elif not data.is_mod(bot, message.server, message.author.id):
+            response = "You must be a moderator to use these commands."
 
         else:
 
             if plan_index == 0: # info
                 server_data = data.get(bot, 'base', None,
                         server_id=message.server.id, default={})
-                moderators = server_data.get('moderators', [])
-                blocked = server_data.get('blocked', [])
-                muted = server_data.get('muted', [])
-                muted_channels = server_data.get('muted_channels', [])
-                command_invoker = server_data.get('command_invoker', None)
-                mention_mode = server_data.get('mention_mode', False)
                 response = ('```\n'
                 'Information for server {0}\n'
                 'ID: {0.id}\n'
                 'Owner: {0.owner.id}\n'
-                'Moderators: {moderators}\n'
-                'Blocked users: {blocked}\n'
-                'Muted: {muted}\n'
-                'Muted channels: {muted_channels}\n'
-                'Command invoker: {command_invoker}\n'
-                'Mention mode: {mention_mode}\n```').format(
-                        message.server, **locals())
+                'Moderators: {1}\n'
+                'Blocked users: {2}\n'
+                'Muted: {3}\n'
+                'Muted channels: {4}\n'
+                'Command invoker: {5}\n'
+                'Mention mode: {6}\n```').format(
+                        message.server,
+                        server_data.get('moderators', []),
+                        server_data.get('blocked', []),
+                        server_data.get('muted', []),
+                        server_data.get('muted_channels', []),
+                        server_data.get('command_invoker', None),
+                        server_data.get('mention_mode', False))
 
             elif plan_index in (1, 2): # block or unblock
                 user = data.get_member(bot, arguments, message.server)
@@ -508,7 +505,6 @@ def get_help(bot, base, topic=None):
         response += '\n'
     if aliases:
         response += 'Aliases:\n'
-        print(aliases)
         for alias in aliases:
             response += '\t{}:'.format(alias[0])
             for name in alias[1:]:

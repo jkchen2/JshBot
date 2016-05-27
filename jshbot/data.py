@@ -64,8 +64,8 @@ def get_location(bot, server_id, channel_id, user_id, volatile, create=True):
 
     return (current, key)
 
-def get(bot, plugin_name, key, server_id=None, channel_id=None,
-        user_id=None, default=None, volatile=False, create=False):
+def get(bot, plugin_name, key, server_id=None, channel_id=None, user_id=None,
+        default=None, volatile=False, create=False, save=False):
     '''
     Gets the data with the given key from the given plugin and specified
     location. If no specified location is given, the global component is
@@ -75,10 +75,17 @@ def get(bot, plugin_name, key, server_id=None, channel_id=None,
 
     If the key is None, it returns all of the data for the given plugin in that
     specific location.
+
+    If save is True, this marks the given location to be saved. Used if the
+    internal data structure you are trying to access needs to be modified in
+    a way that these given functions cannot.
     '''
 
     current, location_key = get_location(bot, server_id, channel_id, user_id,
             volatile, create=create)
+
+    if save and not volatile and location_key not in bot.data_changed:
+        bot.data_changed.append(location_key)
 
     current_plugin = current.get(plugin_name, None)
     if create and current_plugin is None:

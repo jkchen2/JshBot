@@ -158,7 +158,7 @@ def match_blueprint(options, arguments, last_option, blueprints):
 
             if not blueprint[0] and len(options) > 0:
                 continue # Option number mismatch
-            elif not blueprint[0] or total_required == 0:
+            elif total_required == 0 and len(options) == 0:
                 no_last_argument = True # No options, use all arguments
 
             # Final check that the last option does or does not require a
