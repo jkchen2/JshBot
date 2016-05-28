@@ -67,6 +67,7 @@ class Bot(discord.Client):
         self.edit_dictionary = {}
         self.spam_dictionary = {} # Consider using defaultdict
         self.spam_limit = self.configurations['core']['command_limit']
+        self.spam_timeout = self.configurations['core']['command_limit_timeout']
         self.command_invokers = self.configurations['core']['command_invokers']
         self.owners = self.configurations['core']['owners']
         self.edit_timeout = self.configurations['core']['edit_timeout']
