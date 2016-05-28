@@ -33,7 +33,7 @@ class Bot(discord.Client):
 
     def __init__(self, start_file, debug):
         self.version = '0.3.0-alpha'
-        self.date = 'May 25th, 2016'
+        self.date = 'May 27th, 2016'
         self.time = int(time.time())
         self.readable_time = time.strftime('%c')
         self.debug = debug
@@ -65,6 +65,10 @@ class Bot(discord.Client):
 
         # Extras
         self.edit_dictionary = {}
+        self.spam_dictionary = {} # Consider using defaultdict
+        self.spam_limit = self.configurations['core']['command_limit']
+        self.command_invokers = self.configurations['core']['command_invokers']
+        self.owners = self.configurations['core']['owners']
 
     def interrupt_say(self, channel_id, message, channel=None):
         '''
@@ -112,15 +116,15 @@ class Bot(discord.Client):
         has_mention_invoker = False
         has_name_invoker = False
         has_nick_invoker = False
-        if not message.channel.is_private: # Get custom invokers if they exist
+        if message.channel.is_private: # No custom invoker or data
+            server_data = {}
+            invokers = self.command_invokers
+        else:
             server_data = data.get(self, 'base', None, message.server.id,
                     default={})
             invokers = [server_data.get('command_invoker', None)]
             if not invokers[0]:
-                invokers = self.configurations['core']['command_invokers']
-        else:
-            server_data = {}
-            invokers = self.configurations['core']['command_invokers']
+                invokers = self.command_invokers
         for invoker in invokers:
             if content.startswith(invoker):
                 has_regular_invoker = True
@@ -145,9 +149,7 @@ class Bot(discord.Client):
         else: # Clean up content (invoker)
             content = content.partition(invoker)[2].strip()
 
-        # Bot must respond to mentions only
-        if (self.configurations['core']['mention_mode'] or
-                server_data.get('mention_mode', False)):
+        if server_data.get('mention_mode', False): # Mention mode enabled
             if not (has_mention_invoker or has_name_invoker or
                     has_nick_invoker):
                 return None
@@ -166,7 +168,7 @@ class Bot(discord.Client):
             # Owners/moderators override everything
             # This is faster than calling the function in jshbot.data
             channel_id = message.channel.id
-            if (author_id in self.configurations['core']['owners'] or
+            if (author_id in self.owners or
                     author_id in server_data.get('moderators', []) or
                     author_id == message.server.owner.id):
                 return content
@@ -206,13 +208,22 @@ class Bot(discord.Client):
             logging.debug("Suitable command not found: " + base)
             return
 
+        # Check that user is not spamming
+        spam_value = self.spam_dictionary.get(message.author.id, 0)
+        if spam_value >= self.spam_limit:
+            if spam_value == self.spam_limit:
+                self.spam_dictionary[message.author.id] = self.spam_limit + 1
+                await self.send_message(message.channel, "{}, you appear to be "
+                        "issuing/editing commands too quickly. Please wait {} "
+                        "seconds.".format(message.author.mention,
+                                self.spam_timeout))
+            return
+
         # Bot is clear to get response. Send typing to signify
-        if (not replacement_message and
-                self.configurations['core']['send_typing']):
+        if not replacement_message:
             # To prevent the bot from hanging here, we'll have it return a task.
             typing_task = asyncio.ensure_future(
                     self.send_typing(message.channel))
-            #await self.send_typing(message.channel)
         else:
             typing_task = None
 
@@ -233,14 +244,23 @@ class Bot(discord.Client):
             response = (error, False, 0, None)
 
         # If a replacement message is given, edit it
-        if typing_task:
-            typing_task.cancel()
+        typing_task.cancel()
         if replacement_message:
             message_reference = await self.edit_message(replacement_message,
                     response[0])
         else:
-            message_reference = await self.send_message(message.channel,
-                    response[0], tts=response[1])
+            try:
+                message_reference = await self.send_message(message.channel,
+                        response[0], tts=response[1])
+            except discord.HTTPException as e:
+                message_reference = await self.send_message(message.channel,
+                        "The response appears to be too long.")
+
+        # Incremement the spam dictionary entry
+        if message.author.id in self.spam_dictionary:
+            self.spam_dictionary[message.author.id] += 1
+        else:
+            self.spam_dictionary[message.author.id] = 1
 
         # A response looks like this:
         # (text, tts, message_type, extra)
@@ -282,6 +302,7 @@ class Bot(discord.Client):
         else:
             print("=== {} online ===".format(self.user.name))
 
+        asyncio.ensure_future(self.spam_clear_loop())
         await self.save_loop()
 
     async def on_error(self, event, *args, **kwargs):
@@ -329,15 +350,30 @@ class Bot(discord.Client):
     async def on_typing(self, channel, user, when):
         plugins.broadcast_event(self, 23, channel, user, when)
 
+    async def spam_clear_loop(self):
+        '''
+        Constantly clears the spam dictionary with the configured interval.
+        '''
+        try:
+            interval = int(self.configurations['core']['command_limit_timeout'])
+            interval = 0 if interval <= 0 else interval
+        except:
+            logging.warn("Command limit timeout not configured.")
+            interval = 0
+        while interval:
+            await asyncio.sleep(interval)
+            if self.spam_dictionary:
+                self.spam_dictionary = {}
+
     async def save_loop(self):
         '''
         Runs the loop that periodically saves data.
         '''
         try:
             interval = int(self.configurations['core']['save_interval'])
-            interval = 0 if interval <= 0 else interval * 60
+            interval = 0 if interval <= 0 else interval
         except:
-            logging.warn("Saving interval not found in the configuration file.")
+            logging.warn("Saving interval not configured.")
             interval = 0
         while interval:
             await asyncio.sleep(interval)

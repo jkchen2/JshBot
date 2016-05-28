@@ -1,9 +1,9 @@
 {
     "owners": [""],
     "token": "",
-    "send_typing": true,
-    "mention_mode": false,
     "edit_timeout": 120,
-    "save_interval": 30,
+    "save_interval": 1800,
+    "command_limit": 20,
+    "command_limit_timeout": 60,
     "command_invokers": ["!", ".", "=", "]", "/"]
 }
