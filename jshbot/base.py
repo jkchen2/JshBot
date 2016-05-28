@@ -5,11 +5,12 @@ import socket
 import time
 import logging
 import inspect
+import traceback
 
 from jshbot import data
 from jshbot.exceptions import ErrorTypes, BotException
 
-__version__ = '0.1.3'
+__version__ = '0.1.4'
 EXCEPTION = 'Base'
 uses_configuration = False
 local_dictionary = {}
@@ -26,7 +27,7 @@ def get_commands():
 
     commands['ping'] = (['&'], [])
     commands['debug'] = ([
-        'plugin:', 'plugin list', 'latency', '^'],[
+        'plugin:', 'plugin list', 'latency', 'resetlocals', '^'],[
         ('plugin', 'p'), ('list', 'l'), ('latency', 'ping')])
     commands['owner'] = ([
         'halt', 'restart', 'ip', 'backup', 'announcement &'],[])
@@ -53,6 +54,7 @@ def get_commands():
             ('-plugin <plugin>', 'Show information about the plugin.'),
             ('-plugin -list', 'Lists all active plugins.'),
             ('-latency', 'Gets ping time to current server.'),
+            ('-resetlocals', 'Resets the local dictionary environment.'),
             ('<expression>', 'Executes or evalulates the given expression.')],
         'other': 'Be careful with these commands! They can break the bot.'}
     manual['owner'] = {
@@ -345,6 +347,8 @@ async def get_response(bot, message, parsed_command, direct):
 
     elif base == 'debug':
 
+        global local_dictionary
+
         if not data.is_owner(bot, message.author.id):
             response = "You must be a bot owner to use these commands."
 
@@ -370,9 +374,13 @@ async def get_response(bot, message, parsed_command, direct):
             response = "Testing latency time..."
             extra = ('ping', time.time() * 1000)
 
-        elif plan_index == 3: # Exec
+        elif plan_index == 3: # Reset local dictionary
+            #global local_dictionary
+            local_dictionary = {}
+            response = "Debug environment local dictionary reset."
 
-            global local_dictionary # Use local environment
+        elif plan_index == 4: # Exec
+            #global local_dictionary # Use local environment
             if not local_dictionary: # First time setup
                 import pprint
                 def say(text):
@@ -381,39 +389,40 @@ async def get_response(bot, message, parsed_command, direct):
                             calling_locals['message'].channel, str(text)))
                 local_dictionary['bot'] = bot
                 local_dictionary['inspect'] = inspect
+                local_dictionary['traceback'] = ''
                 local_dictionary['result'] = ''
                 local_dictionary['say'] = say
                 local_dictionary['pformat'] = pprint.pformat
             local_dictionary['message'] = message
-            pass_in = ({}, local_dictionary)
 
             # Sanitize input
             if arguments.startswith('```py\n') and arguments.endswith('```'):
                 arguments = arguments[6:-3]
             else:
                 arguments = arguments.strip('`')
+            pass_in = (arguments, {}, local_dictionary)
 
             # Check if the previous result should be sent as a file
             if arguments in ('saf', 'file'):
-                await send_result_as_file(
-                        bot, message.channel, local_dictionary['result'])
+                await send_result_as_file(bot, message.channel,
+                        local_dictionary['result'])
             else:
                 used_exec = False
 
                 try: # Try to execute arguments
                     if '\n' in arguments:
-                        exec(arguments, *pass_in)
+                        exec(*pass_in)
                         used_exec = True
                     else:
                         try:
-                            local_dictionary['result'] = eval(
-                                    arguments, *pass_in)
+                            local_dictionary['result'] = eval(*pass_in)
                         except SyntaxError: # May need to use exec
-                            exec(arguments, *pass_in)
+                            exec(*pass_in)
                             used_exec = True
 
                 except Exception as e:
-                    response = '`Error: {}`'.format(str(e))
+                    local_dictionary['traceback'] = traceback.format_exc()
+                    response = '`{0}: {1}`'.format(type(e).__name__, e)
 
                 else: # Get response if it exists
                     if used_exec:

@@ -69,6 +69,8 @@ class Bot(discord.Client):
         self.spam_limit = self.configurations['core']['command_limit']
         self.command_invokers = self.configurations['core']['command_invokers']
         self.owners = self.configurations['core']['owners']
+        self.edit_timeout = self.configurations['core']['edit_timeout']
+        self.last_exception = None
 
     def interrupt_say(self, channel_id, message, channel=None):
         '''
@@ -193,6 +195,7 @@ class Bot(discord.Client):
         except Exception as e: # General error
             logging.error(e)
             traceback.print_exc()
+            self.last_exception = e
             return
         if not content:
             return
@@ -239,6 +242,7 @@ class Bot(discord.Client):
         except Exception as e: # General error
             logging.error(e)
             traceback.print_exc()
+            self.last_exception = e
             insult = random.choice(exception_insults)
             error = '{0}\n`{1}: {2}`'.format(insult,  type(e).__name__, e)
             response = (error, False, 0, None)
@@ -249,13 +253,21 @@ class Bot(discord.Client):
         if replacement_message:
             message_reference = await self.edit_message(replacement_message,
                     response[0])
-        else:
+        elif response[0]:
             try:
                 message_reference = await self.send_message(message.channel,
                         response[0], tts=response[1])
             except discord.HTTPException as e:
-                message_reference = await self.send_message(message.channel,
-                        "The response appears to be too long.")
+                self.last_exception = e
+                if 'too long' in e.args[0]:
+                    message_reference = await self.send_message(message.channel,
+                            "The response appears to be too long.")
+                else:
+                    message_reference = await self.send_message(message.channel,
+                            "Huh, I couldn't deliver the message for some "
+                            "reason.\n{}".format(e))
+        else: # Empty message
+            response[2] = 1
 
         # Incremement the spam dictionary entry
         if message.author.id in self.spam_dictionary:
@@ -274,7 +286,7 @@ class Bot(discord.Client):
 
         if response[2] == 0: # Normal
             # Edited commands are handled in base.py
-            wait_time = self.configurations['core']['edit_timeout']
+            wait_time = self.edit_timeout
             if wait_time:
                 self.edit_dictionary[message.id] = message_reference
                 await asyncio.sleep(wait_time)
