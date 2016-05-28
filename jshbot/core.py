@@ -244,7 +244,8 @@ class Bot(discord.Client):
             response = (error, False, 0, None)
 
         # If a replacement message is given, edit it
-        typing_task.cancel()
+        if typing_task:
+            typing_task.cancel()
         if replacement_message:
             message_reference = await self.edit_message(replacement_message,
                     response[0])

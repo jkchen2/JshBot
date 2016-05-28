@@ -339,6 +339,7 @@ async def get_response(bot, message, parsed_command, direct):
             elif plan_index == 3: # backup
                 response = "Coming soontmtmtmtmtmtmtm"
             elif plan_index == 4: # Announcement
+                arguments = '{0}:\n{1}'.format(time.strftime('%c'), arguments)
                 data.add(bot, 'base', 'announcement', arguments)
                 response = "Announcement set!"
 
@@ -373,18 +374,24 @@ async def get_response(bot, message, parsed_command, direct):
 
             global local_dictionary # Use local environment
             if not local_dictionary: # First time setup
+                import pprint
                 def say(text):
-                    asyncio.ensure_future(
-                            bot.send_message(message.channel, str(text)))
+                    calling_locals = inspect.currentframe().f_back.f_locals
+                    asyncio.ensure_future(bot.send_message(
+                            calling_locals['message'].channel, str(text)))
                 local_dictionary['bot'] = bot
                 local_dictionary['inspect'] = inspect
                 local_dictionary['result'] = ''
                 local_dictionary['say'] = say
+                local_dictionary['pformat'] = pprint.pformat
             local_dictionary['message'] = message
             pass_in = ({}, local_dictionary)
 
             # Sanitize input
-            arguments = arguments.strip('`')
+            if arguments.startswith('```py\n') and arguments.endswith('```'):
+                arguments = arguments[6:-3]
+            else:
+                arguments = arguments.strip('`')
 
             # Check if the previous result should be sent as a file
             if arguments in ('saf', 'file'):
