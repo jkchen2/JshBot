@@ -45,8 +45,9 @@ def add_commands(bot, new_commands, plugin):
     for key, command in new_commands.items():
         is_shortcut = type(command[0]) is str
         if key in bot.commands:
-            raise BotException(ErrorTypes.FATAL, EXCEPTION,
-                    "Attempting to add a command that already exists", key)
+            raise BotException(EXCEPTION,
+                    "Attempting to add a command that already exists",
+                    key, error_type=ErrorTypes.FATAL)
         if is_shortcut:
             bot.commands[key] = command
         else:
@@ -63,8 +64,9 @@ def add_manual(bot, manual):
     
     for key in manual:
         if key in bot.manual:
-            raise BotException(ErrorTypes.FATAL, EXCEPTION,
-                    "Attempting to add a manual entry that already exists", key)
+            raise BotException(EXCEPTION,
+                    "Attempting to add a manual entry that already exists",
+                    key, error_type=ErrorTypes.FATAL)
         else:
             bot.manual[key] = manual[key]
 

@@ -3,7 +3,7 @@ import logging
 import re
 
 from jshbot import commands
-from jshbot.exceptions import BotException, ErrorTypes
+from jshbot.exceptions import BotException
 
 EXCEPTION = "Parser"
 
@@ -24,8 +24,6 @@ def get_argument_block(split, index, get_all=False):
             combined += split[it]
         logging.warn("Detected an unclsed quote: " + split[index])
         return (combined[1:-1], it)
-        #raise BotException(ErrorTypes.RECOVERABLE, EXCEPTION,
-        #        "Detected an unclosed quote", split[index])
     else:
         return (split[index], index) # No loops necessary
 
@@ -246,12 +244,12 @@ def fill_shortcut(bot, parameters, blueprint, modifiers):
 
     if it < len(split) - 1:
         base = blueprint.split(' ', 1)[0]
-        raise BotException(ErrorTypes.RECOVERABLE, EXCEPTION,
-                "Invalid syntax.", bot.usage_reminder(base))
+        raise BotException(EXCEPTION, "Invalid syntax.",
+                bot.usage_reminder(base))
 
     # Check for modifiers length mismatch
     if len(modifiers) == 0 and len(split) - 2:
-        raise BotException(ErrorTypes.RECOVERABLE, EXCEPTION,
+        raise BotException(EXCEPTION,
                 "Shortcut requires no arguments, but some were given.")
 
     # Insert elements from the format list
@@ -305,8 +303,8 @@ def parse(bot, base, parameters, command_pair, shortcut):
                 options, arguments, last_option, command_pair[0])
     except:
         # Print out the syntax of the command
-        raise BotException(ErrorTypes.RECOVERABLE, EXCEPTION,
-                "Invalid syntax.", bot.usage_reminder(base))
+        raise BotException(EXCEPTION, "Invalid syntax.",
+                bot.usage_reminder(base))
 
     # Remove positional argument of last option if it exists in the dictionary
     if no_last_argument and last_option in options:

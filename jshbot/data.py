@@ -4,7 +4,7 @@ import logging
 import os
 import json
 
-from jshbot.exceptions import ErrorTypes, BotException
+from jshbot.exceptions import BotException
 
 EXCEPTION = 'Data'
 
@@ -35,7 +35,7 @@ def get_location(bot, server_id, channel_id, user_id, volatile, create=True):
             key = server_id
         else: # Server not found - refresh listing
             check_all(bot)
-            raise BotException(ErrorTypes.RECOVERABLE, EXCEPTION,
+            raise BotException(EXCEPTION,
                     "Server {} not found.".format(server_id))
         if channel_id:
             if channel_id not in current:
@@ -143,8 +143,7 @@ def remove(bot, plugin_name, key, server_id=None, channel_id=None,
         if safe:
             return default
         else:
-            raise BotException(ErrorTypes.RECOVERABLE, EXCEPTION,
-                    "Key '{}' not found.".format(key))
+            raise BotException(EXCEPTION, "Key '{}' not found.".format(key))
 
     if not volatile and location_key not in bot.data_changed:
         bot.data_changed.append(location_key)
@@ -172,8 +171,7 @@ def list_data_append(bot, plugin_name, key, value, server_id=None,
     else: # List already exists
         current = current[plugin_name][key]
         if type(current) is not list:
-            raise BotException(ErrorTypes.RECOVERABLE, EXCEPTION,
-                    "Data is not a list.")
+            raise BotException(EXCEPTION, "Data is not a list.")
         elif duplicates or value not in current:
             current.append(value)
         if not volatile and location_key not in bot.data_changed:
@@ -195,21 +193,18 @@ def list_data_remove(bot, plugin_name, key, value=None, server_id=None,
         if safe:
             return default
         else:
-            raise BotException(ErrorTypes.RECOVERABLE, EXCEPTION,
-                    "Key '{}' not found.".format(key))
+            raise BotException(EXCEPTION, "Key '{}' not found.".format(key))
     current = current[plugin_name][key]
     if type(current) is not list:
         if safe:
             return default
         else:
-            raise BotException(ErrorTypes.RECOVERABLE, EXCEPTION,
-                    "Data is not a list.")
+            raise BotException(EXCEPTION, "Data is not a list.")
     elif not current: # Empty, can't pop
         if safe:
             return default
         else:
-            raise BotException(ErrorTypes.RECOVERABLE, EXCEPTION,
-                    "List is empty.")
+            raise BotException(EXCEPTION, "List is empty.")
 
     if not volatile and location_key not in bot.data_changed:
         bot.data_changed.append(location_key)
@@ -220,7 +215,7 @@ def list_data_remove(bot, plugin_name, key, value=None, server_id=None,
             if safe:
                 return default
             else:
-                raise BotException(ErrorTypes.RECOVERABLE, EXCEPTION,
+                raise BotException(EXCEPTION,
                         "Value '{}' not found in list.".format(value))
         else:
             current.remove(value)
@@ -384,7 +379,7 @@ def get_member(bot, identity, server=None, attribute=None, safe=False,
     elif not strict:
         members = bot.get_all_members()
     else:
-        raise BotException(ErrorTypes.RECOVERABLE, EXCEPTION,
+        raise BotException(EXCEPTION,
                 "No server specified for strict user search.")
     result = discord.utils.get(members, id=identity) # No conflict
     if result is None: # Potential conflict
@@ -399,7 +394,7 @@ def get_member(bot, identity, server=None, attribute=None, safe=False,
             elif safe:
                 return None
             else:
-                raise BotException(ErrorTypes.RECOVERABLE, EXCEPTION,
+                raise BotException(EXCEPTION,
                         "Invalid attribute, '{}'.".format(attribute))
         else:
             return result
@@ -407,8 +402,7 @@ def get_member(bot, identity, server=None, attribute=None, safe=False,
         if safe:
             return None
         else:
-            raise BotException(ErrorTypes.RECOVERABLE, EXCEPTION,
-                    "{} not found.".format(identity))
+            raise BotException(EXCEPTION, "{} not found.".format(identity))
 
 def add_server(bot, server):
     '''

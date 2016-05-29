@@ -7,7 +7,7 @@ import json
 
 import sys
 
-from jshbot.exceptions import ErrorTypes, BotException
+from jshbot.exceptions import BotException
 
 EXCEPTION = 'Servers'
 write_lock = threading.Lock()
@@ -57,8 +57,7 @@ def get_id(bot, identity, server=None, name=False):
     if result:
         return result.name if name else result.id
 
-    raise BotException(ErrorTypes.RECOVERABLE, EXCEPTION,
-            "{} not found.".format(identity))
+    raise BotException(EXCEPTION, "{} not found.".format(identity))
 
 def modify_user_group(bot, server, identity, add, which):
     '''
@@ -70,12 +69,12 @@ def modify_user_group(bot, server, identity, add, which):
     which_data = bot.servers_data[server.id][which]
     if add:
         if user_id in which_data:
-            raise BotException(ErrorTypes.RECOVERABLE, EXCEPTION,
+            raise BotException(EXCEPTION,
                     "User already in the {} list.".format(which))
         bot.servers_data[server.id][which].append(user_id)
     else:
         if user_id not in which_data:
-            raise BotException(ErrorTypes.RECOVERABLE, EXCEPTION,
+            raise BotException(EXCEPTION,
                     "User was not in the {} list.".format(which))
         bot.servers_data[server.id][which].remove(user_id)
     return user_id
@@ -94,8 +93,8 @@ def modify_mute_status(bot, change, mute):
         change = 'Server'
 
     if not (currently_muted ^ mute):
-        raise BotException(ErrorTypes.RECOVERABLE, EXCEPTION,
-                "{} is already {}muted.".format(change, '' if mute else 'un'))
+        raise BotException(EXCEPTION, "{} is already {}muted.".format(
+                change, '' if mute else 'un'))
     else:
         if change == 'Channel':
             if mute:

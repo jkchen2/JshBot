@@ -8,7 +8,7 @@ import inspect
 import traceback
 
 from jshbot import data
-from jshbot.exceptions import ErrorTypes, BotException
+from jshbot.exceptions import BotException
 
 __version__ = '0.1.4'
 EXCEPTION = 'Base'
@@ -404,8 +404,8 @@ async def get_response(bot, message, parsed_command, direct):
 
             # Check if the previous result should be sent as a file
             if arguments in ('saf', 'file'):
-                await send_result_as_file(bot, message.channel,
-                        local_dictionary['result'])
+                await bot.send_text_as_file(message.channel,
+                        str(local_dictionary['result']), 'result')
             else:
                 used_exec = False
 
@@ -432,7 +432,7 @@ async def get_response(bot, message, parsed_command, direct):
                     else:
                         result = str(local_dictionary['result'])
                     if len(result) >= 1998:
-                        raise BotException(ErrorTypes.RECOVERABLE, EXCEPTION,
+                        raise BotException(EXCEPTION,
                                 "Exec result is too long. (try 'file')")
                     if '\n' in result: # Better formatting
                         response = '```python\n{}\n```'.format(result)
@@ -453,18 +453,6 @@ async def handle_active_message(bot, message_reference, extra):
         latency_time = "Latency time: {:.2f} ms".format(
                 (time.time() * 1000) - extra[1])
         await bot.edit_message(message_reference, latency_time)
-
-async def send_result_as_file(bot, channel, result):
-    '''
-    Helper function for debug that sends the result as a text file if it is
-    over 2000 characters long.
-    '''
-    if result:
-        with open('result.txt', 'w') as result_file:
-            result_file.write(str(result))
-        await bot.send_file(channel, 'result.txt')
-    else:
-        await bot.send_message(channel, "Last result is empty.")
 
 def get_general_help(bot):
     '''

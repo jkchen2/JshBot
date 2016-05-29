@@ -23,8 +23,8 @@ def get_plugins(bot):
     try:
         plugins_list = os.listdir(directory)
     except:
-        raise BotException(ErrorTypes.STARTUP, EXCEPTION,
-                "Plugins directory not found")
+        raise BotException(EXCEPTION, "Plugins directory not found",
+                error_type=ErrorTypes.STARTUP)
     valid_plugins = {}
 
     # Add base plugin
@@ -52,8 +52,8 @@ def get_plugins(bot):
             commands.add_manual(bot, manual)
         except Exception as e:
             traceback.print_exc()
-            raise BotException(ErrorTypes.STARTUP, EXCEPTION,
-                    "Failed to import external plugin", plugin, e=e)
+            raise BotException(EXCEPTION, "Failed to import external plugin",
+                    plugin, e=e, error_type=ErrorTypes.STARTUP)
         else:
             logging.debug("Adding plugin {}".format(plugin))
             valid_plugins[plugin] = [module]

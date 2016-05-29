@@ -1,8 +1,7 @@
 import discord
 import logging
 import sys
-
-#import traceback
+import traceback
 
 from enum import Enum
 
@@ -12,7 +11,8 @@ class ErrorTypes(Enum):
 
 class BotException(Exception):
 
-    def __init__(self, error_type, error_subject, error_details, *args, e=None):
+    def __init__(self, error_subject, error_details, *args, e=None,
+            error_type=ErrorTypes.RECOVERABLE):
         self.error_type = error_type
         self.error_subject = str(error_subject)
         self.error_details = str(error_details)

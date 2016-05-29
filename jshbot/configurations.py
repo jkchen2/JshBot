@@ -14,8 +14,9 @@ def get_configurations(bot):
         with open(directory + '/config.json', 'r') as config_file:
             configurations_list['core'] = json.load(config_file)
     except Exception as e:
-        raise BotException(ErrorTypes.STARTUP, EXCEPTION,
-                "Could not open the core configuration file", e=e)
+        raise BotException(EXCEPTION,
+                "Could not open the core configuration file", e=e,
+                error_type=ErrorTypes.STARTUP)
 
     directory += '/'
     for plugin in bot.plugins:
@@ -25,12 +26,12 @@ def get_configurations(bot):
         except FileNotFoundError:
             if (getattr(bot.plugins[plugin][0] ,'uses_configuration', False) and 
                     bot.plugins[plugin][0].uses_configuration):
-                raise BotException(ErrorTypes.STARTUP, EXCEPTION,
+                raise BotException(EXCEPTION,
                         "Plugin " + plugin + " requires a configuration file, "
-                        "but it was not found.")
+                        "but it was not found.", error_type=ErrorTypes.STARTUP)
         except Exception as e:
-            raise BotException(ErrorTypes.STARTUP, EXCEPTION,
+            raise BotException(EXCEPTION,
                     "Could not open the " + plugin + " configuration file.",
-                    e=e)
+                    e=e, error_type=ErrorTypes.STARTUP)
 
     return configurations_list

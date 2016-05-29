@@ -33,17 +33,19 @@ class Bot(discord.Client):
 
     def __init__(self, start_file, debug):
         self.version = '0.3.0-alpha'
-        self.date = 'May 27th, 2016'
+        self.date = 'May 28th, 2016'
         self.time = int(time.time())
         self.readable_time = time.strftime('%c')
         self.debug = debug
 
         if self.debug:
-            logging.debug("=== Starting up JshBot {} ===".format(self.version))
-            logging.debug("=== Time: {} ===".format(self.readable_time))
+            logging.debug("=== {0: ^40} ===".format(
+                    "Starting up JshBot " + self.version))
+            logging.debug("=== {0: ^40} ===".format(self.readable_time))
         else:
-            print("=== Starting up JshBot {} ===".format(self.version))
-            print("=== Time: {} ===".format(self.readable_time))
+            print("=== {0: ^40} ===".format(
+                    "Starting up JshBot " + self.version))
+            print("=== {0: ^40} ===".format(self.readable_time))
 
         super().__init__()
 
@@ -84,7 +86,7 @@ class Bot(discord.Client):
                 channel = discord.utils.get(
                         self.get_all_channels(), id=channel_id)
             except:
-                raise BotException(ErrorTypes.RECOVERABLE, EXCEPTION,
+                raise BotException(EXCEPTION,
                         "Server {} could not be found.".format(server_id))
         asyncio.ensure_future(self.send_message(channel, message))
 
@@ -268,7 +270,7 @@ class Bot(discord.Client):
                             "Huh, I couldn't deliver the message for some "
                             "reason.\n{}".format(e))
         else: # Empty message
-            response[2] = 1
+            response = (None, None, 2, None)
 
         # Incremement the spam dictionary entry
         if message.author.id in self.spam_dictionary:
@@ -296,13 +298,26 @@ class Bot(discord.Client):
 
         elif response[2] == 2: # Terminal
             if not response[3]:
-                response[3] = 10
-            await asyncio.sleep(int(response[3]))
+                delay = 10
+            else:
+                delay = int(response[3])
+            await asyncio.sleep(delay)
             await self.delete_message(message_reference)
 
         elif response[2] == 3: # Active
             await commands.handle_active_message(self, message_reference,
                     parsed_command, response[3])
+
+    async def send_text_as_file(self, channel, text, filename):
+        '''
+        Sends the given text as a text file.
+        '''
+        if not filename:
+            raise BotException(EXCEPTION, "Filename is empty.")
+        file_location = '{0}/temp/{1}.txt'.format(self.path, filename)
+        with open(file_location, 'w') as text_file:
+            text_file.write(text)
+        await self.send_file(channel, file_location)
 
     async def on_ready(self):
         # Make sure server data is ready
@@ -312,9 +327,9 @@ class Bot(discord.Client):
         plugins.broadcast_event(self, 0)
 
         if self.debug:
-            logging.debug("=== {} online ===".format(self.user.name))
+            logging.debug("=== {0: ^40} ===".format(self.user.name + ' online'))
         else:
-            print("=== {} online ===".format(self.user.name))
+            print("=== {0: ^40} ===".format(self.user.name + ' online'))
 
         asyncio.ensure_future(self.spam_clear_loop())
         await self.save_loop()
