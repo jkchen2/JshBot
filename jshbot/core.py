@@ -12,7 +12,7 @@ import os
 import traceback
 
 from jshbot import configurations, plugins, commands, parser, data
-from jshbot.exceptions import ErrorTypes, BotException
+from jshbot.exceptions import BotException
 
 EXCEPTION = 'Core'
 
@@ -29,11 +29,12 @@ exception_insults = [
     ':bomb: :bomb: :bomb: :bomb:',
     'But... the future refused to be awaited.']
 
+
 class Bot(discord.Client):
 
     def __init__(self, start_file, debug):
         self.version = '0.3.0-alpha'
-        self.date = 'May 28th, 2016'
+        self.date = 'May 30th, 2016'
         self.time = int(time.time())
         self.readable_time = time.strftime('%c')
         self.debug = debug
@@ -50,7 +51,7 @@ class Bot(discord.Client):
         super().__init__()
 
         self.path = os.path.split(os.path.realpath(start_file))[0]
-        logging.debug("Setting directory to {}".format(self.path));
+        logging.debug("Setting directory to {}".format(self.path))
 
         logging.debug("Loading plugins and commands...")
         self.commands = {}
@@ -58,7 +59,7 @@ class Bot(discord.Client):
         self.plugins = plugins.get_plugins(self)
 
         logging.debug("Setting up data...")
-        self.data = {'global_users':{}, 'global_plugins':{}}
+        self.data = {'global_users': {}, 'global_plugins': {}}
         self.volatile_data = copy.deepcopy(self.data)
         self.data_changed = []
 
@@ -66,49 +67,50 @@ class Bot(discord.Client):
         self.configurations = configurations.get_configurations(self)
 
         # Extras
+        config = self.configurations['core']
         self.edit_dictionary = {}
-        self.spam_dictionary = {} # Consider using defaultdict
-        self.spam_limit = self.configurations['core']['command_limit']
-        self.spam_timeout = self.configurations['core']['command_limit_timeout']
-        self.command_invokers = self.configurations['core']['command_invokers']
-        self.owners = self.configurations['core']['owners']
-        self.edit_timeout = self.configurations['core']['edit_timeout']
+        self.spam_dictionary = {}  # Consider using defaultdict
+        self.spam_limit = config['command_limit']
+        self.spam_timeout = config['command_limit_timeout']
+        self.command_invokers = config['command_invokers']
+        self.owners = config['owners']
+        self.edit_timeout = config['edit_timeout']
         self.last_exception = None
+        self.last_traceback = None
 
     def interrupt_say(self, channel_id, message, channel=None):
-        '''
+        """
         Allows plugins to send messages without having to return directly from
         get_response. This should mostly be avoided, and just used for errors
         or other immediately relevant notifications.
-        '''
+        """
         if not channel:
             try:
                 channel = discord.utils.get(
-                        self.get_all_channels(), id=channel_id)
+                    self.get_all_channels(), id=channel_id)
             except:
-                raise BotException(EXCEPTION,
-                        "Server {} could not be found.".format(server_id))
+                raise BotException(
+                    EXCEPTION,
+                    "Channel {} could not be found.".format(channel_id))
         asyncio.ensure_future(self.send_message(channel, message))
 
     def get_token(self):
         return self.configurations['core']['token']
 
     def usage_reminder(self, base):
-        '''
+        """
         Uses the base module to get the usage reminder for a command.
-        '''
+        """
         base_module = self.plugins['base'][0]
         return base_module.get_usage_reminder(self, base)
 
     def can_respond(self, message):
-        '''
-        Determines whether or not the bot can respond to the given message.
+        """Determines whether or not the bot can respond.
+
         Checks that the message has text, matches an invoker, and that the
-        server/channel/user is not muted or blocked. Admins/moderators override.
-        If the message is a direct message, respond if there is a valid invoker.
-        Returns the formatted content for the specific invoker, otherwise if
-        the bot cannot respond, returns None.
-        '''
+        server/channel/user is not muted or blocked. Admins and mods
+        override this.
+        """
 
         # Ignore empty messages and messages by bots
         if (not message.content or message.author.bot or
@@ -121,12 +123,12 @@ class Bot(discord.Client):
         has_mention_invoker = False
         has_name_invoker = False
         has_nick_invoker = False
-        if message.channel.is_private: # No custom invoker or data
+        if message.channel.is_private:  # No custom invoker or data
             server_data = {}
             invokers = self.command_invokers
         else:
-            server_data = data.get(self, 'base', None, message.server.id,
-                    default={})
+            server_data = data.get(
+                self, 'base', None, message.server.id, default={})
             invokers = [server_data.get('command_invoker', None)]
             if not invokers[0]:
                 invokers = self.command_invokers
@@ -136,29 +138,29 @@ class Bot(discord.Client):
                 break
         if not has_regular_invoker:
             has_mention_invoker = content.startswith(
-                    ('<@' + self.user.id + '>', '<@!' + self.user.id + '>'))
+                ('<@' + self.user.id + '>', '<@!' + self.user.id + '>'))
             if not has_mention_invoker:
                 clean_content = content.lower()
                 has_name_invoker = clean_content.startswith(
-                        self.user.name.lower() + ' ')
+                    self.user.name.lower() + ' ')
                 if (not has_name_invoker and not message.channel.is_private and
                         message.server.me.nick):
                     has_nick_invoker = clean_content.startswith(
-                            message.server.me.nick.lower() + ' ')
-                    if has_nick_invoker: # Clean up content (nickname)
+                        message.server.me.nick.lower() + ' ')
+                    if has_nick_invoker:  # Clean up content (nickname)
                         content = content[len(message.server.me.nick):].strip()
-                else: # Clean up content (name)
+                else:  # Clean up content (name)
                     content = content[len(self.user.name):].strip()
-            else: # Clean up content (mention)
+            else:  # Clean up content (mention)
                 content = content.partition(' ')[2].strip()
-        else: # Clean up content (invoker)
+        else:  # Clean up content (invoker)
             content = content.partition(invoker)[2].strip()
 
-        if server_data.get('mention_mode', False): # Mention mode enabled
+        if server_data.get('mention_mode', False):  # Mention mode enabled
             if not (has_mention_invoker or has_name_invoker or
                     has_nick_invoker):
                 return None
-        else: # Any invoker will do
+        else:  # Any invoker will do
             if not (has_regular_invoker or has_mention_invoker or
                     has_name_invoker or has_nick_invoker):
                 return None
@@ -182,12 +184,12 @@ class Bot(discord.Client):
                     (channel_id in server_data.get('muted_channels', [])) or
                     (author_id in server_data.get('blocked', []))):
                 return None
-        except KeyError as e: # Bot may not have updated fast enough
+        except KeyError as e:  # Bot may not have updated fast enough
             logging.warn("Failed to find server in can_respond(): " + str(e))
             data.check_all(self)
-            return None # Don't recurse for safety
+            return None  # Don't recurse for safety
 
-        return content # Clear to respond
+        return content  # Clear to respond
 
     async def on_message(self, message, replacement_message=None):
         plugins.broadcast_event(self, 2, message)
@@ -195,7 +197,7 @@ class Bot(discord.Client):
         # Ensure bot can respond properly
         try:
             content = self.can_respond(message)
-        except Exception as e: # General error
+        except Exception as e:  # General error
             logging.error(e)
             traceback.print_exc()
             self.last_exception = e
@@ -205,12 +207,12 @@ class Bot(discord.Client):
 
         # Ensure command is valid
         split_content = content.split(' ', 1)
-        if len(split_content) == 1: # No spaces
+        if len(split_content) == 1:  # No spaces
             split_content.append('')
         base, parameters = split_content
         base = base.lower()
         command_pair, shortcut = commands.get_command_pair(self, base)
-        if not command_pair: # Suitable command not found
+        if not command_pair:  # Suitable command not found
             logging.debug("Suitable command not found: " + base)
             return
 
@@ -219,15 +221,14 @@ class Bot(discord.Client):
         if spam_value >= self.spam_limit:
             if spam_value == self.spam_limit:
                 self.spam_dictionary[message.author.id] = self.spam_limit + 1
-                await self.send_message(message.channel, "{}, you appear to be "
-                        "issuing/editing commands too quickly. Please wait {} "
-                        "seconds.".format(message.author.mention,
-                                self.spam_timeout))
+                await self.send_message(
+                    message.channel, "{}, you appear to be issuing/editing "
+                    "commands too quickly. Please wait {} seconds.".format(
+                        message.author.mention, self.spam_timeout))
             return
 
         # Bot is clear to get response. Send typing to signify
         if not replacement_message:
-            # To prevent the bot from hanging here, we'll have it return a task.
             typing_task = asyncio.ensure_future(
                     self.send_typing(message.channel))
         else:
@@ -240,12 +241,13 @@ class Bot(discord.Client):
                     self, base, parameters, command_pair, shortcut)
             logging.debug('\t' + str(parsed_command))
             response = await (commands.execute(self, message, parsed_command))
-        except BotException as e: # Respond with error message
+        except BotException as e:  # Respond with error message
             response = (str(e), False, 0, None)
-        except Exception as e: # General error
-            logging.error(e)
-            traceback.print_exc()
+        except Exception as e:  # General error
+            self.last_traceback = traceback.format_exc()
             self.last_exception = e
+            logging.error(e)
+            logging.error(self.last_traceback)
             insult = random.choice(exception_insults)
             error = '{0}\n`{1}: {2}`'.format(insult,  type(e).__name__, e)
             response = (error, False, 0, None)
@@ -254,22 +256,22 @@ class Bot(discord.Client):
         if typing_task:
             typing_task.cancel()
         if replacement_message:
-            message_reference = await self.edit_message(replacement_message,
-                    response[0])
+            message_reference = await self.edit_message(
+                replacement_message, response[0])
         elif response[0]:
             try:
-                message_reference = await self.send_message(message.channel,
-                        response[0], tts=response[1])
+                message_reference = await self.send_message(
+                    message.channel, response[0], tts=response[1])
             except discord.HTTPException as e:
                 self.last_exception = e
                 if 'too long' in e.args[0]:
-                    message_reference = await self.send_message(message.channel,
-                            "The response appears to be too long.")
+                    message_reference = await self.send_message(
+                        message.channel, "The response is too long.")
                 else:
-                    message_reference = await self.send_message(message.channel,
-                            "Huh, I couldn't deliver the message for some "
-                            "reason.\n{}".format(e))
-        else: # Empty message
+                    message_reference = await self.send_message(
+                        message.channel, "Huh, I couldn't deliver the message "
+                        "for some reason.\n{}".format(e))
+        else:  # Empty message
             response = (None, None, 2, None)
 
         # Incremement the spam dictionary entry
@@ -287,7 +289,7 @@ class Bot(discord.Client):
         # 3 - active (pass the reference back to the plugin to edit)
         # If message_type is >= 1, do not add to the edit dictionary
 
-        if response[2] == 0: # Normal
+        if response[2] == 0:  # Normal
             # Edited commands are handled in base.py
             wait_time = self.edit_timeout
             if wait_time:
@@ -296,7 +298,7 @@ class Bot(discord.Client):
                 if message.id in self.edit_dictionary:
                     del self.edit_dictionary[message.id]
 
-        elif response[2] == 2: # Terminal
+        elif response[2] == 2:  # Terminal
             if not response[3]:
                 delay = 10
             else:
@@ -304,14 +306,14 @@ class Bot(discord.Client):
             await asyncio.sleep(delay)
             await self.delete_message(message_reference)
 
-        elif response[2] == 3: # Active
-            await commands.handle_active_message(self, message_reference,
-                    parsed_command, response[3])
+        elif response[2] == 3:  # Active
+            await commands.handle_active_message(
+                self, message_reference, parsed_command, response[3])
 
     async def send_text_as_file(self, channel, text, filename):
-        '''
+        """
         Sends the given text as a text file.
-        '''
+        """
         if not filename:
             raise BotException(EXCEPTION, "Filename is empty.")
         file_location = '{0}/temp/{1}.txt'.format(self.path, filename)
@@ -327,7 +329,8 @@ class Bot(discord.Client):
         plugins.broadcast_event(self, 0)
 
         if self.debug:
-            logging.debug("=== {0: ^40} ===".format(self.user.name + ' online'))
+            logging.debug("=== {0: ^40} ===".format(
+                self.user.name + ' online'))
         else:
             print("=== {0: ^40} ===".format(self.user.name + ' online'))
 
@@ -380,12 +383,10 @@ class Bot(discord.Client):
         plugins.broadcast_event(self, 23, channel, user, when)
 
     async def spam_clear_loop(self):
-        '''
-        Constantly clears the spam dictionary with the configured interval.
-        '''
+        """Loop to clear the spam dictionary periodically."""
         try:
-            interval = int(self.configurations['core']['command_limit_timeout'])
-            interval = 0 if interval <= 0 else interval
+            interval = self.configurations['core']['command_limit_timeout']
+            interval = 0 if interval <= 0 else int(interval)
         except:
             logging.warn("Command limit timeout not configured.")
             interval = 0
@@ -395,9 +396,7 @@ class Bot(discord.Client):
                 self.spam_dictionary = {}
 
     async def save_loop(self):
-        '''
-        Runs the loop that periodically saves data.
-        '''
+        """Runs the loop that periodically saves data."""
         try:
             interval = int(self.configurations['core']['save_interval'])
             interval = 0 if interval <= 0 else interval
@@ -429,6 +428,7 @@ class Bot(discord.Client):
             pass
         sys.exit()
 
+
 def initialize(start_file, debug=False):
     if debug:
         logging.basicConfig(stream=sys.stdout, level=logging.DEBUG)
@@ -436,4 +436,3 @@ def initialize(start_file, debug=False):
     bot.run(bot.get_token())
     logging.error("Bot disconnected. Shutting down...")
     bot.shutdown()
-
