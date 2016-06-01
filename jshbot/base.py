@@ -9,7 +9,7 @@ import traceback
 from jshbot import data
 from jshbot.exceptions import BotException
 
-__version__ = '0.1.4'
+__version__ = '0.1.5'
 EXCEPTION = 'Base'
 uses_configuration = False
 local_dictionary = {}
@@ -101,9 +101,353 @@ def get_commands():
 
     return (commands, shortcuts, manual)
 
+
+async def base_wrapper(bot, message, direct, plan_index, options, arguments):
+    response = ''
+    message_type = 0
+    if plan_index == 0:  # version
+        response = '`{}`\n{}'.format(bot.version, bot.date)
+    elif plan_index == 1:  # source
+        response += random.choice([
+            "It's shit. I'm sorry.",
+            "You want to see what the Matrix is like?",
+            "Script kiddie level stuff in here.",
+            "Beware the lack of PEP 8 guidelines inside!",
+            "Snarky comments inside and out.",
+            "Years down the road, this will all just be a really "
+            "embarrassing but funny joke.",
+            "Made with ~~love~~ pure hatred.",
+            "At least he's using version control."])
+        response += ("\nhttps://github.com/jkchen2/JshBot\n"
+                     "https://github.com/jkchen2/JshBot-plugins")
+    elif plan_index == 2:  # uptime
+        uptime_total_seconds = int(time.time()) - bot.time
+        uptime_struct = time.gmtime(uptime_total_seconds)
+        days = int(uptime_total_seconds / 86400)
+        hours = uptime_struct.tm_hour
+        minutes = uptime_struct.tm_min
+        seconds = uptime_struct.tm_sec
+        response = (
+            "The bot has been on since **{0}**\n{1} days\n{2} hours\n"
+            "{3} minutes\n{4} seconds").format(
+                bot.readable_time, days, hours, minutes, seconds)
+    elif plan_index in (3, 4):  # help, detailed or general
+        if plan_index == 3:  # Detailed
+            response = get_help(
+                bot, options['help'],
+                topic=arguments if arguments else None)
+        else:  # General
+            response = get_general_help(bot)
+        if not direct:  # Terminal reminder message
+            await bot.send_message(message.author, response)
+            response = "Check your direct messages!"
+            message_type = 2  # Default 10 seconds
+    elif plan_index == 5:  # Announcement
+        announcement = data.get(bot, 'base', 'announcement')
+        if not announcement:
+            response = "No announcement right now!"
+        else:
+            response = announcement
+    return (response, message_type)
+
+
+async def mod_wrapper(bot, message, direct, plan_index, options, arguments):
+    response = ''
+    if direct:
+        response = "You cannot use these commands in a direct message."
+
+    elif not data.is_mod(bot, message.server, message.author.id):
+        response = "You must be a moderator to use these commands."
+
+    else:
+
+        if plan_index == 0:  # info
+            server_data = data.get(
+                bot, 'base', None, server_id=message.server.id, default={})
+            response = (
+                '```\n'
+                'Information for server {0}\n'
+                'ID: {0.id}\n'
+                'Owner: {0.owner.id}\n'
+                'Moderators: {1}\n'
+                'Blocked users: {2}\n'
+                'Muted: {3}\n'
+                'Muted channels: {4}\n'
+                'Command invoker: {5}\n'
+                'Mention mode: {6}\n```').format(
+                    message.server,
+                    server_data.get('moderators', []),
+                    server_data.get('blocked', []),
+                    server_data.get('muted', []),
+                    server_data.get('muted_channels', []),
+                    server_data.get('command_invoker', None),
+                    server_data.get('mention_mode', False))
+
+        elif plan_index in (1, 2):  # block or unblock
+            user = data.get_member(bot, arguments, message.server)
+            block = plan_index == 1
+            blocked = data.is_blocked(
+                bot, message.server, user.id, strict=True)
+            mod = data.is_mod(bot, message.server, user.id)
+            if mod:
+                response = "Cannot block or unblock a moderator."
+            elif block:
+                if blocked:
+                    response = "User is already blocked."
+                else:
+                    data.list_data_append(
+                        bot, 'base', 'blocked', user.id,
+                        server_id=message.server.id)
+                    response = "User is now blocked."
+            else:
+                if not blocked:
+                    response = "User is already unblocked."
+                else:
+                    data.list_data_remove(
+                        bot, 'base', 'blocked', user.id,
+                        server_id=message.server.id)
+                    response = "User is now unblocked."
+
+        elif plan_index == 3:  # clear
+            response = '```\n'
+            for i in range(0, 80):
+                response += '.\n'
+            response += random.choice([
+                "Think twice before scrolling up.",
+                "clear ver {}".format(bot.version),
+                "Can you find the one comma?",
+                "Are people watching? If so, best not to scroll up.",
+                "Don't worry, just censorship doing its thing.",
+                "This is why we can't have nice things.",
+                "The only one who can spam is ME.",
+                "That made me feel a bit queasy...",
+                "We need a better content filter. 18+ checks, maybe?",
+                "You ANIMALS. At least I'm not one.",
+                "Scroll up if you want to be on a list.",
+                "I'll bet the NSA will have a fun time scrolling up.",
+                "So much wasted space...",
+                "This is pretty annoying, huh? Well TOO BAD.",
+                "No time to delete!"])
+            response += '```\n'
+
+        elif plan_index in (4, 5):  # add or remove moderator
+            if not data.is_admin(bot, message.server, message.author.id):
+                response = "You must be an admin to use these commands."
+            else:
+                user_id = data.get_member(
+                    bot, arguments, server=message.server, attribute='id')
+                user_is_mod = data.is_mod(
+                    bot, message.server, user_id, strict=True)
+                blocked = data.is_blocked(
+                    bot, message.server, user_id, strict=True)
+                if blocked:
+                    response = "User is blocked."
+                elif plan_index == 4:  # add
+                    if user_is_mod:
+                        response = "User is already a moderator."
+                    else:
+                        data.list_data_append(
+                            bot, 'base', 'moderators',
+                            user_id, server_id=message.server.id)
+                        response = "User is now a moderator."
+                else:  # remove
+                    if not user_is_mod:
+                        response = "User is not in the moderators list."
+                    else:
+                        data.list_data_remove(
+                            bot, 'base', 'moderators',
+                            user_id, server_id=message.server.id)
+                        response = "User is no longer a moderator."
+
+        elif plan_index in (6, 7):  # mute or unmute
+            try:
+                type_index = ('channel', 'server').index(arguments[0])
+            except ValueError:
+                response = "The type must be \"channel\" or \"server\"."
+            else:
+                mute_key = ('muted_channels', 'muted')[type_index]
+                server_id = message.server.id
+                mute = plan_index == 6
+
+                if type_index == 0:  # channel
+                    muted = message.channel.id in data.get(
+                        bot, 'base', mute_key,
+                        server_id=server_id, default=[])
+                    if mute:
+                        if muted:
+                            response = "Channel is already muted."
+                        else:
+                            data.list_data_append(
+                                bot, 'base', mute_key,
+                                message.server.id, server_id=server_id)
+                            response = "Channel muted."
+                    else:  # unmute
+                        if not muted:
+                            response = "Channel is already unmuted."
+                        else:
+                            data.list_data_remove(
+                                bot, 'base', mute_key,
+                                message.server.id, server_id=server_id)
+                            response = "Channel unmuted."
+
+                else:  # server
+                    muted = data.get(
+                        bot, 'base', mute_key,
+                        server_id=server_id, default=False)
+                    if not (muted ^ mute):
+                        response = "Server is {} muted.".format(
+                            'already' if muted else 'not')
+                    else:
+                        data.add(
+                            bot, 'base', mute_key, mute,
+                            server_id=server_id)
+                        response = "Server {}muted.".format(
+                                '' if mute else 'un')
+
+        elif plan_index == 8:  # invoker
+            data.add(
+                bot, 'base', 'command_invoker',
+                arguments if arguments else None,
+                server_id=message.server.id)
+            response = "Custom command invoker {}.".format(
+                    'set' if arguments else 'cleared')
+
+        elif plan_index == 9:  # mention
+            current_mode = data.get(
+                bot, 'base', 'mention_mode',
+                server_id=message.server.id, default=False)
+            data.add(
+                bot, 'base', 'mention_mode', not current_mode,
+                server_id=message.server.id)
+            response = "Mention mode {}activated.".format(
+                'de' if current_mode else '')
+    return response
+
+
+async def owner_wrapper(bot, message, direct, plan_index, options, arguments):
+    response = ''
+    if not data.is_owner(bot, message.author.id):
+        response = "You must be the bot owner to use these commands."
+
+    else:
+
+        if plan_index == 0:  # halt
+            bot.interrupt_say(
+                None, "Going down...", channel=message.channel)
+            await asyncio.sleep(1)
+            bot.shutdown()
+        elif plan_index == 1:  # restart
+            bot.interrupt_say(
+                None, "Restarting...", channel=message.channel)
+            await asyncio.sleep(1)
+            bot.restart()
+        elif plan_index == 2:  # ip
+            s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+            s.connect(('8.8.8.8', 80))  # Thanks Google
+            ip = s.getsockname()[0]
+            s.close()
+            response = "Local IP: " + ip
+        elif plan_index == 3:  # backup
+            bot.make_backup()
+            await bot.send_file(
+                message.channel, '{}/temp/backup.zip'.format(bot.path))
+        elif plan_index == 4:  # Announcement
+            arguments = '{0}:\n{1}'.format(time.strftime('%c'), arguments)
+            data.add(bot, 'base', 'announcement', arguments)
+            response = "Announcement set!"
+
+    return response
+
+
+async def debug_wrapper(bot, message, direct, plan_index, options, arguments):
+    response = ''
+    message_type = 0
+    extra = None
+    global local_dictionary
+
+    if not data.is_owner(bot, message.author.id):
+        response = "You must be a bot owner to use these commands."
+
+    elif plan_index == 0:  # Plugin information
+        if options['plugin'] not in bot.plugins:
+            response = options['plugin'] + " not found."
+        else:
+            plugin = bot.plugins[options['plugin']][0]
+            version = getattr(plugin, '__version__', 'Unknown')
+            has_flag = getattr(plugin, 'uses_configuration', False)
+            response = ("```\nPlugin information for: {0}\n"
+                        "Version: {1}\n"
+                        "Config: {2}\n"
+                        "Dir: {3}\n```").format(
+                            options['plugin'],
+                            version, has_flag, dir(plugin))
+
+    elif plan_index == 1:  # List plugins
+        plugins = list(bot.plugins.keys())
+        plugins.sort()
+        response = '```\n{}```'.format(plugins)
+
+    elif plan_index == 2:  # Latency
+        message_type = 3
+        response = "Testing latency time..."
+        extra = ('ping', time.time() * 1000)
+
+    elif plan_index == 3:  # Reset local dictionary
+        setup_debug_environment(bot)
+        response = "Debug environment local dictionary reset."
+
+    elif plan_index == 4:  # Exec
+        local_dictionary['message'] = message
+
+        # Sanitize input
+        if arguments.startswith('```py\n') and arguments.endswith('```'):
+            arguments = arguments[6:-3]
+        else:
+            arguments = arguments.strip('`')
+        pass_in = (arguments, {}, local_dictionary)
+
+        # Check if the previous result should be sent as a file
+        if arguments in ('saf', 'file'):
+            await bot.send_text_as_file(
+                message.channel, str(local_dictionary['result']), 'result')
+        else:
+            used_exec = False
+
+            try:  # Try to execute arguments
+                if '\n' in arguments:
+                    exec(*pass_in)
+                    used_exec = True
+                else:
+                    try:
+                        local_dictionary['result'] = eval(*pass_in)
+                    except SyntaxError:  # May need to use exec
+                        exec(*pass_in)
+                        used_exec = True
+
+            except Exception as e:
+                local_dictionary['last_traceback'] = traceback.format_exc()
+                response = '`{0}: {1}`'.format(type(e).__name__, e)
+
+            else:  # Get response if it exists
+                if used_exec:
+                    result = 'Executed.'
+                elif local_dictionary['result'] is None:
+                    result = 'Evaluated. (returned None)'
+                else:
+                    result = str(local_dictionary['result'])
+                if len(result) >= 1998:
+                    raise BotException(
+                        EXCEPTION, "Exec result is too long. (try 'file')")
+                if '\n' in result:  # Better formatting
+                    response = '```python\n{}\n```'.format(result)
+                else:  # One line response
+                    response = '`{}`'.format(result)
+
+    return (response, message_type, extra)
+
+
 async def get_response(bot, message, parsed_command, direct):
 
-    response = ''
     tts = False
     message_type = 0
     extra = None
@@ -113,332 +457,20 @@ async def get_response(bot, message, parsed_command, direct):
         response = 'Pong!\n' + arguments
 
     elif base == 'base':
-
-        if plan_index == 0:  # version
-            response = '`{}`\n{}'.format(bot.version, bot.date)
-        elif plan_index == 1:  # source
-            response += random.choice([
-                "It's shit. I'm sorry.",
-                "You want to see what the Matrix is like?",
-                "Script kiddie level stuff in here.",
-                "Beware the lack of PEP 8 guidelines inside!",
-                "Snarky comments inside and out.",
-                "Years down the road, this will all just be a really "
-                "embarrassing but funny joke.",
-                "Made with ~~love~~ pure hatred.",
-                "At least he's using version control."])
-            response += ("\nhttps://github.com/jkchen2/JshBot\n"
-                         "https://github.com/jkchen2/JshBot-plugins")
-        elif plan_index == 2:  # uptime
-            uptime_total_seconds = int(time.time()) - bot.time
-            uptime_struct = time.gmtime(uptime_total_seconds)
-            days = int(uptime_total_seconds / 86400)
-            hours = uptime_struct.tm_hour
-            minutes = uptime_struct.tm_min
-            seconds = uptime_struct.tm_sec
-            response = (
-                "The bot has been on since **{0}**\n{1} days\n{2} hours\n"
-                "{3} minutes\n{4} seconds").format(
-                    bot.readable_time, days, hours, minutes, seconds)
-        elif plan_index in (3, 4):  # help, detailed or general
-            if plan_index == 3:  # Detailed
-                response = get_help(
-                    bot, options['help'],
-                    topic=arguments if arguments else None)
-            else:  # General
-                response = get_general_help(bot)
-            if not direct:  # Terminal reminder message
-                await bot.send_message(message.author, response)
-                response = "Check your direct messages!"
-                message_type = 2  # Default 10 seconds
-        elif plan_index == 5:  # Announcement
-            announcement = data.get(bot, 'base', 'announcement')
-            if not announcement:
-                response = "No announcement right now!"
-            else:
-                response = announcement
+        response, message_type = await base_wrapper(
+            bot, message, direct, plan_index, options, arguments)
 
     elif base == 'mod':
-
-        if direct:
-            response = "You cannot use these commands in a direct message."
-
-        elif not data.is_mod(bot, message.server, message.author.id):
-            response = "You must be a moderator to use these commands."
-
-        else:
-
-            if plan_index == 0:  # info
-                server_data = data.get(
-                    bot, 'base', None, server_id=message.server.id, default={})
-                response = (
-                    '```\n'
-                    'Information for server {0}\n'
-                    'ID: {0.id}\n'
-                    'Owner: {0.owner.id}\n'
-                    'Moderators: {1}\n'
-                    'Blocked users: {2}\n'
-                    'Muted: {3}\n'
-                    'Muted channels: {4}\n'
-                    'Command invoker: {5}\n'
-                    'Mention mode: {6}\n```').format(
-                        message.server,
-                        server_data.get('moderators', []),
-                        server_data.get('blocked', []),
-                        server_data.get('muted', []),
-                        server_data.get('muted_channels', []),
-                        server_data.get('command_invoker', None),
-                        server_data.get('mention_mode', False))
-
-            elif plan_index in (1, 2):  # block or unblock
-                user = data.get_member(bot, arguments, message.server)
-                block = plan_index == 1
-                blocked = data.is_blocked(
-                    bot, message.server, user.id, strict=True)
-                mod = data.is_mod(bot, message.server, user.id)
-                if mod:
-                    response = "Cannot block or unblock a moderator."
-                elif block:
-                    if blocked:
-                        response = "User is already blocked."
-                    else:
-                        data.list_data_append(
-                            bot, 'base', 'blocked', user.id,
-                            server_id=message.server.id)
-                        response = "User is now blocked."
-                else:
-                    if not blocked:
-                        response = "User is already unblocked."
-                    else:
-                        data.list_data_remove(
-                            bot, 'base', 'blocked', user.id,
-                            server_id=message.server.id)
-                        response = "User is now unblocked."
-
-            elif plan_index == 3:  # clear
-                response = '```\n'
-                for i in range(0, 80):
-                    response += '.\n'
-                response += random.choice([
-                    "Think twice before scrolling up.",
-                    "clear ver {}".format(bot.version),
-                    "Can you find the one comma?",
-                    "Are people watching? If so, best not to scroll up.",
-                    "Don't worry, just censorship doing its thing.",
-                    "This is why we can't have nice things.",
-                    "The only one who can spam is ME.",
-                    "That made me feel a bit queasy...",
-                    "We need a better content filter. 18+ checks, maybe?",
-                    "You ANIMALS. At least I'm not one.",
-                    "Scroll up if you want to be on a list.",
-                    "I'll bet the NSA will have a fun time scrolling up.",
-                    "So much wasted space...",
-                    "This is pretty annoying, huh? Well TOO BAD.",
-                    "No time to delete!"])
-                response += '```\n'
-
-            elif plan_index in (4, 5):  # add or remove moderator
-                if not data.is_admin(bot, message.server, message.author.id):
-                    response = "You must be an admin to use these commands."
-                else:
-                    user_id = data.get_member(
-                        bot, arguments, server=message.server, attribute='id')
-                    user_is_mod = data.is_mod(
-                        bot, message.server, user_id, strict=True)
-                    blocked = data.is_blocked(
-                        bot, message.server, user_id, strict=True)
-                    if blocked:
-                        response = "User is blocked."
-                    elif plan_index == 4:  # add
-                        if user_is_mod:
-                            response = "User is already a moderator."
-                        else:
-                            data.list_data_append(
-                                bot, 'base', 'moderators',
-                                user_id, server_id=message.server.id)
-                            response = "User is now a moderator."
-                    else:  # remove
-                        if not user_is_mod:
-                            response = "User is not in the moderators list."
-                        else:
-                            data.list_data_remove(
-                                bot, 'base', 'moderators',
-                                user_id, server_id=message.server.id)
-                            response = "User is no longer a moderator."
-
-            elif plan_index in (6, 7):  # mute or unmute
-                try:
-                    type_index = ('channel', 'server').index(arguments[0])
-                except ValueError:
-                    response = "The type must be \"channel\" or \"server\"."
-                else:
-                    mute_key = ('muted_channels', 'muted')[type_index]
-                    server_id = message.server.id
-                    mute = plan_index == 6
-
-                    if type_index == 0:  # channel
-                        muted = message.channel.id in data.get(
-                            bot, 'base', mute_key,
-                            server_id=server_id, default=[])
-                        if mute:
-                            if muted:
-                                response = "Channel is already muted."
-                            else:
-                                data.list_data_append(
-                                    bot, 'base', mute_key,
-                                    message.server.id, server_id=server_id)
-                                response = "Channel muted."
-                        else:  # unmute
-                            if not muted:
-                                response = "Channel is already unmuted."
-                            else:
-                                data.list_data_remove(
-                                    bot, 'base', mute_key,
-                                    message.server.id, server_id=server_id)
-                                response = "Channel unmuted."
-
-                    else:  # server
-                        muted = data.get(
-                            bot, 'base', mute_key,
-                            server_id=server_id, default=False)
-                        if not (muted ^ mute):
-                            response = "Server is {} muted.".format(
-                                'already' if muted else 'not')
-                        else:
-                            data.add(
-                                bot, 'base', mute_key, mute,
-                                server_id=server_id)
-                            response = "Server {}muted.".format(
-                                    '' if mute else 'un')
-
-            elif plan_index == 8:  # invoker
-                data.add(
-                    bot, 'base', 'command_invoker',
-                    arguments if arguments else None,
-                    server_id=message.server.id)
-                response = "Custom command invoker {}.".format(
-                        'set' if arguments else 'cleared')
-
-            elif plan_index == 9:  # mention
-                current_mode = data.get(
-                    bot, 'base', 'mention_mode',
-                    server_id=message.server.id, default=False)
-                data.add(
-                    bot, 'base', 'mention_mode', not current_mode,
-                    server_id=message.server.id)
-                response = "Mention mode {}activated.".format(
-                        'de' if current_mode else '')
+        response = await mod_wrapper(
+            bot, message, direct, plan_index, options, arguments)
 
     elif base == 'owner':
-
-        if not data.is_owner(bot, message.author.id):
-            response = "You must be the bot owner to use these commands."
-
-        else:
-
-            if plan_index == 0:  # halt
-                bot.interrupt_say(
-                        None, "Going down...", channel=message.channel)
-                await asyncio.sleep(1)
-                bot.shutdown()
-            elif plan_index == 1:  # restart
-                bot.interrupt_say(
-                        None, "Restarting...", channel=message.channel)
-                await asyncio.sleep(1)
-                bot.restart()
-            elif plan_index == 2:  # ip
-                s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-                s.connect(('8.8.8.8', 80))  # Thanks Google
-                ip = s.getsockname()[0]
-                s.close()
-                response = "Local IP: " + ip
-            elif plan_index == 3:  # backup
-                response = "Coming soontmtmtmtmtmtmtm"
-            elif plan_index == 4:  # Announcement
-                arguments = '{0}:\n{1}'.format(time.strftime('%c'), arguments)
-                data.add(bot, 'base', 'announcement', arguments)
-                response = "Announcement set!"
+        response = await owner_wrapper(
+            bot, message, direct, plan_index, options, arguments)
 
     elif base == 'debug':
-
-        global local_dictionary
-
-        if not data.is_owner(bot, message.author.id):
-            response = "You must be a bot owner to use these commands."
-
-        elif plan_index == 0:  # Plugin information
-            if options['plugin'] not in bot.plugins:
-                response = options['plugin'] + " not found."
-            else:
-                plugin = bot.plugins[options['plugin']][0]
-                version = getattr(plugin, '__version__', 'Unknown')
-                has_flag = getattr(plugin, 'uses_configuration', False)
-                response = ("```\nPlugin information for: {0}\n"
-                            "Version: {1}\n"
-                            "Config: {2}\n"
-                            "Dir: {3}\n```").format(
-                                options['plugin'],
-                                version, has_flag, dir(plugin))
-        elif plan_index == 1:  # List plugins
-            plugins = list(bot.plugins.keys())
-            plugins.sort()
-            response = '```\n{}```'.format(plugins)
-
-        elif plan_index == 2:  # Latency
-            message_type = 3
-            response = "Testing latency time..."
-            extra = ('ping', time.time() * 1000)
-
-        elif plan_index == 3:  # Reset local dictionary
-            setup_debug_environment(bot)
-            response = "Debug environment local dictionary reset."
-
-        elif plan_index == 4:  # Exec
-            local_dictionary['message'] = message
-
-            # Sanitize input
-            if arguments.startswith('```py\n') and arguments.endswith('```'):
-                arguments = arguments[6:-3]
-            else:
-                arguments = arguments.strip('`')
-            pass_in = (arguments, {}, local_dictionary)
-
-            # Check if the previous result should be sent as a file
-            if arguments in ('saf', 'file'):
-                await bot.send_text_as_file(
-                    message.channel, str(local_dictionary['result']), 'result')
-            else:
-                used_exec = False
-
-                try:  # Try to execute arguments
-                    if '\n' in arguments:
-                        exec(*pass_in)
-                        used_exec = True
-                    else:
-                        try:
-                            local_dictionary['result'] = eval(*pass_in)
-                        except SyntaxError:  # May need to use exec
-                            exec(*pass_in)
-                            used_exec = True
-
-                except Exception as e:
-                    local_dictionary['last_traceback'] = traceback.format_exc()
-                    response = '`{0}: {1}`'.format(type(e).__name__, e)
-
-                else:  # Get response if it exists
-                    if used_exec:
-                        result = 'Executed.'
-                    elif local_dictionary['result'] is None:
-                        result = 'Evaluated. (returned None)'
-                    else:
-                        result = str(local_dictionary['result'])
-                    if len(result) >= 1998:
-                        raise BotException(
-                            EXCEPTION, "Exec result is too long. (try 'file')")
-                    if '\n' in result:  # Better formatting
-                        response = '```python\n{}\n```'.format(result)
-                    else:  # One line response
-                        response = '`{}`'.format(result)
+        response, message_type, extra = await debug_wrapper(
+            bot, message, direct, plan_index, options, arguments)
 
     else:
         response = "This should not be seen. Your command was: " + base

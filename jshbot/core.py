@@ -8,6 +8,8 @@ import time
 import sys
 import os
 
+import shutil
+
 # Debug
 import traceback
 
@@ -27,14 +29,15 @@ exception_insults = [
     '0xABADBABE 0xFEE1DEAD',
     ':bomb: Sorry, a system error occured.',
     ':bomb: :bomb: :bomb: :bomb:',
-    'But... the future refused to be awaited.']
+    'But... the future refused to be awaited.'
+]
 
 
 class Bot(discord.Client):
 
     def __init__(self, start_file, debug):
         self.version = '0.3.0-alpha'
-        self.date = 'May 30th, 2016'
+        self.date = 'May 31st, 2016'
         self.time = int(time.time())
         self.readable_time = time.strftime('%c')
         self.debug = debug
@@ -78,6 +81,14 @@ class Bot(discord.Client):
         self.last_exception = None
         self.last_traceback = None
 
+    def make_backup(self):
+        """Makes a backup of the data directory."""
+        logging.debug("Making backup...")
+        shutil.make_archive(
+            '{}/temp/backup'.format(self.path), 'zip',
+            '{}/data'.format(self.path))
+        logging.debug("Finished making backup.")
+
     def interrupt_say(self, channel_id, message, channel=None):
         """
         Allows plugins to send messages without having to return directly from
@@ -98,9 +109,7 @@ class Bot(discord.Client):
         return self.configurations['core']['token']
 
     def usage_reminder(self, base):
-        """
-        Uses the base module to get the usage reminder for a command.
-        """
+        """Uses the base module to get the usage reminder for a command."""
         base_module = self.plugins['base'][0]
         return base_module.get_usage_reminder(self, base)
 
@@ -111,7 +120,6 @@ class Bot(discord.Client):
         server/channel/user is not muted or blocked. Admins and mods
         override this.
         """
-
         # Ignore empty messages and messages by bots
         if (not message.content or message.author.bot or
                 message.author.id == self.user.id):
@@ -272,7 +280,7 @@ class Bot(discord.Client):
                         message.channel, "Huh, I couldn't deliver the message "
                         "for some reason.\n{}".format(e))
         else:  # Empty message
-            response = (None, None, 2, None)
+            response = (None, None, 1, None)
 
         # Incremement the spam dictionary entry
         if message.author.id in self.spam_dictionary:
