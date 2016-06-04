@@ -8,13 +8,13 @@ from jshbot.exceptions import BotException
 EXCEPTION = 'Utilities'
 
 
-async def download_url(bot, url, include_name=False):
+async def download_url(bot, url, include_name=False, extension=None):
     """Asynchronously downloads the given file to the temp folder.
 
     Returns the path of the downloaded file. If include_name is True, returns
     a tuple of the file location and the file name.
     """
-    cleaned_name = get_cleaned_filename(url)
+    cleaned_name = get_cleaned_filename(url, extension=extension)
     file_location = '{0}/temp/{1}'.format(bot.path, cleaned_name)
     try:
         await future(urllib.request.urlretrieve, url, file_location)
@@ -33,8 +33,13 @@ def future(function, *args, **kwargs):
     return loop.run_in_executor(None, function)
 
 
-def get_cleaned_filename(name, limit=255):
+def get_cleaned_filename(name, limit=200, extension=None):
     """Cleans up the filename to a limited set of ASCII characters."""
+    if extension:
+        extension = '.{}'.format(extension)
+        limit -= len(extension)
+    else:
+        extension = ''
     cleaned_list = []
     for char in name:
         num = ord(char)
@@ -45,7 +50,7 @@ def get_cleaned_filename(name, limit=255):
             cleaned_list.append(char)
     if len(cleaned_list) > limit:  # Because Windows file limitations
         cleaned_list = cleaned_list[:limit]
-    return ''.join(cleaned_list).lower()
+    return ''.join(cleaned_list).lower() + extension
 
 
 def get_player(bot, server_id):

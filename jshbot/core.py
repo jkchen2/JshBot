@@ -37,7 +37,7 @@ class Bot(discord.Client):
 
     def __init__(self, start_file, debug):
         self.version = '0.3.0-alpha'
-        self.date = 'June 3rd, 2016'
+        self.date = 'June 4th, 2016'
         self.time = int(time.time())
         self.readable_time = time.strftime('%c')
         self.debug = debug
@@ -330,8 +330,19 @@ class Bot(discord.Client):
             await self.delete_message(message_reference)
 
         elif response[2] == 3:  # Active
-            await commands.handle_active_message(
-                self, message_reference, parsed_command, response[3])
+            try:
+                await commands.handle_active_message(
+                    self, message_reference, parsed_command, response[3])
+            except BotException as e:  # Respond with error message
+                await self.edit_message(message_reference, str(e))
+            except Exception as e:  # General error
+                self.last_traceback = traceback.format_exc()
+                self.last_exception = e
+                logging.error(e)
+                logging.error(self.last_traceback)
+                insult = random.choice(exception_insults)
+                error = '{0}\n`{1}: {2}`'.format(insult,  type(e).__name__, e)
+                await self.edit_message(message_reference, error)
 
     async def send_text_as_file(self, channel, text, filename):
         """

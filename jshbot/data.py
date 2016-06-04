@@ -422,27 +422,38 @@ def get_member(
 def get_from_cache(bot, name, url=None):
     """Gets the filename from the audio_cache. Returns None otherwise.
 
-    If url is specified, it will clean it up and look for that instead.
+    If url is specified, it will clean it up and look for that instead. This
+    also sets the found file's access time.
     """
     if url:
         name = utilities.get_cleaned_filename(url)
     file_path = '{0}/audio_cache/{1}'.format(bot.path, name)
     if os.path.isfile(file_path):
+        os.utime(file_path, None)
         return file_path
     else:
         return None
 
 
-async def add_to_cache(bot, url):
+async def add_to_cache(bot, url, name=None, file_location=None):
     """Downloads the URL and saves to the audio cache folder.
 
     If the cache folder has surpassed the cache size, this will continually
     remove the least used file (by date) until there is enough space. If the
     downloaded file is more than half the size of the total cache, it will not
     be stored. Returns the final location of the downloaded file.
+
+    If name is specified, it will be stored under that name instead of the url.
+    If file_location is specified, it will move that file instead of
+    downloading the URL.
     """
-    file_location, cleaned_name = await utilities.download_url(
-        bot, url, include_name=True)
+    if file_location:
+        cleaned_name = utilities.get_cleaned_filename(file_location)
+    else:
+        file_location, cleaned_name = await utilities.download_url(
+            bot, url, include_name=True)
+    if name:
+        cleaned_name = utilities.get_cleaned_filename(name)
     download_stat = os.stat(file_location)
     cache_limit = bot.configurations['core']['cache_size_limit'] * 1000 * 1000
     store = cache_limit > 0 and download_stat.st_size < cache_limit / 2
@@ -472,7 +483,6 @@ async def add_to_cache(bot, url):
             os.remove(entry[2])
             total_size -= entry[1]
 
-    print("Returning {} from add_to_cache".format(cached_location))
     return cached_location
 
 
