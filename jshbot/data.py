@@ -4,8 +4,20 @@ import os
 import json
 
 from jshbot.exceptions import BotException
+from jshbot import utilities
 
 EXCEPTION = 'Data'
+
+
+def check_folders(bot):
+    """Checks that all of the folders are present at startup."""
+    directories = ['audio', 'audio_cache', 'data', 'plugins', 'temp']
+    for directory in directories:
+        full_path = '{0}/{1}/'.format(bot.path, directory)
+        if not os.path.exists(full_path):
+            os.path.crea
+            logging.warn("Directory {} is empty.".format(directory))
+            os.makedirs(full_path)
 
 
 def check_all(bot):
@@ -25,7 +37,6 @@ def get_location(bot, server_id, channel_id, user_id, volatile, create=True):
     location. This also returns the key used to get to the data. It will be a
     server ID, 'global_users' or 'global_plugins'.
     """
-
     data = bot.volatile_data if volatile else bot.data
 
     if server_id:  # Look in the specific server
@@ -39,23 +50,24 @@ def get_location(bot, server_id, channel_id, user_id, volatile, create=True):
         if channel_id:
             if channel_id not in current:
                 if not create:
-                    return {}
+                    return ({}, key)
                 current[channel_id] = {}
             current = current[channel_id]
         if user_id:
             if user_id not in current:
                 if not create:
-                    return {}
+                    return ({}, key)
                 current[user_id] = {}
             current = current[user_id]
 
     elif user_id:  # Check for global user data
         key = 'global_users'
-        if user_id not in data[key]:
+        current = data[key]
+        if user_id not in current:
             if not create:
-                return {}
-            data[key][user_id] = {}
-        current = data[key][user_id]
+                return ({}, key)
+            current[user_id] = {}
+        current = current[user_id]
 
     else:  # Check for global plugin data
         key = 'global_plugins'
@@ -81,7 +93,6 @@ def get(bot, plugin_name, key, server_id=None, channel_id=None, user_id=None,
     internal data structure you are trying to access needs to be modified in
     a way that these given functions cannot.
     """
-
     current, location_key = get_location(
         bot, server_id, channel_id, user_id, volatile, create=create)
 
@@ -115,7 +126,6 @@ def add(bot, plugin_name, key, value, server_id=None, channel_id=None,
     Location is specified in the same way as get(). If the value exists,
     this will overwrite it.
     """
-
     current, location_key = get_location(
         bot, server_id, channel_id, user_id, volatile)
 
@@ -138,7 +148,6 @@ def remove(bot, plugin_name, key, server_id=None, channel_id=None,
     If the key is None, it removes all of the data associated with that plugin
     for the given location. Use with caution.
     """
-
     current, location_key = get_location(
         bot, server_id, channel_id, user_id, volatile)
     if (not current or
@@ -168,7 +177,6 @@ def list_data_append(
     flag is set to false, this will not append the data if it is already found
     inside the list.
     """
-
     current, location_key = get_location(
         bot, server_id, channel_id, user_id, volatile)
     if plugin_name not in current:
@@ -193,7 +201,6 @@ def list_data_remove(
     Works like remove, but manipulates the list at the location. If the value
     is not specified, it will pop the first element.
     """
-
     current, location_key = get_location(
         bot, server_id, channel_id, user_id, volatile)
     if (not current or
@@ -410,6 +417,63 @@ def get_member(
             return None
         else:
             raise BotException(EXCEPTION, "{} not found.".format(identity))
+
+
+def get_from_cache(bot, name, url=None):
+    """Gets the filename from the audio_cache. Returns None otherwise.
+
+    If url is specified, it will clean it up and look for that instead.
+    """
+    if url:
+        name = utilities.get_cleaned_filename(url)
+    file_path = '{0}/audio_cache/{1}'.format(bot.path, name)
+    if os.path.isfile(file_path):
+        return file_path
+    else:
+        return None
+
+
+async def add_to_cache(bot, url):
+    """Downloads the URL and saves to the audio cache folder.
+
+    If the cache folder has surpassed the cache size, this will continually
+    remove the least used file (by date) until there is enough space. If the
+    downloaded file is more than half the size of the total cache, it will not
+    be stored. Returns the final location of the downloaded file.
+    """
+    file_location, cleaned_name = await utilities.download_url(
+        bot, url, include_name=True)
+    download_stat = os.stat(file_location)
+    cache_limit = bot.configurations['core']['cache_size_limit'] * 1000 * 1000
+    store = cache_limit > 0 and download_stat.st_size < cache_limit / 2
+
+    if store:
+        cached_location = '{0}/audio_cache/{1}'.format(bot.path, cleaned_name)
+    else:
+        cached_location = '{}/temp/tempsound'.format(bot.path)
+    try:
+        os.remove(cached_location)
+    except:  # Doesn't matter if file doesn't exist
+        pass
+    os.rename(file_location, cached_location)
+
+    if store:
+        cache_entries = []
+        total_size = 0
+        for entry in os.scandir('{}/audio_cache'.format(bot.path)):
+            stat = entry.stat()
+            cache_entries.append((stat.st_atime, stat.st_size, entry.path))
+            total_size += stat.st_size
+        cache_entries.sort(reverse=True)
+
+        # TODO: Check complexity of list entry removal
+        while total_size > cache_limit:
+            entry = cache_entries.pop()
+            os.remove(entry[2])
+            total_size -= entry[1]
+
+    print("Returning {} from add_to_cache".format(cached_location))
+    return cached_location
 
 
 def add_server(bot, server):

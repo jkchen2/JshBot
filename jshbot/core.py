@@ -37,7 +37,7 @@ class Bot(discord.Client):
 
     def __init__(self, start_file, debug):
         self.version = '0.3.0-alpha'
-        self.date = 'May 31st, 2016'
+        self.date = 'June 3rd, 2016'
         self.time = int(time.time())
         self.readable_time = time.strftime('%c')
         self.debug = debug
@@ -55,6 +55,7 @@ class Bot(discord.Client):
 
         self.path = os.path.split(os.path.realpath(start_file))[0]
         logging.debug("Setting directory to {}".format(self.path))
+        data.check_folders(self)
 
         logging.debug("Loading plugins and commands...")
         self.commands = {}
@@ -80,6 +81,7 @@ class Bot(discord.Client):
         self.edit_timeout = config['edit_timeout']
         self.last_exception = None
         self.last_traceback = None
+        self.extra = None
 
     def make_backup(self):
         """Makes a backup of the data directory."""
@@ -104,6 +106,12 @@ class Bot(discord.Client):
                     EXCEPTION,
                     "Channel {} could not be found.".format(channel_id))
         asyncio.ensure_future(self.send_message(channel, message))
+
+    async def notify_owners(self, message):
+        """Sends all owners a direct message with the given text."""
+        for owner in self.owners:
+            member = data.get_member(self, owner)
+            await self.send_message(member, message)
 
     def get_token(self):
         return self.configurations['core']['token']
@@ -279,6 +287,13 @@ class Bot(discord.Client):
                     message_reference = await self.send_message(
                         message.channel, "Huh, I couldn't deliver the message "
                         "for some reason.\n{}".format(e))
+            except Exception as e:
+                self.last_traceback = traceback.format_exc()
+                self.last_exception = e
+                logging.error(e)
+                logging.error(self.last_exception)
+                return
+
         else:  # Empty message
             response = (None, None, 1, None)
 
