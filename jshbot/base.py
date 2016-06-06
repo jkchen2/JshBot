@@ -6,10 +6,10 @@ import logging
 import inspect
 import traceback
 
-from jshbot import data
+from jshbot import data, utilities
 from jshbot.exceptions import BotException
 
-__version__ = '0.1.5'
+__version__ = '0.1.6'
 EXCEPTION = 'Base'
 uses_configuration = False
 local_dictionary = {}
@@ -36,13 +36,16 @@ def get_commands():
         'unmute :', 'invoker &', 'mention'], [
         ('info', 'i'), ('clear', 'c')])
     commands['base'] = ([
-        'version', 'source', 'uptime', 'help: &', 'help', 'announcement'], [
+        'version', 'source', 'uptime', 'help: &', 'help', 'announcement',
+        'join', 'leave'], [
         ('version', 'ver', 'v'), ('source', 'src', 'git'), ('help', 'h')])
 
     shortcuts['clear'] = ('mod -clear', '')
     shortcuts['help'] = ('base -help {}', '&')
     shortcuts['restart'] = ('owner -restart', '')
     shortcuts['announcement'] = ('base -announcement', '')
+    shortcuts['join'] = ('base -join', '')
+    shortcuts['leave'] = ('base -leave', '')
 
     manual['ping'] = {
         'description': 'Command to ping the bot for a response.',
@@ -94,7 +97,9 @@ def get_commands():
                 'if a valid topic index is provided.'),
             ('-help', 'Gets the general help page.'),
             ('-announcement', 'Gets the current announcement from the owners '
-                'about the bot.')],
+                'about the bot.'),
+            ('-join', 'Joins the voice channel of the command author.'),
+            ('-leave', 'Leaves the voice channel of the command author.')],
         'shortcuts': [
             ('help <arguments>', '-help <arguments>'),
             ('announcement', '-announcement')]}
@@ -148,16 +153,46 @@ async def base_wrapper(bot, message, direct, plan_index, options, arguments):
             response = "No announcement right now!"
         else:
             response = announcement
+    elif plan_index in (6, 7):  # Join/leave voice channel
+        voice_channel = message.author.voice_channel
+        if not voice_channel:
+            raise BotException(EXCEPTION, "You are not in a voice channel.")
+        try:
+            if plan_index == 6:
+                await utilities.join_and_ready(
+                    bot, voice_channel, message.server)
+                response = "Joined {}.".format(voice_channel.name)
+            else:
+                voice_client = bot.voice_client_in(message.server)
+                if not voice_client:
+                    raise BotException(
+                        EXCEPTION, "Bot not connected to a voice channel.")
+                elif voice_client.channel != message.author.voice_channel:
+                    raise BotException(
+                        EXCEPTION, "Bot not connected to your voice channel.")
+                else:
+                    await voice_client.disconnect()
+                    response = "Left {}.".format(voice_channel.name)
+        except BotException as e:
+            raise e  # Pass up
+        except Exception as e:
+            action = 'join' if plan_index == 6 else 'leave'
+            raise BotException(
+                EXCEPTION, "Failed to {} the voice channel.".format(action),
+                e=e)
+
     return (response, message_type)
 
 
 async def mod_wrapper(bot, message, direct, plan_index, options, arguments):
     response = ''
     if direct:
-        response = "You cannot use these commands in a direct message."
+        raise BotException(
+            EXCEPTION, "You cannot use these commands in a direct message.")
 
     elif not data.is_mod(bot, message.server, message.author.id):
-        response = "You must be a moderator to use these commands."
+        raise BotException(
+            EXCEPTION, "You must be a moderator to use these commands.")
 
     else:
 
@@ -190,10 +225,11 @@ async def mod_wrapper(bot, message, direct, plan_index, options, arguments):
                 bot, message.server, user.id, strict=True)
             mod = data.is_mod(bot, message.server, user.id)
             if mod:
-                response = "Cannot block or unblock a moderator."
+                raise BotException(
+                    EXCEPTION, "Cannot block or unblock a moderator.")
             elif block:
                 if blocked:
-                    response = "User is already blocked."
+                    raise BotException(EXCEPTION, "User is already blocked.")
                 else:
                     data.list_data_append(
                         bot, 'base', 'blocked', user.id,
@@ -201,7 +237,7 @@ async def mod_wrapper(bot, message, direct, plan_index, options, arguments):
                     response = "User is now blocked."
             else:
                 if not blocked:
-                    response = "User is already unblocked."
+                    raise BotException(EXCEPTION, "User is already unblocked.")
                 else:
                     data.list_data_remove(
                         bot, 'base', 'blocked', user.id,
@@ -232,7 +268,8 @@ async def mod_wrapper(bot, message, direct, plan_index, options, arguments):
 
         elif plan_index in (4, 5):  # add or remove moderator
             if not data.is_admin(bot, message.server, message.author.id):
-                response = "You must be an admin to use these commands."
+                raise BotException(
+                    EXCEPTION, "You must be an admin to use these commands.")
             else:
                 user_id = data.get_member(
                     bot, arguments, server=message.server, attribute='id')
@@ -244,7 +281,8 @@ async def mod_wrapper(bot, message, direct, plan_index, options, arguments):
                     response = "User is blocked."
                 elif plan_index == 4:  # add
                     if user_is_mod:
-                        response = "User is already a moderator."
+                        raise BotException(
+                            EXCEPTION, "User is already a moderator.")
                     else:
                         data.list_data_append(
                             bot, 'base', 'moderators',
@@ -252,7 +290,8 @@ async def mod_wrapper(bot, message, direct, plan_index, options, arguments):
                         response = "User is now a moderator."
                 else:  # remove
                     if not user_is_mod:
-                        response = "User is not in the moderators list."
+                        raise BotException(
+                            EXCEPTION, "User is not in the moderators list.")
                     else:
                         data.list_data_remove(
                             bot, 'base', 'moderators',
@@ -263,7 +302,8 @@ async def mod_wrapper(bot, message, direct, plan_index, options, arguments):
             try:
                 type_index = ('channel', 'server').index(arguments[0])
             except ValueError:
-                response = "The type must be \"channel\" or \"server\"."
+                raise BotException(
+                    EXCEPTION, "The type must be \"channel\" or \"server\".")
             else:
                 mute_key = ('muted_channels', 'muted')[type_index]
                 server_id = message.server.id
@@ -275,7 +315,8 @@ async def mod_wrapper(bot, message, direct, plan_index, options, arguments):
                         server_id=server_id, default=[])
                     if mute:
                         if muted:
-                            response = "Channel is already muted."
+                            raise BotException(
+                                EXCEPTION, "Channel is already muted.")
                         else:
                             data.list_data_append(
                                 bot, 'base', mute_key,
@@ -283,7 +324,8 @@ async def mod_wrapper(bot, message, direct, plan_index, options, arguments):
                             response = "Channel muted."
                     else:  # unmute
                         if not muted:
-                            response = "Channel is already unmuted."
+                            raise BotException(
+                                EXCEPTION, "Channel is already unmuted.")
                         else:
                             data.list_data_remove(
                                 bot, 'base', mute_key,
@@ -295,8 +337,9 @@ async def mod_wrapper(bot, message, direct, plan_index, options, arguments):
                         bot, 'base', mute_key,
                         server_id=server_id, default=False)
                     if not (muted ^ mute):
-                        response = "Server is {} muted.".format(
-                            'already' if muted else 'not')
+                        response = "Server is already {}muted.".format(
+                            '' if muted else 'un')
+                        raise BotException(EXCEPTION, response)
                     else:
                         data.add(
                             bot, 'base', mute_key, mute,
@@ -327,7 +370,8 @@ async def mod_wrapper(bot, message, direct, plan_index, options, arguments):
 async def owner_wrapper(bot, message, direct, plan_index, options, arguments):
     response = ''
     if not data.is_owner(bot, message.author.id):
-        response = "You must be the bot owner to use these commands."
+        raise BotException(
+            EXCEPTION, "You must be the bot owner to use these commands.")
 
     else:
 
@@ -366,7 +410,8 @@ async def debug_wrapper(bot, message, direct, plan_index, options, arguments):
     global local_dictionary
 
     if not data.is_owner(bot, message.author.id):
-        response = "You must be a bot owner to use these commands."
+        raise BotException(
+            EXCEPTION, "You must be a bot owner to use these commands.")
 
     elif plan_index == 0:  # Plugin information
         if options['plugin'] not in bot.plugins:
@@ -404,7 +449,7 @@ async def debug_wrapper(bot, message, direct, plan_index, options, arguments):
             arguments = arguments[6:-3]
         else:
             arguments = arguments.strip('`')
-        pass_in = (arguments, {}, local_dictionary)
+        pass_in = [arguments, {}, local_dictionary]
 
         # Check if the previous result should be sent as a file
         if arguments in ('saf', 'file'):
@@ -419,7 +464,11 @@ async def debug_wrapper(bot, message, direct, plan_index, options, arguments):
                     used_exec = True
                 else:
                     try:
-                        local_dictionary['result'] = eval(*pass_in)
+                        if arguments.startswith('await '):
+                            pass_in[0] = arguments[6:]
+                            local_dictionary['result'] = await eval(*pass_in)
+                        else:
+                            local_dictionary['result'] = eval(*pass_in)
                     except SyntaxError:  # May need to use exec
                         exec(*pass_in)
                         used_exec = True
@@ -490,9 +539,7 @@ async def handle_active_message(bot, message_reference, extra):
 
 
 def setup_debug_environment(bot):
-    """
-    Resets the local dictionary for the debug command.
-    """
+    """Resets the local dictionary for the debug command."""
     global local_dictionary
     local_dictionary = {}
     import pprint
@@ -513,10 +560,7 @@ def setup_debug_environment(bot):
 
 
 def get_general_help(bot):
-    """
-    Gets the general help. Lists all base commands that aren't shortcuts.
-    """
-
+    """Gets the general help. Lists all base commands that aren't shortcuts."""
     response = "Here is a list of base commands:\n```\n"
     for base in bot.commands:
         if type(bot.commands[base][0]) is not str:  # Skip shortcuts
@@ -528,7 +572,6 @@ def get_general_help(bot):
 
 def get_help(bot, base, topic=None):
     """Gets the help of the base command, or the topic of a help command."""
-
     # Check for shortcut first
     if base in bot.commands and type(bot.commands[base][0]) is str:
         return get_help(bot, bot.commands[base][0].split(' ', 1)[0], topic)
@@ -586,7 +629,6 @@ def get_help(bot, base, topic=None):
 
 def get_usage_reminder(bot, base):
     """Returns the usage syntax for the base command (simple format)."""
-
     # Check for shortcut first
     if base in bot.commands and type(bot.commands[base][0]) is str:
         return get_usage_reminder(

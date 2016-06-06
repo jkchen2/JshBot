@@ -241,10 +241,10 @@ def list_data_remove(
 def save_data(bot, force=False):
     """Saves all of the current data in the data dictionary.
 
-    Does not save volatile_data, though.
+    Does not save volatile_data, though. Backups data if forced.
     """
-
-    # TODO: Add backup before save
+    if force:
+        bot.make_backup()
 
     if bot.data_changed or force:  # Only save if something changed or forced
         # Loop through keys
@@ -384,6 +384,7 @@ def get_member(
     Keyword arguments:
     server -- if specified, will look here for identity first
     attribute -- gets the found member's attribute instead of the member istelf
+    safe -- returns None if not found instead of raising an exception
     strict -- will look only in the specified server
     """
     if identity.startswith('<@') and identity.endswith('>'):
@@ -400,6 +401,34 @@ def get_member(
         result = discord.utils.get(members, name=identity)
     if result is None:  # Potentially a lot of conflict
         result = discord.utils.get(members, nick=identity)
+
+    if result:
+        if attribute:
+            if hasattr(result, attribute):
+                return getattr(result, attribute)
+            elif safe:
+                return None
+            else:
+                raise BotException(
+                    EXCEPTION, "Invalid attribute, '{}'.".format(attribute))
+        else:
+            return result
+    else:
+        if safe:
+            return None
+        else:
+            raise BotException(EXCEPTION, "{} not found.".format(identity))
+
+
+def get_channel(
+        bot, identity, server, attribute=None, safe=False):
+    """Like get_member(), but gets the channel instead. Always strict."""
+    if identity.startswith('<#') and identity.endswith('>'):
+        identity = identity.strip('<#>')
+    channels = server.channels
+    result = discord.utils.get(channels, id=identity)
+    if result is None:
+        result = discord.utils.get(channels, name=identity)
 
     if result:
         if attribute:

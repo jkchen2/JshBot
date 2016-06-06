@@ -37,7 +37,7 @@ class Bot(discord.Client):
 
     def __init__(self, start_file, debug):
         self.version = '0.3.0-alpha'
-        self.date = 'June 4th, 2016'
+        self.date = 'June 5th, 2016'
         self.time = int(time.time())
         self.readable_time = time.strftime('%c')
         self.debug = debug
@@ -345,9 +345,7 @@ class Bot(discord.Client):
                 await self.edit_message(message_reference, error)
 
     async def send_text_as_file(self, channel, text, filename):
-        """
-        Sends the given text as a text file.
-        """
+        """Sends the given text as a text file."""
         if not filename:
             raise BotException(EXCEPTION, "Filename is empty.")
         file_location = '{0}/temp/{1}.txt'.format(self.path, filename)
