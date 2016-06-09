@@ -32,11 +32,13 @@ def get_commands():
             ('version', 'version', 'Gets the version of the bot.'),
             ('source', 'source', 'Gets the source of the bot.'),
             ('uptime', 'uptime', 'Gets the uptime of the bot.'),
-            ('help: &', '<command> (<topic>)', 'Gets the help of the given '
-             'command. If a topic index is provided, it will get specific '
-             'help regarding that command.'),
-            ('help', 'help', 'Gets the general help text. This will list all '
-             'available help commands to you.'),
+            ('help ?here :&', 'help (here) <"command"> (<topic>)', 'Gets the '
+             'help of the given command. If a topic index is provided, it '
+             'will get specific help regarding that command. If the \'here\' '
+             'option is specified, this will not send a direct message.'),
+            ('help ?here', 'help (here)', 'Gets the general help text. This '
+             'will list all available help commands to you. If the \'here\' '
+             'option is specified, this will not send a direct message.'),
             ('announcement', 'announcement', 'Gets the current announcement '
              'set by the bot owners.'),
             ('join', 'join', 'Joins the voice channel you are in.'),
@@ -63,7 +65,7 @@ def get_commands():
              'moderators list. This command is for server owners only.'),
             ('mute &', 'mute (<channel>)', 'Mutes the given channel. If no '
              'channel is specified, this mutes the bot for the server.'),
-            ('unmute ^', 'unmute (<channel>)', 'Unmutes the given channel. If '
+            ('unmute &', 'unmute (<channel>)', 'Unmutes the given channel. If '
              'no channel is specified, this unmutes the bot for the server.'),
             ('invoker &', 'invoker (<custom invoker>)', 'Sets the custom '
              'invoker for the server. If no invoker is specified, this clears '
@@ -137,14 +139,22 @@ async def base_wrapper(
 
     elif blueprint_index in (3, 4):  # help, detailed or general
         is_owner = data.is_owner(bot, message.author.id)
+        if 'here' in options:
+            server = message.server
+        else:
+            server = None
         if blueprint_index == 3:  # Detailed
+            if len(arguments) == 2:
+                topic = arguments[1]
+            else:
+                topic = None
             response = commands.get_help(
-                bot, options['help'],
-                topic=arguments[0] if arguments[0] else None,
-                is_owner=is_owner)
+                bot, arguments[0], topic=topic,
+                is_owner=is_owner, server=server)
         else:  # General
-            response = commands.get_general_help(bot, is_owner=is_owner)
-        if not direct:  # Terminal reminder message
+            response = commands.get_general_help(
+                bot, is_owner=is_owner, server=server)
+        if not direct and 'here' not in options:  # Terminal reminder message
             await bot.send_message(message.author, response)
             response = "Check your direct messages!"
             message_type = 2  # Default 10 seconds
@@ -263,18 +273,20 @@ async def mod_wrapper(bot, message, blueprint_index, options, arguments):
     elif blueprint_index in (4, 5):  # add or remove moderator
         if not data.is_admin(bot, message.server, message.author.id):
             raise BotException(
-                EXCEPTION, "You must be an admin to use these commands.")
+                EXCEPTION, "You must be the server owner to use these "
+                "commands.")
         else:
             user_id = data.get_member(
                 bot, arguments[0], server=message.server, attribute='id')
             user_is_mod = data.is_mod(
                 bot, message.server, user_id, strict=True)
+            user_is_elevated = data.is_mod(bot, message.server, user_id)
             blocked = data.is_blocked(
                 bot, message.server, user_id, strict=True)
             if blocked:
                 response = "User is blocked."
             elif blueprint_index == 4:  # add
-                if user_is_mod:
+                if user_is_mod or user_is_elevated:
                     raise BotException(
                         EXCEPTION, "User is already a moderator.")
                 else:
@@ -333,6 +345,10 @@ async def mod_wrapper(bot, message, blueprint_index, options, arguments):
                 response = "Server {}muted.".format('' if mute else 'un')
 
     elif blueprint_index == 8:  # invoker
+        if len(arguments[0]) > 10:
+            raise BotException(
+                EXCEPTION,
+                "The invoker can be a maximum of 10 characters long.")
         data.add(
             bot, 'base', 'command_invoker',
             arguments[0] if arguments[0] else None,

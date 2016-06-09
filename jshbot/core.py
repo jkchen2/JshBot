@@ -41,7 +41,7 @@ class Bot(discord.Client):
 
     def __init__(self, start_file, debug):
         self.version = '0.3.0-alpha'
-        self.date = 'June 8th, 2016'
+        self.date = 'June 9th, 2016'
         self.time = int(time.time())
         self.readable_time = time.strftime('%c')
         self.debug = debug
@@ -275,7 +275,8 @@ class Bot(discord.Client):
         # Parse command and reply
         try:
             logging.debug(message.author.name + ': ' + message.content)
-            parsed_input = parser.parse(self, command, base, parameters)
+            parsed_input = parser.parse(
+                self, command, base, parameters, server=message.server)
             logging.debug('\t' + str(parsed_input))
             print(parsed_input)  # Temp
             response = await (commands.execute(
@@ -294,31 +295,30 @@ class Bot(discord.Client):
         # If a replacement message is given, edit it
         if typing_task:
             typing_task.cancel()
-        if replacement_message:
-            message_reference = await self.edit_message(
-                replacement_message, response[0])
-        elif response[0]:
-            try:
+        try:
+            if replacement_message:
+                message_reference = await self.edit_message(
+                    replacement_message, response[0])
+            elif response[0]:
                 message_reference = await self.send_message(
                     message.channel, response[0], tts=response[1])
-            except discord.HTTPException as e:
-                self.last_exception = e
-                if 'too long' in e.args[0]:
-                    message_reference = await self.send_message(
-                        message.channel, "The response is too long.")
-                else:
-                    message_reference = await self.send_message(
-                        message.channel, "Huh, I couldn't deliver the message "
-                        "for some reason.\n{}".format(e))
-            except Exception as e:
-                self.last_traceback = traceback.format_exc()
-                self.last_exception = e
-                logging.error(e)
-                logging.error(self.last_exception)
-                return
-
-        else:  # Empty message
-            response = (None, None, 1, None)
+            else:  # Empty message
+                response = (None, None, 1, None)
+        except discord.HTTPException as e:
+            self.last_exception = e
+            if 'too long' in e.args[0]:
+                message_reference = await self.send_message(
+                    message.channel, "The response is too long.")
+            else:
+                message_reference = await self.send_message(
+                    message.channel, "Huh, I couldn't deliver the message "
+                    "for some reason.\n{}".format(e))
+        except Exception as e:
+            self.last_traceback = traceback.format_exc()
+            self.last_exception = e
+            logging.error(e)
+            logging.error(self.last_exception)
+            return
 
         # Incremement the spam dictionary entry
         if message.author.id in self.spam_dictionary:
@@ -355,7 +355,7 @@ class Bot(discord.Client):
         elif response[2] == 3:  # Active
             try:
                 await commands.handle_active_message(
-                    self, message_reference, parsed_command, response[3])
+                    self, message_reference, command, response[3])
             except BotException as e:  # Respond with error message
                 await self.edit_message(message_reference, str(e))
             except Exception as e:  # General error

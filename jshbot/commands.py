@@ -7,12 +7,12 @@ EXCEPTION = 'Commands'
 class Command():
     def __init__(
             self, base, sub_commands, description='', other='', shortcuts=None,
-            function=None, private=False, elevated_level=0, allow_direct=True):
+            function=None, hidden=False, elevated_level=0, allow_direct=True):
         self.base = base
         self.description = description
         self.other = other
         self.function = function
-        self.is_private = private
+        self.hidden = hidden
         self.allow_direct = allow_direct
         self.shortcut = shortcuts
         self.plugin = None  # Added later
@@ -42,38 +42,49 @@ class Shortcuts():
 
 def get_general_help(bot, server=None, is_owner=False):
     """Gets the general help. Lists all base commands that aren't shortcuts."""
-    response = "Here is a list of base commands:\n"
+    response = "Here is a list of commands by plugin:\n"
     invoker = bot.get_invoker(server=server)
-    visible_commands = []
-    for command in bot.commands.values():
-        level = command.elevated_level
-        if (level < 3 or is_owner) and command not in visible_commands:
-            visible_commands.append(command)
-    bot.extra = visible_commands
-    listing = []
-    for command in visible_commands:
-        if command.description:
-            description = command.description
-        else:
-            description = '[Description not provided]'
-        listing.append('**`{0}`** -- {1}'.format(command.base, description))
-    response += '\n'.join(sorted(listing))
-    response += "\n\nGet help on a command with `{}help <command>`".format(
+    plugin_pairs = []
+    for plugin_name, plugin in bot.plugins.items():
+        plugin_pairs.append((plugin_name, plugin[1]))
+    plugin_pairs.sort()
+
+    for plugin_pair in plugin_pairs:
+        visible_commands = []
+        response += '\n***`{}`***\n'.format(plugin_pair[0])
+        for command in plugin_pair[1]:
+            level = command.elevated_level
+            hidden = command.hidden
+            if (((level < 3 and not hidden) or is_owner) and
+                    command not in visible_commands):
+                visible_commands.append(command)
+        listing = []
+        for command in visible_commands:
+            if command.description:
+                description = command.description
+            else:
+                description = '[Description not provided]'
+            listing.append('\t**`{0}`** -- {1}'.format(
+                command.base, description))
+        response += '\n'.join(sorted(listing)) + '\n'
+
+    response += "\nGet help on a command with `{}help <command>`".format(
         invoker)
     return response
 
 
-def get_help(bot, base, topic=None, is_owner=False):
+def get_help(bot, base, topic=None, is_owner=False, server=None):
     """Gets the help of the base command, or the topic of a help command."""
     # Check for shortcut first
     try:
+        base = base.lower()
         command = bot.commands[base]
     except KeyError:
         raise BotException(
             EXCEPTION, "Invalid command base. Ensure sure you are not "
             "including the command invoker.")
 
-    if command.is_private and not is_owner:
+    if command.hidden and not is_owner:
         return '```\nCommand is hidden.```'
     if command.shortcut and base in command.shortcut.bases:
         shortcut_index = command.shortcut.bases.index(base)
@@ -94,11 +105,11 @@ def get_help(bot, base, topic=None, is_owner=False):
     if command.description:
         response += 'Description:\n\t{}\n\n'.format(command.description)
     response += usage_reminder(
-        bot, base, monospace=False, is_owner=is_owner) + '\n'
+        bot, base, monospace=False, is_owner=is_owner, server=server) + '\n'
     if command.shortcut:
         response += usage_reminder(
-            bot, base, monospace=False,
-            shortcut=True, is_owner=is_owner) + '\n'
+            bot, base, monospace=False, shortcut=True,
+            is_owner=is_owner, server=server) + '\n'
     if command.other:
         response += 'Other information:\n\t{}'.format(command.other)
 
@@ -117,7 +128,7 @@ def usage_reminder(
     is_mod -- used to check for private command visibility
     """
     command = bot.commands[base]
-    if command.is_private and not is_owner:
+    if command.hidden and not is_owner:
         return "```\nCommand is hidden.```"
     if shortcut:
         if base in command.shortcut.bases:
@@ -138,7 +149,7 @@ def usage_reminder(
                     invoker, command.bases[topic_index], syntax, base, details)
             else:
                 syntax = syntax if syntax else '[Syntax not provided]'
-                response += '\t({1: <{0}}) {2}\n'.format(
+                response += '\t[{1: <{0}}] {2}\n'.format(
                     spacing, topic_index + 1, syntax)
     else:
         if shortcut:
@@ -155,7 +166,6 @@ def usage_reminder(
             raise BotException(EXCEPTION, "Invalid help index.")
 
     if monospace:
-        # ticks = '```' if index is None else '`'
         response = '{0}\n{1}{0}'.format('```', response)
     return response
 
@@ -228,9 +238,15 @@ def get_blueprints(bot, base):
 
 async def execute(bot, message, command, parsed_input, initial_data):
     """Calls get_response of the given plugin associated with the base."""
-    if message.channel.is_private and not command.allow_direct:
-        raise BotException(
-            EXCEPTION, "Cannot use this command in a direct message.")
+    if message.channel.is_private:
+        if not command.allow_direct:
+            raise BotException(
+                EXCEPTION, "Cannot use this command in a direct message.")
+        elif command.elevated_level > 0 and not any(initial_data[3:]):
+            raise BotException(
+                EXCEPTION, "Special permissions commands cannot be used in "
+                "direct messages.")
+
     if command.elevated_level > 0:
         if command.elevated_level == 1 and not any(initial_data[1:]):
             raise BotException(
@@ -238,7 +254,7 @@ async def execute(bot, message, command, parsed_input, initial_data):
         elif command.elevated_level == 2 and not any(initial_data[2:]):
             raise BotException(
                 EXCEPTION, "Only server owners can use this command.")
-        elif not initial_data[3]:
+        elif command.elevated_level >= 3 and not initial_data[3]:
             raise BotException(
                 EXCEPTION, "Only the bot owners can use this command.")
 

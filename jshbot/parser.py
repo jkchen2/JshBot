@@ -13,22 +13,25 @@ def split_parameters(parameters, include_quotes=False):
         return []
     split = re.split('( +)', parameters)
     joined_split = []
-    add_start = add_end = -1
+    add_start = -1
+    add_end = -1
 
     for index, entry in enumerate(split):
         if entry.startswith('"'):
             add_start = index
         if (entry.endswith('"') and not entry.endswith('\\"') and
                 len(entry) > 1 and add_start != -1):
-            add_end = index + 1 if add_start == index else 0
+            add_end = index + 1
         if add_start == -1:  # Add entry normally
             joined_split.append(entry)
         elif add_end != -1:  # Join entries in quotes
+            combined = ''.join(split[add_start:add_end])
             if include_quotes:
-                joined_split.append(''.join(split[add_start:add_end]))
+                joined_split.append(combined)
             else:
-                joined_split.append(''.join(split[add_start:add_end])[1:-1])
-            add_start = add_end = -1
+                joined_split.append(combined[1:-1])
+            add_start = -1
+            add_end = -1
 
     if add_start != -1:  # Unclosed quote
         logging.warn("Detected an unclsed quote: " + split[add_start])
@@ -36,7 +39,8 @@ def split_parameters(parameters, include_quotes=False):
     return joined_split
 
 
-def match_blueprint(bot, base, parameters, blueprints, find_index=False):
+def match_blueprint(
+        bot, base, parameters, blueprints, find_index=False, server=None):
     """Matches the given parameters to a valid blueprint.
 
     Returns a tuple of the blueprint index, the dictionary representing the
@@ -60,22 +64,20 @@ def match_blueprint(bot, base, parameters, blueprints, find_index=False):
                 current += 1  # Skip to content
 
             if plan[1].isalpha():  # Option
-                if current >= parameters_length:
-                    not_found = True
-                    break
-                elif parameters[current].lower() == plan[1]:
+                if (current < parameters_length and
+                        parameters[current].lower() == plan[1]):
                     if plan[2] and current + 2 < parameters_length:
                         current_options[plan[1]] = parameters[current + 2]
                         current += 3
-                        matches += 4
+                        matches += 6
                     elif plan[2]:  # Positional argument not found
-                        matches += 2
+                        matches += 3
                         not_found = True
                         break
                     else:
                         current_options[plan[1]] = {}
                         current += 1
-                        matches += 3
+                        matches += 5
                 elif plan[0]:  # Optional option
                     matches += 1
                 else:  # Option not found
@@ -114,14 +116,15 @@ def match_blueprint(bot, base, parameters, blueprints, find_index=False):
     if find_index:
         return closest_index
     if closest_index == -1:
-        quick_help = commands.usage_reminder(bot, base)
+        quick_help = commands.usage_reminder(bot, base, server=server)
     else:
         closest_index += 1
-        quick_help = commands.usage_reminder(bot, base, index=closest_index)
+        quick_help = commands.usage_reminder(
+            bot, base, index=closest_index, server=server)
     raise BotException(EXCEPTION, "Invalid syntax.", quick_help)
 
 
-def fill_shortcut(bot, shortcut, base, parameters):
+def fill_shortcut(bot, shortcut, base, parameters, server=None):
     """
     Replaces elements in the syntax using the template with the parameters.
     Example:
@@ -140,7 +143,7 @@ def fill_shortcut(bot, shortcut, base, parameters):
                 EXCEPTION,
                 "Shortcut requires no arguments, but some were given.",
                 commands.usage_reminder(
-                    bot, base, index=base_index, shortcut=True))
+                    bot, base, index=base_index, shortcut=True, server=server))
         return syntax
 
     try:
@@ -172,13 +175,13 @@ def fill_shortcut(bot, shortcut, base, parameters):
 
     except:
         reminder = commands.usage_reminder(
-            bot, base, index=base_index, shortcut=True)
+            bot, base, index=base_index, shortcut=True, server=server)
         raise BotException(EXCEPTION, "Invalid shortcut syntax.", reminder)
 
     return syntax
 
 
-def parse(bot, command, base, parameters):
+def parse(bot, command, base, parameters, server=None):
     """Parses the parameters and returns a tuple.
 
     This matches the parameters to a blueprint given by the command.
@@ -188,12 +191,13 @@ def parse(bot, command, base, parameters):
 
     # Substitute shortcuts
     if command.shortcut and base in command.shortcut.bases:
-        filled = fill_shortcut(bot, command.shortcut, base, parameters)
+        filled = fill_shortcut(
+            bot, command.shortcut, base, parameters, server=server)
         return parse(bot, command, command.base, filled)
 
     parameters = split_parameters(parameters)
     blueprint_index, options, arguments = match_blueprint(
-        bot, base, parameters, command.blueprints)
+        bot, base, parameters, command.blueprints, server=server)
 
     return (base, blueprint_index, options, arguments, command.keywords)
 
