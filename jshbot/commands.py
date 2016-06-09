@@ -51,7 +51,6 @@ def get_general_help(bot, server=None, is_owner=False):
 
     for plugin_pair in plugin_pairs:
         visible_commands = []
-        response += '\n***`{}`***\n'.format(plugin_pair[0])
         for command in plugin_pair[1]:
             level = command.elevated_level
             hidden = command.hidden
@@ -66,7 +65,9 @@ def get_general_help(bot, server=None, is_owner=False):
                 description = '[Description not provided]'
             listing.append('\t**`{0}`** -- {1}'.format(
                 command.base, description))
-        response += '\n'.join(sorted(listing)) + '\n'
+        if listing:
+            response += '\n***`{}`***\n'.format(plugin_pair[0])
+            response += '\n'.join(sorted(listing)) + '\n'
 
     response += "\nGet help on a command with `{}help <command>`".format(
         invoker)
