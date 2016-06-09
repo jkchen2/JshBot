@@ -29,7 +29,11 @@ exception_insults = [
     '0xABADBABE 0xFEE1DEAD',
     ':bomb: Sorry, a system error occured.',
     ':bomb: :bomb: :bomb: :bomb:',
-    'But... the future refused to be awaited.'
+    'But... the future refused to be awaited.',
+    'So... cold...',
+    'Yup. Jsh is still awful at Python.',
+    'Yeah, I was a mistake.',
+    'Maybe it won\'t happen next time! *Right...?*'
 ]
 
 
@@ -37,7 +41,7 @@ class Bot(discord.Client):
 
     def __init__(self, start_file, debug):
         self.version = '0.3.0-alpha'
-        self.date = 'June 5th, 2016'
+        self.date = 'June 8th, 2016'
         self.time = int(time.time())
         self.readable_time = time.strftime('%c')
         self.debug = debug
@@ -59,8 +63,8 @@ class Bot(discord.Client):
 
         logging.debug("Loading plugins and commands...")
         self.commands = {}
-        self.manual = {}
-        self.plugins = plugins.get_plugins(self)
+        self.plugins = {}
+        plugins.add_plugins(self)
 
         logging.debug("Setting up data...")
         self.data = {'global_users': {}, 'global_plugins': {}}
@@ -73,7 +77,7 @@ class Bot(discord.Client):
         # Extras
         config = self.configurations['core']
         self.edit_dictionary = {}
-        self.spam_dictionary = {}  # Consider using defaultdict
+        self.spam_dictionary = {}
         self.spam_limit = config['command_limit']
         self.spam_timeout = config['command_limit_timeout']
         self.command_invokers = config['command_invokers']
@@ -116,10 +120,24 @@ class Bot(discord.Client):
     def get_token(self):
         return self.configurations['core']['token']
 
-    def usage_reminder(self, base):
-        """Uses the base module to get the usage reminder for a command."""
-        base_module = self.plugins['base'][0]
-        return base_module.get_usage_reminder(self, base)
+    def get_invoker(self, server=None):
+        """Gets a suitable command invoker for the bot.
+
+        If a server is specified, this will check for a custom invoker and
+        whether or not mention mode is enabled.
+        """
+        if server is not None:
+            server_data = data.get(
+                self, 'base', None, server_id=server.id, default={})
+            if server_data.get('mention_mode', False):
+                invoker = '{} '.format(server.me.display_name)
+            else:
+                invoker = server_data.get('command_invoker', None)
+        else:
+            invoker = None
+        if invoker is None:
+            invoker = self.command_invokers[0]
+        return invoker
 
     def can_respond(self, message):
         """Determines whether or not the bot can respond.
@@ -182,19 +200,21 @@ class Bot(discord.Client):
                 return None
 
         # Respond to direct messages
-        if message.channel.is_private:
-            return content
-
         author_id = message.author.id
+        is_owner = author_id in self.owners
+        if message.channel.is_private:
+            return (content, False, False, is_owner)
+
+        is_mod = author_id in server_data.get('moderators', [])
+        is_admin = author_id == message.server.owner.id
+        result = (content, is_mod, is_admin, is_owner)
 
         try:
             # Owners/moderators override everything
             # This is faster than calling the function in jshbot.data
             channel_id = message.channel.id
-            if (author_id in self.owners or
-                    author_id in server_data.get('moderators', []) or
-                    author_id == message.server.owner.id):
-                return content
+            if is_mod or is_admin or is_owner:
+                return result
             # Server/channel muted, or user is blocked
             if (server_data.get('muted', False) or
                     (channel_id in server_data.get('muted_channels', [])) or
@@ -205,30 +225,32 @@ class Bot(discord.Client):
             data.check_all(self)
             return None  # Don't recurse for safety
 
-        return content  # Clear to respond
+        return result  # Clear to respond
 
     async def on_message(self, message, replacement_message=None):
         plugins.broadcast_event(self, 2, message)
 
         # Ensure bot can respond properly
         try:
-            content = self.can_respond(message)
+            initial_data = self.can_respond(message)
         except Exception as e:  # General error
             logging.error(e)
             traceback.print_exc()
             self.last_exception = e
             return
-        if not content:
+        if not initial_data:
             return
 
         # Ensure command is valid
+        content = initial_data[0]
         split_content = content.split(' ', 1)
         if len(split_content) == 1:  # No spaces
             split_content.append('')
         base, parameters = split_content
         base = base.lower()
-        command_pair, shortcut = commands.get_command_pair(self, base)
-        if not command_pair:  # Suitable command not found
+        try:
+            command = self.commands[base]
+        except KeyError:
             logging.debug("Suitable command not found: " + base)
             return
 
@@ -253,10 +275,11 @@ class Bot(discord.Client):
         # Parse command and reply
         try:
             logging.debug(message.author.name + ': ' + message.content)
-            parsed_command = parser.parse(
-                    self, base, parameters, command_pair, shortcut)
-            logging.debug('\t' + str(parsed_command))
-            response = await (commands.execute(self, message, parsed_command))
+            parsed_input = parser.parse(self, command, base, parameters)
+            logging.debug('\t' + str(parsed_input))
+            print(parsed_input)  # Temp
+            response = await (commands.execute(
+                self, message, command, parsed_input, initial_data))
         except BotException as e:  # Respond with error message
             response = (str(e), False, 0, None)
         except Exception as e:  # General error
