@@ -59,10 +59,6 @@ def get_commands():
             ('unblock ^', 'unblock <user>', 'Unblocks the user from '
              'interacting with the bot.'),
             ('clear', 'clear', 'Pushes chat upwards.'),
-            ('add ^', 'add <user>', 'Adds the user to the moderators list. '
-             'This command is for server owners only.'),
-            ('remove ^', 'remove <user>', 'Removes the user from the '
-             'moderators list. This command is for server owners only.'),
             ('mute &', 'mute (<channel>)', 'Mutes the given channel. If no '
              'channel is specified, this mutes the bot for the server.'),
             ('unmute &', 'unmute (<channel>)', 'Unmutes the given channel. If '
@@ -78,6 +74,17 @@ def get_commands():
 
     new_commands.append(Command(
         'owner', SubCommands(
+            ('addmod ^', 'addmod <user>', 'Adds the user to the moderators '
+             'list. Use responsibly.'),
+            ('removemod ^', 'removemod <user>', 'Removes the user from the '
+             'moderators list.'),
+            ('notifications', 'notifications', 'Toggles notifications from '
+             'the bot regarding moderation events (such as muting channels '
+             'and banning users).')),
+        description='Commands for server owners.', elevated_level=2))
+
+    new_commands.append(Command(
+        'botowner', SubCommands(
             ('halt', 'halt', 'Shuts down the bot.'),
             ('restart', 'restart', 'Restarts the bot.'),
             ('ip', 'ip', 'Gets the local IP address of the bot.'),
@@ -144,7 +151,7 @@ async def base_wrapper(
         else:
             server = None
         if blueprint_index == 3:  # Detailed
-            if len(arguments) == 2:
+            if len(arguments) == 2 and arguments[1]:
                 topic = arguments[1]
             else:
                 topic = None
@@ -199,6 +206,7 @@ async def base_wrapper(
 
 async def mod_wrapper(bot, message, blueprint_index, options, arguments):
     response = ''
+    mod_action = ''
 
     if blueprint_index == 0:  # info
         server_data = data.get(
@@ -225,6 +233,9 @@ async def mod_wrapper(bot, message, blueprint_index, options, arguments):
     elif blueprint_index in (1, 2):  # block or unblock
         user = data.get_member(bot, arguments[0], message.server)
         block = blueprint_index == 1
+        mod_action = 'Blocked {}' if block else 'Unblocked {}'
+        mod_action = mod_action.format(
+            '{0.name}#{0.discriminator} ({0.id})'.format(user))
         blocked = data.is_blocked(
             bot, message.server, user.id, strict=True)
         mod = data.is_mod(bot, message.server, user.id)
@@ -270,49 +281,16 @@ async def mod_wrapper(bot, message, blueprint_index, options, arguments):
             "No time to delete!"])
         response += '```\n'
 
-    elif blueprint_index in (4, 5):  # add or remove moderator
-        if not data.is_admin(bot, message.server, message.author.id):
-            raise BotException(
-                EXCEPTION, "You must be the server owner to use these "
-                "commands.")
-        else:
-            user_id = data.get_member(
-                bot, arguments[0], server=message.server, attribute='id')
-            user_is_mod = data.is_mod(
-                bot, message.server, user_id, strict=True)
-            user_is_elevated = data.is_mod(bot, message.server, user_id)
-            blocked = data.is_blocked(
-                bot, message.server, user_id, strict=True)
-            if blocked:
-                response = "User is blocked."
-            elif blueprint_index == 4:  # add
-                if user_is_mod or user_is_elevated:
-                    raise BotException(
-                        EXCEPTION, "User is already a moderator.")
-                else:
-                    data.list_data_append(
-                        bot, 'base', 'moderators',
-                        user_id, server_id=message.server.id)
-                    response = "User is now a moderator."
-            else:  # remove
-                if not user_is_mod:
-                    raise BotException(
-                        EXCEPTION, "User is not in the moderators list.")
-                else:
-                    data.list_data_remove(
-                        bot, 'base', 'moderators',
-                        user_id, server_id=message.server.id)
-                    response = "User is no longer a moderator."
-
-    elif blueprint_index in (6, 7):  # mute or unmute
+    elif blueprint_index in (4, 5):  # mute or unmute
         server_id = message.server.id
-        mute = blueprint_index == 6
+        mute = blueprint_index == 4
+        mod_action = 'Muted {}' if mute else 'Unmuted {}'
 
         if arguments[0]:
-            channel_id = data.get_channel(
-                bot, arguments[0], message.server, attribute='id')
+            channel = data.get_channel(bot, arguments[0], message.server)
             muted = message.channel.id in data.get(
                 bot, 'base', 'muted_channels', server_id=server_id, default=[])
+            mod_action = mod_action.format(channel.name)
             if mute:
                 if muted:
                     raise BotException(
@@ -320,7 +298,7 @@ async def mod_wrapper(bot, message, blueprint_index, options, arguments):
                 else:
                     data.list_data_append(
                         bot, 'base', 'muted_channels',
-                        channel_id, server_id=server_id)
+                        channel.id, server_id=server_id)
                     response = "Channel muted."
             else:  # unmute
                 if not muted:
@@ -329,10 +307,11 @@ async def mod_wrapper(bot, message, blueprint_index, options, arguments):
                 else:
                     data.list_data_remove(
                         bot, 'base', 'muted_channels',
-                        channel_id, server_id=server_id)
+                        channel.id, server_id=server_id)
                     response = "Channel unmuted."
 
         else:  # server
+            mod_action = mod_action.format('the server')
             muted = data.get(
                 bot, 'base', 'muted',
                 server_id=server_id, default=False)
@@ -344,7 +323,7 @@ async def mod_wrapper(bot, message, blueprint_index, options, arguments):
                 data.add(bot, 'base', 'muted', mute, server_id=server_id)
                 response = "Server {}muted.".format('' if mute else 'un')
 
-    elif blueprint_index == 8:  # invoker
+    elif blueprint_index == 6:  # invoker
         if len(arguments[0]) > 10:
             raise BotException(
                 EXCEPTION,
@@ -355,8 +334,15 @@ async def mod_wrapper(bot, message, blueprint_index, options, arguments):
             server_id=message.server.id)
         response = "Custom command invoker {}.".format(
                 'set' if arguments[0] else 'cleared')
+        if arguments[0]:
+            response = "Custom command invoker set."
+            mod_action = "Set the server command invoker to '{}'.".format(
+                arguments[0])
+        else:
+            response = "Custom command invoker cleared."
+            mod_action = "Removed the custom command invoker."
 
-    elif blueprint_index == 9:  # mention
+    elif blueprint_index == 7:  # mention
         current_mode = data.get(
             bot, 'base', 'mention_mode',
             server_id=message.server.id, default=False)
@@ -365,11 +351,98 @@ async def mod_wrapper(bot, message, blueprint_index, options, arguments):
             server_id=message.server.id)
         response = "Mention mode {}activated.".format(
             'de' if current_mode else '')
+        mod_action = "{}activated mention mode.".format(
+            'de' if current_mode else '').capitalize()
+
+    # Send notification if configured
+    send_notifications = data.get(
+        bot, 'base', 'notifications',
+        server_id=message.server.id, default=True)
+    if mod_action and send_notifications:
+        if message.edited_timestamp:
+            timestamp = message.edited_timestamp
+        else:
+            timestamp = message.timestamp
+        notification = ('Moderator {0.name}#{0.discriminator} ({0.id}) '
+                        'from {0.server} on {1}:\n\t{2}').format(
+                            message.author, timestamp, mod_action)
+        logs = await utilities.get_log_text(
+            bot, message.channel, limit=20, before=message)
+        logs += '\n{}'.format(utilities.get_formatted_message(message))
+        await bot.send_message(message.server.owner, notification)
+        await utilities.send_text_as_file(
+            bot, message.server.owner, logs, 'context')
 
     return response
 
 
 async def owner_wrapper(bot, message, blueprint_index, options, arguments):
+    response = ''
+    mod_action = ''
+
+    if blueprint_index in (0, 1):  # add or remove moderator
+        user = data.get_member(bot, arguments[0], server=message.server)
+        user_is_mod = data.is_mod(
+            bot, message.server, user.id, strict=True)
+        user_is_elevated = data.is_mod(bot, message.server, user.id)
+        blocked = data.is_blocked(
+            bot, message.server, user.id, strict=True)
+        mod_action = 'Added {}' if blueprint_index == 0 else 'Removed {}'
+        mod_action = mod_action.format(
+            '{0.name}#{0.discriminator} ({0.id}) as a moderator'.format(user))
+        if blocked:
+            raise BotException(EXCEPTION, "User is blocked.")
+        elif blueprint_index == 0:  # add
+            if user_is_mod or user_is_elevated:
+                raise BotException(
+                    EXCEPTION, "User is already a moderator.")
+            else:
+                data.list_data_append(
+                    bot, 'base', 'moderators',
+                    user.id, server_id=message.server.id)
+                response = "User is now a moderator."
+        else:  # remove
+            if not user_is_mod:
+                raise BotException(
+                    EXCEPTION, "User is not in the moderators list.")
+            else:
+                data.list_data_remove(
+                    bot, 'base', 'moderators',
+                    user.id, server_id=message.server.id)
+                response = "User is no longer a moderator."
+
+    elif blueprint_index == 2:  # toggle notifications
+        send_notifications = data.get(
+            bot, 'base', 'notifications',
+            server_id=message.server.id, default=True)
+        response = "Moderator activity notifications are now turned {}".format(
+            "OFF." if send_notifications else "ON.")
+        data.add(
+            bot, 'base', 'notifications', not send_notifications,
+            server_id=message.server.id)
+
+    # Send notification if configured
+    send_notifications = data.get(
+        bot, 'base', 'notifications',
+        server_id=message.server.id, default=True)
+    if mod_action and send_notifications:
+        if message.edited_timestamp:
+            timestamp = message.edited_timestamp
+        else:
+            timestamp = message.timestamp
+        notification = 'From {0.server} on {1}, you:\n\t{2}'.format(
+            message.author, timestamp, mod_action)
+        logs = await utilities.get_log_text(
+            bot, message.channel, limit=20, before=message)
+        logs += '\n{}'.format(utilities.get_formatted_message(message))
+        await bot.send_message(message.server.owner, notification)
+        await utilities.send_text_as_file(
+            bot, message.server.owner, logs, 'context')
+
+    return response
+
+
+async def botowner_wrapper(bot, message, blueprint_index, options, arguments):
     response = ''
 
     if blueprint_index == 0:  # halt
@@ -511,6 +584,10 @@ async def get_response(
 
     elif base == 'owner':
         response = await owner_wrapper(
+            bot, message, blueprint_index, options, arguments)
+
+    elif base == 'botowner':
+        response = await botowner_wrapper(
             bot, message, blueprint_index, options, arguments)
 
     elif base == 'debug':

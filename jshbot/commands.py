@@ -1,4 +1,4 @@
-from jshbot import parser
+from jshbot import parser, utilities
 from jshbot.exceptions import BotException, ErrorTypes
 
 EXCEPTION = 'Commands'
@@ -43,7 +43,7 @@ class Shortcuts():
 def get_general_help(bot, server=None, is_owner=False):
     """Gets the general help. Lists all base commands that aren't shortcuts."""
     response = "Here is a list of commands by plugin:\n"
-    invoker = bot.get_invoker(server=server)
+    invoker = utilities.get_invoker(bot, server=server)
     plugin_pairs = []
     for plugin_name, plugin in bot.plugins.items():
         plugin_pairs.append((plugin_name, plugin[1]))
@@ -90,7 +90,8 @@ def get_help(bot, base, topic=None, is_owner=False, server=None):
     if command.shortcut and base in command.shortcut.bases:
         shortcut_index = command.shortcut.bases.index(base)
         return usage_reminder(
-            bot, base, index=shortcut_index, shortcut=True, is_owner=is_owner)
+            bot, base, index=shortcut_index, shortcut=True,
+            is_owner=is_owner, server=server)
 
     # Handle specific topic help
     if topic is not None:
@@ -99,12 +100,15 @@ def get_help(bot, base, topic=None, is_owner=False, server=None):
         except:
             guess = parser.guess_index(bot, '{0} {1}'.format(base, topic))
             topic_index = None if guess[1] == -1 else guess[1] + 1
-            return get_help(bot, base, topic=topic_index, is_owner=is_owner)
-        return usage_reminder(bot, base, index=topic_index)
+            return get_help(
+                bot, base, topic=topic_index, is_owner=is_owner, server=server)
+        return usage_reminder(bot, base, index=topic_index, server=server)
 
     response = ''
+    invoker = utilities.get_invoker(bot, server=server)
     if command.description:
-        response += 'Description:\n\t{}\n\n'.format(command.description)
+        response += 'Description:\n\t{}\n\n'.format(
+            command.description.format(invoker=invoker))
     response += usage_reminder(
         bot, base, monospace=False, is_owner=is_owner, server=server) + '\n'
     if command.shortcut:
@@ -112,7 +116,8 @@ def get_help(bot, base, topic=None, is_owner=False, server=None):
             bot, base, monospace=False, shortcut=True,
             is_owner=is_owner, server=server) + '\n'
     if command.other:
-        response += 'Other information:\n\t{}'.format(command.other)
+        response += 'Other information:\n\t{}'.format(
+            command.other.format(invoker=invoker))
 
     return '```\n{}```'.format(response)
 
@@ -135,7 +140,7 @@ def usage_reminder(
         if base in command.shortcut.bases:
             base = command.base
         command = command.shortcut
-    invoker = bot.get_invoker(server=server)
+    invoker = utilities.get_invoker(bot, server=server)
 
     if index is None:
         if shortcut:

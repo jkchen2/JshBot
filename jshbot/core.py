@@ -111,33 +111,8 @@ class Bot(discord.Client):
                     "Channel {} could not be found.".format(channel_id))
         asyncio.ensure_future(self.send_message(channel, message))
 
-    async def notify_owners(self, message):
-        """Sends all owners a direct message with the given text."""
-        for owner in self.owners:
-            member = data.get_member(self, owner)
-            await self.send_message(member, message)
-
     def get_token(self):
         return self.configurations['core']['token']
-
-    def get_invoker(self, server=None):
-        """Gets a suitable command invoker for the bot.
-
-        If a server is specified, this will check for a custom invoker and
-        whether or not mention mode is enabled.
-        """
-        if server is not None:
-            server_data = data.get(
-                self, 'base', None, server_id=server.id, default={})
-            if server_data.get('mention_mode', False):
-                invoker = '{} '.format(server.me.display_name)
-            else:
-                invoker = server_data.get('command_invoker', None)
-        else:
-            invoker = None
-        if invoker is None:
-            invoker = self.command_invokers[0]
-        return invoker
 
     def can_respond(self, message):
         """Determines whether or not the bot can respond.
@@ -366,15 +341,6 @@ class Bot(discord.Client):
                 insult = random.choice(exception_insults)
                 error = '{0}\n`{1}: {2}`'.format(insult,  type(e).__name__, e)
                 await self.edit_message(message_reference, error)
-
-    async def send_text_as_file(self, channel, text, filename):
-        """Sends the given text as a text file."""
-        if not filename:
-            raise BotException(EXCEPTION, "Filename is empty.")
-        file_location = '{0}/temp/{1}.txt'.format(self.path, filename)
-        with open(file_location, 'w') as text_file:
-            text_file.write(text)
-        await self.send_file(channel, file_location)
 
     async def on_ready(self):
         # Make sure server data is ready
