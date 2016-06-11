@@ -69,13 +69,19 @@ def set_player(bot, server_id, player):
         server_id=server_id, volatile=True)
 
 
-async def join_and_ready(bot, voice_channel, server, include_player=False):
+async def join_and_ready(
+        bot, voice_channel, server, include_player=False, is_mod=False):
     """Joins the voice channel and stops any player if it exists.
 
     Returns the voice_client object from bot.join_voice_channel.
     If include_player is True, this will return a tuple of both the voice
     client and the player (None if not found).
     """
+    muted = voice_channel.id in data.get(
+        bot, 'base', 'muted_channels', server_id=server.id, default=[])
+    if muted and not is_mod:
+        raise BotException(
+            EXCEPTION, "The bot is muted in this voice channel.")
     if not bot.is_voice_connected(server):
         try:
             voice_client = await bot.join_voice_channel(voice_channel)
@@ -99,6 +105,31 @@ async def join_and_ready(bot, voice_channel, server, include_player=False):
         return (voice_client, player)
     else:
         return voice_client
+
+
+async def leave_and_stop(bot, server, member=None, safe=True):
+    """Leaves any voice channel in the given server and stops any players.
+
+    Keyword arguments:
+    channel -- Checks that the the bot is connected to the member's
+        voice channel. The safe option overrides this.
+    safe -- Prevents exceptions from being thrown. Can be seen as 'silent'.
+    """
+    player = get_player(bot, server.id)
+    if player is not None and player.is_playing():
+        player.stop()
+
+    voice_client = bot.voice_client_in(server)
+    if not voice_client:
+        if not safe:
+            raise BotException(
+                EXCEPTION, "Bot not connected to a voice channel.")
+    elif member and voice_client.channel != member.voice_channel:
+        if not safe:
+            raise BotException(
+                EXCEPTION, "Bot not connected to your voice channel.")
+    else:
+        await voice_client.disconnect()
 
 
 def get_formatted_message(message):

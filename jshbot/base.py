@@ -191,19 +191,13 @@ async def base_wrapper(
         try:
             if blueprint_index == 6:
                 await utilities.join_and_ready(
-                    bot, voice_channel, message.server)
+                    bot, voice_channel, message.server,
+                    is_mod=data.is_mod(bot, message.server, message.author.id))
                 response = "Joined {}.".format(voice_channel.name)
             else:
-                voice_client = bot.voice_client_in(message.server)
-                if not voice_client:
-                    raise BotException(
-                        EXCEPTION, "Bot not connected to a voice channel.")
-                elif voice_client.channel != message.author.voice_channel:
-                    raise BotException(
-                        EXCEPTION, "Bot not connected to your voice channel.")
-                else:
-                    await voice_client.disconnect()
-                    response = "Left {}.".format(voice_channel.name)
+                await utilities.leave_and_stop(
+                    bot, message.server, member=message.author, safe=False)
+                response = "Left {}.".format(voice_channel.name)
         except BotException as e:
             raise e  # Pass up
         except Exception as e:
@@ -336,6 +330,8 @@ async def mod_wrapper(bot, message, blueprint_index, options, arguments):
                     data.list_data_append(
                         bot, 'base', 'muted_channels',
                         channel.id, server_id=server_id)
+                    if channel.type == 'voice':  # Disconnect
+                        await utilities.leave_and_stop(bot, message.server)
                     response = "Channel muted."
             else:  # unmute
                 if not muted:

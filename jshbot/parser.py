@@ -151,16 +151,17 @@ def fill_shortcut(bot, shortcut, base, parameters, server=None):
 
     try:
         current = 0
+        to_add = []
         for argument_type in template:
             while (current < parameters_length and
                     parameters[current].isspace()):
                 current += 1
 
             if argument_type == ':':
-                syntax = syntax.format(parameters[current])
+                to_add.append(parameters[current])
 
             elif argument_type in ('&', '#'):
-                syntax = syntax.format(''.join(parameters[current:]))
+                to_add.append(''.join(parameters[current:]))
 
             elif argument_type in ('^', '+'):
                 if len(parameters[current:]) == 1 and argument_type == '^':
@@ -172,10 +173,11 @@ def fill_shortcut(bot, shortcut, base, parameters, server=None):
                 else:
                     combined = ''.join(parameters[current:])
                 assert combined
-                syntax = syntax.format(combined)
+                to_add.append(combined)
 
             current += 1
 
+        syntax = syntax.format(*to_add)
     except:
         reminder = commands.usage_reminder(
             bot, base, index=base_index, shortcut=True, server=server)
