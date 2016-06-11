@@ -330,7 +330,7 @@ async def mod_wrapper(bot, message, blueprint_index, options, arguments):
                     data.list_data_append(
                         bot, 'base', 'muted_channels',
                         channel.id, server_id=server_id)
-                    if channel.type == 'voice':  # Disconnect
+                    if str(channel.type) == 'voice':  # Disconnect
                         await utilities.leave_and_stop(bot, message.server)
                     response = "Channel muted."
             else:  # unmute

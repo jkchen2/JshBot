@@ -227,7 +227,7 @@ class Bot(discord.Client):
             parsed_input = parser.parse(
                 self, command, base, parameters, server=message.server)
             logging.debug('\t' + str(parsed_input))
-            print(parsed_input)  # Temp
+            print(parsed_input[:-1])  # Temp
             response = await (commands.execute(
                 self, message, command, parsed_input, initial_data))
         except BotException as e:  # Respond with error message
