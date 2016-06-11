@@ -85,10 +85,10 @@ def match_blueprint(
                     break
 
             elif current < parameters_length:  # Regular argument
+                matches += 1
                 if plan[1] == ':':
                     current_arguments.append(parameters[current])
                     current += 1
-                    matches += 1
                 elif plan[1] in ('+', '#'):  # Instant finish
                     current_arguments += filter(
                         lambda c: not c.isspace(), parameters[current:])
@@ -105,17 +105,20 @@ def match_blueprint(
                 break
 
         if not_found or current < parameters_length:
-            if matches > closest_index_matches:
+            if matches >= closest_index_matches:
                 closest_index = blueprint_index
                 closest_index_matches = matches
         else:
             if find_index:
-                return blueprint_index
+                if matches > closest_index_matches:
+                    return blueprint_index
+                else:
+                    return closest_index
             return (blueprint_index, current_options, current_arguments)
 
     if find_index:
         return closest_index
-    if closest_index == -1:
+    if closest_index == -1 or closest_index_matches <= 1:  # Low confidence
         quick_help = commands.usage_reminder(bot, base, server=server)
     else:
         closest_index += 1
