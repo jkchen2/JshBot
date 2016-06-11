@@ -3,7 +3,6 @@ import discord
 import logging
 import os.path
 import random
-import copy
 import time
 import sys
 import os
@@ -66,7 +65,7 @@ class Bot(discord.Client):
 
         logging.debug("Setting up data...")
         self.data = {'global_users': {}, 'global_plugins': {}}
-        self.volatile_data = copy.deepcopy(self.data)
+        self.volatile_data = {'global_users': {}, 'global_plugins': {}}
         self.data_changed = []
 
         logging.debug("Loading configurations...")

@@ -686,7 +686,7 @@ async def handle_active_message(bot, message_reference, extra):
         logging.debug("Reloading configurations...")
         bot.configurations = {}
         configurations.add_configurations(bot)
-        bot.volatile_data = {}
+        bot.volatile_data = {'global_users': {}, 'global_plugins': {}}
         plugins.broadcast_event(bot, 0)
         await asyncio.sleep(1)
         await bot.edit_message(message_reference, "Reloaded!")
