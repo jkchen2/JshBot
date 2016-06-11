@@ -1,6 +1,8 @@
 import asyncio
 import functools
 import urllib
+import shutil
+import logging
 
 from jshbot import data
 from jshbot.exceptions import BotException
@@ -156,8 +158,25 @@ def get_invoker(bot, server=None):
     return invoker
 
 
-async def notify_owners(bot, message):
-    """Sends all owners a direct message with the given text."""
+async def notify_owners(bot, message, user_id=None):
+    """Sends all owners a direct message with the given text.
+
+    If user_id is specified, this will check that the user is not in the
+    blacklist.
+    """
+    if user_id:
+        blacklist = data.get(bot, 'base', 'blacklist', default=[])
+        if user_id in blacklist:
+            await asyncio.sleep(0.5)
+            return
     for owner in bot.owners:
         member = data.get_member(bot, owner)
         await bot.send_message(member, message)
+
+
+def make_backup(bot):
+    """Makes a backup of the data directory."""
+    logging.debug("Making backup...")
+    shutil.make_archive(
+        '{}/temp/backup'.format(bot.path), 'zip', '{}/data'.format(bot.path))
+    logging.debug("Finished making backup.")
