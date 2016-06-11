@@ -1,4 +1,4 @@
-from jshbot import parser, utilities
+from jshbot import parser, utilities, data
 from jshbot.exceptions import BotException, ErrorTypes
 
 EXCEPTION = 'Commands'
@@ -248,10 +248,14 @@ async def execute(bot, message, command, parsed_input, initial_data):
         if not command.allow_direct:
             raise BotException(
                 EXCEPTION, "Cannot use this command in a direct message.")
-        elif command.elevated_level > 0 and not any(initial_data[3:]):
+        elif 0 < command.elevated_level < 3:
             raise BotException(
                 EXCEPTION, "Special permissions commands cannot be used in "
                 "direct messages.")
+        disabled_commands = []
+    else:
+        disabled_commands = data.get(
+            bot, 'base', 'disabled', server_id=message.server.id, default=[])
 
     if command.elevated_level > 0:
         if command.elevated_level == 1 and not any(initial_data[1:]):
@@ -263,6 +267,10 @@ async def execute(bot, message, command, parsed_input, initial_data):
         elif command.elevated_level >= 3 and not initial_data[3]:
             raise BotException(
                 EXCEPTION, "Only the bot owners can use this command.")
+
+    if command.base in disabled_commands and not any(initial_data[1:]):
+        raise BotException(
+            EXCEPTION, "This command is disabled on this server.")
 
     if command.function:
         given_function = command.function
