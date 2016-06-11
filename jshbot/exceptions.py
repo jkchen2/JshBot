@@ -19,16 +19,14 @@ class BotException(Exception):
         self.error_subject = str(error_subject)
         self.error_details = str(error_details)
         self.error_other = args
-        other_details = ''
-        for detail in args:
-            other_details += '{}\n'.format(detail)
+        other_details = '\n'.join(args)
         self.error_message = "`{subject} error: {details}`\n{others}".format(
             subject=self.error_subject,
             details=self.error_details,
             others=other_details)
         if e:
-            self.error_message += '\nGiven error:\n{0}: {1}'.format(
-                    type(e).__name__, e)
+            self.error_message += '\nGiven error:\n`{0}: {1}`'.format(
+                type(e).__name__, e)
 
         logging.error(self.error_message)
 

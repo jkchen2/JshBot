@@ -8,8 +8,6 @@ import time
 import sys
 import os
 
-import shutil
-
 # Debug
 import traceback
 
@@ -41,18 +39,18 @@ class Bot(discord.Client):
 
     def __init__(self, start_file, debug):
         self.version = '0.3.0-alpha'
-        self.date = 'June 9th, 2016'
+        self.date = 'June 10th, 2016'
         self.time = int(time.time())
         self.readable_time = time.strftime('%c')
         self.debug = debug
 
         if self.debug:
             logging.debug("=== {0: ^40} ===".format(
-                    "Starting up JshBot " + self.version))
+                "Starting up JshBot " + self.version))
             logging.debug("=== {0: ^40} ===".format(self.readable_time))
         else:
             print("=== {0: ^40} ===".format(
-                    "Starting up JshBot " + self.version))
+                "Starting up JshBot " + self.version))
             print("=== {0: ^40} ===".format(self.readable_time))
 
         super().__init__()
@@ -72,7 +70,8 @@ class Bot(discord.Client):
         self.data_changed = []
 
         logging.debug("Loading configurations...")
-        self.configurations = configurations.get_configurations(self)
+        self.configurations = {}
+        configurations.add_configurations(self)
 
         # Extras
         config = self.configurations['core']
@@ -86,30 +85,6 @@ class Bot(discord.Client):
         self.last_exception = None
         self.last_traceback = None
         self.extra = None
-
-    def make_backup(self):
-        """Makes a backup of the data directory."""
-        logging.debug("Making backup...")
-        shutil.make_archive(
-            '{}/temp/backup'.format(self.path), 'zip',
-            '{}/data'.format(self.path))
-        logging.debug("Finished making backup.")
-
-    def interrupt_say(self, channel_id, message, channel=None):
-        """
-        Allows plugins to send messages without having to return directly from
-        get_response. This should mostly be avoided, and just used for errors
-        or other immediately relevant notifications.
-        """
-        if not channel:
-            try:
-                channel = discord.utils.get(
-                    self.get_all_channels(), id=channel_id)
-            except:
-                raise BotException(
-                    EXCEPTION,
-                    "Channel {} could not be found.".format(channel_id))
-        asyncio.ensure_future(self.send_message(channel, message))
 
     def get_token(self):
         return self.configurations['core']['token']

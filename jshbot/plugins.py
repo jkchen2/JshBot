@@ -12,16 +12,13 @@ from jshbot.exceptions import ErrorTypes, BotException
 EXCEPTION = 'Plugins'
 
 
-def add_plugins(bot, purge_commands=False):
+def add_plugins(bot):
     """
     Gets a list of all of the plugins and stores them as a key/value pair of
     the plugin name and the module itself (renamed to plugin for the user).
     In addition, this also sets the commands given by each plugin.
     If purge_commands is set to True, this wipes the existing commands.
     """
-    if purge_commands:
-        bot.commands = {}
-        bot.manual = {}
     directory = '{}/plugins'.format(bot.path)
     try:
         plugins_list = os.listdir(directory)
