@@ -3,8 +3,8 @@ import logging
 import os
 import json
 
-from jshbot.exceptions import BotException
 from jshbot import utilities
+from jshbot.exceptions import BotException
 
 EXCEPTION = 'Data'
 
@@ -244,7 +244,7 @@ def save_data(bot, force=False):
     Does not save volatile_data, though. Backups data if forced.
     """
     if force:
-        bot.make_backup()
+        utilities.make_backup(bot)
 
     if bot.data_changed or force:  # Only save if something changed or forced
         # Loop through keys
@@ -518,4 +518,4 @@ async def add_to_cache(bot, url, name=None, file_location=None):
 def add_server(bot, server):
     """Adds the server to the data dictionary."""
     bot.data[server.id] = {}
-    bot.data_changed = True
+    bot.data_changed.append(server.id)
