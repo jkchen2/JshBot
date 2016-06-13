@@ -10,7 +10,7 @@ from jshbot import data, utilities, commands, plugins, configurations
 from jshbot.commands import Command, SubCommands, Shortcuts
 from jshbot.exceptions import BotException
 
-__version__ = '0.1.7'
+__version__ = '0.1.8'
 EXCEPTION = 'Base'
 uses_configuration = False
 local_dictionary = {}
@@ -24,27 +24,21 @@ def get_commands():
     new_commands = []
 
     new_commands.append(Command(
-        'ping', SubCommands(('&', '(message)', '')),
-        description='Pings the bot for a response'))
+        'ping', SubCommands(
+            ('&', '(<message>)', 'The bot will respond with "Pong!" and the '
+             'given message if it is included.')),
+        description='Pings the bot for a response.'))
 
     new_commands.append(Command(
         'base', SubCommands(
             ('version', 'version', 'Gets the version of the bot.'),
             ('source', 'source', 'Gets the source of the bot.'),
             ('uptime', 'uptime', 'Gets the uptime of the bot.'),
-            ('help ?here :&', 'help (here) <"command"> (<topic>)', 'Gets the '
-             'help of the given command. If a topic index is provided, it '
-             'will get specific help regarding that command. If the \'here\' '
-             'option is specified, this will not send a direct message.'),
-            ('help ?here', 'help (here)', 'Gets the general help text. This '
-             'will list all available help commands to you. If the \'here\' '
-             'option is specified, this will not send a direct message.'),
             ('announcement', 'announcement', 'Gets the current announcement '
              'set by the bot owners.'),
             ('join', 'join', 'Joins the voice channel you are in.'),
             ('leave', 'leave', 'Leaves the voice channel you are in.')),
         shortcuts=Shortcuts(
-            ('help', 'help {}', '&', 'help <arguments>', '<arguments>'),
             ('announcement', 'announcement', '', 'announcement', ''),
             ('join', 'join', '', 'join', ''),
             ('leave', 'leave', '', 'leave', ''),
@@ -118,19 +112,34 @@ def get_commands():
         other='Be careful with these commands! They can break the bot.',
         elevated_level=3))
 
+    new_commands.append(Command(
+        'help', SubCommands(
+            ('manual &', 'manual (<entry number>)', 'Gets the available '
+             'manuals. If an entry number is provided, this will get the '
+             'manual pages for that entry.'),
+            ('?here :&', 'help (here) <"command"> (<topic>)', 'Gets the '
+             'help of the given command. If a topic index is provided, it '
+             'will get specific help regarding that command. If the \'here\' '
+             'option is specified, this will not send a direct message.'),
+            ('?here', '(here)', 'Gets the general help text. This '
+             'will list all available help commands to you. If the \'here\' '
+             'option is specified, this will not send a direct message.')),
+        shortcuts=Shortcuts(
+            ('manual', 'manual {}', '&', 'manual (<entry>)', '(<entry>)')),
+        description='Command help and usage manuals.'))
+
     return new_commands
 
 
 async def base_wrapper(
         bot, message, direct, blueprint_index, options, arguments):
     response = ''
-    message_type = 0
 
     if blueprint_index == 0:  # version
         response = '`{}`\n{}'.format(bot.version, bot.date)
 
     elif blueprint_index == 1:  # source
-        response += random.choice([
+        response = random.choice([
             "It's shit. I'm sorry.",
             "You want to see what the Matrix is like?",
             "Script kiddie level stuff in here.",
@@ -155,41 +164,19 @@ async def base_wrapper(
             "{3} minutes\n{4} seconds").format(
                 bot.readable_time, days, hours, minutes, seconds)
 
-    elif blueprint_index in (3, 4):  # help, detailed or general
-        is_owner = data.is_owner(bot, message.author.id)
-        if 'here' in options:
-            server = message.server
-        else:
-            server = None
-        if blueprint_index == 3:  # Detailed
-            if len(arguments) == 2 and arguments[1]:
-                topic = arguments[1]
-            else:
-                topic = None
-            response = commands.get_help(
-                bot, arguments[0], topic=topic,
-                is_owner=is_owner, server=server)
-        else:  # General
-            response = commands.get_general_help(
-                bot, is_owner=is_owner, server=server)
-        if not direct and 'here' not in options:  # Terminal reminder message
-            await bot.send_message(message.author, response)
-            response = "Check your direct messages!"
-            message_type = 2  # Default 10 seconds
-
-    elif blueprint_index == 5:  # Announcement
+    elif blueprint_index == 3:  # Announcement
         announcement = data.get(bot, 'base', 'announcement')
         if not announcement:
             response = "No announcement right now!"
         else:
             response = announcement
 
-    elif blueprint_index in (6, 7):  # Join/leave voice channel
+    elif blueprint_index in (4, 5):  # Join/leave voice channel
         voice_channel = message.author.voice_channel
         if not voice_channel:
             raise BotException(EXCEPTION, "You are not in a voice channel.")
         try:
-            if blueprint_index == 6:
+            if blueprint_index == 4:
                 await utilities.join_and_ready(
                     bot, voice_channel, message.server,
                     is_mod=data.is_mod(bot, message.server, message.author.id))
@@ -201,12 +188,12 @@ async def base_wrapper(
         except BotException as e:
             raise e  # Pass up
         except Exception as e:
-            action = 'join' if blueprint_index == 6 else 'leave'
+            action = 'join' if blueprint_index == 4 else 'leave'
             raise BotException(
                 EXCEPTION, "Failed to {} the voice channel.".format(action),
                 e=e)
 
-    return (response, message_type)
+    return response
 
 
 async def mod_wrapper(bot, message, blueprint_index, options, arguments):
@@ -630,6 +617,46 @@ async def debug_wrapper(bot, message, blueprint_index, options, arguments):
     return (response, message_type, extra)
 
 
+async def help_wrapper(bot, message, blueprint_index, options, arguments):
+    response = ''
+    message_type = 0
+    extra = None
+    direct = message.channel.is_private
+
+    if blueprint_index == 0:  # manual
+        if arguments[0]:
+            try:
+                entry = int(arguments[0])
+            except:
+                raise BotException(EXCEPTION, "That is not a valid number.")
+        else:
+            entry = None
+        response = commands.get_manual(bot, entry=entry, server=server)
+
+    elif blueprint_index in (1, 2):  # help, detailed or general
+        is_owner = data.is_owner(bot, message.author.id)
+        server = message.server if 'here' in options else None
+        if blueprint_index == 1:  # Detailed
+            if len(arguments) == 2 and arguments[1]:
+                topic = arguments[1]
+            else:
+                topic = None
+            response = commands.get_help(
+                bot, arguments[0], topic=topic,
+                is_owner=is_owner, server=server)
+        else:  # General
+            response = commands.get_general_help(
+                bot, is_owner=is_owner, server=server)
+
+    if not direct and 'here' not in options:  # Terminal reminder message
+        await bot.send_message(message.author, response)
+        response = "Check your direct messages!"
+        message_type = 2
+        extra = (10, message)  # Deletes the given message too
+
+    return (response, message_type, extra)
+
+
 async def get_response(
         bot, message, base, blueprint_index, options, arguments,
         keywords, cleaned_content):
@@ -642,7 +669,7 @@ async def get_response(
             response = 'Pong!'
 
     elif base == 'base':
-        response, message_type = await base_wrapper(
+        response = await base_wrapper(
             bot, message, message.channel.is_private,
             blueprint_index, options, arguments)
 
@@ -660,6 +687,10 @@ async def get_response(
 
     elif base == 'debug':
         response, message_type, extra = await debug_wrapper(
+            bot, message, blueprint_index, options, arguments)
+
+    elif base == 'help':
+        response, message_type, extra = await help_wrapper(
             bot, message, blueprint_index, options, arguments)
 
     else:
@@ -687,6 +718,7 @@ async def handle_active_message(bot, message_reference, extra):
         bot.configurations = {}
         configurations.add_configurations(bot)
         bot.volatile_data = {'global_users': {}, 'global_plugins': {}}
+        data.check_all(bot)
         plugins.broadcast_event(bot, 0)
         await asyncio.sleep(1)
         await bot.edit_message(message_reference, "Reloaded!")
