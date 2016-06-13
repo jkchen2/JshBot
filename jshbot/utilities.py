@@ -79,6 +79,8 @@ async def join_and_ready(
     """
     muted = voice_channel.id in data.get(
         bot, 'base', 'muted_channels', server_id=server.id, default=[])
+    if voice_channel is not None and voice_channel == server.afk_channel:
+        raise BotException(EXCEPTION, "This is the AFK channel.")
     if muted and not is_mod:
         raise BotException(
             EXCEPTION, "The bot is muted in this voice channel.")

@@ -7,9 +7,9 @@ EXCEPTION = 'Configurations'
 
 def add_configurations(bot):
     configurations_list = {}
-    directory = bot.path + '/config'
+    directory = bot.path + '/config/'
     try:
-        with open(directory + '/config.json', 'r') as config_file:
+        with open(directory + 'config.json', 'r') as config_file:
             configurations_list['core'] = json.load(config_file)
     except Exception as e:
         raise BotException(
@@ -17,7 +17,6 @@ def add_configurations(bot):
             "Could not open the core configuration file", e=e,
             error_type=ErrorTypes.STARTUP)
 
-    directory += '/'
     for plugin in bot.plugins:
         try:
             with open(directory + plugin + '.json', 'r') as config_file:
