@@ -10,7 +10,7 @@ import os
 # Debug
 import traceback
 
-from jshbot import configurations, plugins, commands, parser, data
+from jshbot import configurations, plugins, commands, parser, data, utilities
 from jshbot.exceptions import BotException
 
 EXCEPTION = 'Core'
@@ -43,7 +43,7 @@ class Bot(discord.Client):
 
     def __init__(self, start_file, debug):
         self.version = '0.3.0-alpha'
-        self.date = 'June 14th, 2016'
+        self.date = 'June 15th, 2016'
         self.time = int(time.time())
         self.readable_time = time.strftime('%c')
         self.debug = debug
@@ -226,7 +226,7 @@ class Bot(discord.Client):
         # Bot is clear to get response. Send typing to signify
         if not replacement_message:
             typing_task = asyncio.ensure_future(
-                    self.send_typing(message.channel))
+                self.send_typing(message.channel))
         else:
             typing_task = None
 
@@ -266,8 +266,10 @@ class Bot(discord.Client):
         except discord.HTTPException as e:
             self.last_exception = e
             if 'too long' in e.args[0]:
-                message_reference = await self.send_message(
-                    message.channel, "The response is too long.")
+                message_reference = await utilities.send_text_as_file(
+                    self, message.channel, response[0], 'response',
+                    extra="The response is too long. Here is a text file of "
+                    "the contents.")
             else:
                 message_reference = await self.send_message(
                     message.channel, "Huh, I couldn't deliver the message "
