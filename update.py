@@ -5,21 +5,21 @@ from urllib.request import urlretrieve
 # This is a dirty update script that I'm just writing for the ease of updating
 #   files right now. I might write a better one later.
 
-directory = __file__[:__file__.rindex('/')]
+directory = os.path.dirname(os.path.abspath(__file__))
 print("In directory {}".format(directory))
 
 print("Making a backup...")
 backup_directory = directory + '/temp/jshbot_update_backup.zip'
 try:
-    os.remove('~/jshbot_update_backup.zip')
+    os.remove('/tmp/jshbot_update_backup.zip')
 except:
     pass
 try:
     os.remove(backup_directory)
 except:
     pass
-shutil.make_archive('~/jshbot_update_backup', 'zip', directory)
-shutil.move('~/jshbot_update_backup.zip', backup_directory)
+shutil.make_archive('/tmp/jshbot_update_backup', 'zip', directory)
+shutil.move('/tmp/jshbot_update_backup.zip', backup_directory)
 print("Backup made at " + backup_directory + "\n")
 
 print("Downloading files...")
