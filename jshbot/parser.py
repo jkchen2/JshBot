@@ -7,11 +7,22 @@ from jshbot.exceptions import BotException
 EXCEPTION = "Parser"
 
 
-def split_parameters(parameters, include_quotes=False):
+def split_parameters(parameters, include_quotes=False, quote_list=False):
+    """Splits up the given parameters by spaces and quotes.
+
+    Keyword arguments:
+    include_quotes -- The quotes attached to the parameters will be included.
+    quote_list -- Gets a list of indices that represent parameters that were
+        grouped because of quotes.
+    """
 
     if not parameters:
-        return []
+        if quote_list:
+            return ([], [])
+        else:
+            return []
     split = re.split('( +)', parameters)
+    quoted_indices = []
     joined_split = []
     add_start = -1
     add_end = -1
@@ -25,6 +36,7 @@ def split_parameters(parameters, include_quotes=False):
         if add_start == -1:  # Add entry normally
             joined_split.append(entry)
         elif add_end != -1:  # Join entries in quotes
+            quoted_indices.append(len(joined_split))
             combined = ''.join(split[add_start:add_end])
             if include_quotes:
                 joined_split.append(combined)
@@ -36,12 +48,16 @@ def split_parameters(parameters, include_quotes=False):
     if add_start != -1:  # Unclosed quote
         logging.warn("Detected an unclsed quote: " + split[add_start])
         joined_split.append(''.join(split[add_start:index + 1]))
-    return joined_split
+    if quote_list:
+        return (joined_split, quoted_indices)
+    else:
+        return joined_split
 
 
 def match_blueprint(
-        bot, base, parameters, blueprints, find_index=False, server=None):
-    """Matches the given parameters to a valid blueprint.
+        bot, base, parameters, quoted_indices, command,
+        find_index=False, server=None):
+    """Matches the given parameters to a valid blueprint from the command.
 
     Returns a tuple of the blueprint index, the dictionary representing the
     options and the positional arguments, and the list of arguments.
@@ -50,7 +66,7 @@ def match_blueprint(
     closest_index = -1
     closest_index_matches = 0
     parameters_length = len(parameters)
-    for blueprint_index, blueprint in enumerate(blueprints):
+    for blueprint_index, blueprint in enumerate(command.blueprints):
 
         current = 0
         matches = 0
@@ -65,7 +81,8 @@ def match_blueprint(
 
             if plan[1].isalpha():  # Option
                 if (current < parameters_length and
-                        parameters[current].lower() == plan[1]):
+                        parameters[current].lower() == plan[1] and
+                        current not in quoted_indices):
                     if plan[2] and current + 2 < parameters_length:
                         current_options[plan[1]] = parameters[current + 2]
                         current += 3
@@ -105,6 +122,10 @@ def match_blueprint(
                 break
 
         if not_found or current < parameters_length:
+            if matches >= 1 and command.strict and find_index:
+                closest_index = blueprint_index
+                closest_index_matches = 2  # Always get detailed help
+                break
             if matches >= closest_index_matches:
                 closest_index = blueprint_index
                 closest_index_matches = matches
@@ -200,9 +221,9 @@ def parse(bot, command, base, parameters, server=None):
             bot, command.shortcut, base, parameters, server=server)
         return parse(bot, command, command.base, filled)
 
-    parameters = split_parameters(parameters)
+    parameters, quoted_indices = split_parameters(parameters, quote_list=True)
     blueprint_index, options, arguments = match_blueprint(
-        bot, base, parameters, command.blueprints, server=server)
+        bot, base, parameters, quoted_indices, command, server=server)
 
     return (base, blueprint_index, options, arguments, command.keywords)
 
@@ -216,6 +237,6 @@ def guess_index(bot, text):
     base, parameters = split_content
     base = base.lower()
     command = bot.commands[base]
-    parameters = split_parameters(parameters)
+    parameters, quoted_indices = split_parameters(parameters, quote_list=True)
     return (base, match_blueprint(
-        bot, base, parameters, command.blueprints, find_index=True))
+        bot, base, parameters, quoted_indices, command, find_index=True))
