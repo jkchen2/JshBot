@@ -152,7 +152,11 @@ async def base_wrapper(
             "Years down the road, this will all just be a really "
             "embarrassing but funny joke.",
             "Made with ~~love~~ pure hatred.",
-            "At least he's using version control."])
+            "At least he's using version control.",
+            "Yes, I know I'm not very good. Sorry...",
+            "Take it easy on me, okay?",
+            "You're going to groan. A lot.",
+            "You might be better off *not* looking inside."])
         response += ("\nhttps://github.com/jkchen2/JshBot\n"
                      "https://github.com/jkchen2/JshBot-plugins")
 
@@ -237,10 +241,11 @@ async def mod_wrapper(bot, message, blueprint_index, options, arguments):
             command = bot.commands[to_toggle]
         except KeyError:
             raise BotException(EXCEPTION, "Invalid base.")
+
         to_toggle = command.base
-        if to_toggle == 'base':
+        if command.plugin.__name__ == 'jshbot.base':
             raise BotException(
-                EXCEPTION, "The base command cannot be disabled.")
+                EXCEPTION, "The base commands cannot be disabled.")
         pass_in = (bot, 'base', 'disabled', to_toggle)
         pass_in_keywords = {'server_id': message.server.id}
         disabled_commands = data.get(
@@ -259,8 +264,7 @@ async def mod_wrapper(bot, message, blueprint_index, options, arguments):
         user = data.get_member(bot, arguments[0], message.server)
         block = blueprint_index == 2
         mod_action = 'Blocked {}' if block else 'Unblocked {}'
-        mod_action = mod_action.format(
-            '{0.name}#{0.discriminator} ({0.id})'.format(user))
+        mod_action = mod_action.format('{0} ({0.id})'.format(user))
         blocked = data.is_blocked(
             bot, message.server, user.id, strict=True)
         mod = data.is_mod(bot, message.server, user.id)
@@ -371,9 +375,8 @@ async def mod_wrapper(bot, message, blueprint_index, options, arguments):
             timestamp = message.edited_timestamp
         else:
             timestamp = message.timestamp
-        notification = ('Moderator {0.name}#{0.discriminator} ({0.id}) '
-                        'from {0.server} on {1}:\n\t{2}').format(
-                            message.author, timestamp, mod_action)
+        notification = ('Moderator {0} ({0.id}) from {0.server} on {1}:\n\t'
+                        '{2}').format(message.author, timestamp, mod_action)
         logs = await utilities.get_log_text(
             bot, message.channel, limit=20, before=message)
         logs += '\n{}'.format(utilities.get_formatted_message(message))
@@ -400,7 +403,7 @@ async def owner_wrapper(bot, message, blueprint_index, options, arguments):
             bot, message.server, user.id, strict=True)
         mod_action = 'Added {}' if blueprint_index == 0 else 'Removed {}'
         mod_action = mod_action.format(
-            '{0.name}#{0.discriminator} ({0.id}) as a moderator'.format(user))
+            '{0} ({0.id}) as a moderator'.format(user))
         if blocked:
             raise BotException(EXCEPTION, "User is blocked.")
         elif blueprint_index == 0:  # add
@@ -430,8 +433,8 @@ async def owner_wrapper(bot, message, blueprint_index, options, arguments):
             if len(text) > 1500:
                 raise BotException(
                     EXCEPTION, "Whoa! That's a lot of feedback. "
-                    "1500 characters or under, please.")
-            text = ('{0.name}#{0.discriminator} ({0.id}) on {1.timestamp}:'
+                    "1500 characters or fewer, please.")
+            text = ('{0} ({0.id}) on {1.timestamp}:'
                     '\n\t{2}').format(message.author, message, text)
             await utilities.notify_owners(bot, text, user_id=message.author.id)
             response = "Message sent to bot owners."

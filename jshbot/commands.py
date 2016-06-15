@@ -21,7 +21,7 @@ class Command():
         self.strict = strict_syntax
         self.plugin = None  # Added later
 
-        # 1 - mods, 2 - server owners, 3 - bot owners
+        # 1 - bot moderators, 2 - server owners, 3 - bot owners
         self.elevated_level = elevated_level
 
         # Convenience
@@ -116,7 +116,6 @@ def get_general_help(bot, server=None, is_owner=False):
 
 def get_help(bot, base, topic=None, is_owner=False, server=None):
     """Gets the help of the base command, or the topic of a help command."""
-    # Check for shortcut first
     try:
         base = base.lower()
         command = bot.commands[base]
@@ -137,12 +136,13 @@ def get_help(bot, base, topic=None, is_owner=False, server=None):
     if topic is not None:
         try:
             topic_index = int(topic)
-        except:
+        except:  # Guess the help index
             guess = parser.guess_index(bot, '{0} {1}'.format(base, topic))
             topic_index = None if guess[1] == -1 else guess[1] + 1
             return get_help(
                 bot, base, topic=topic_index, is_owner=is_owner, server=server)
-        return usage_reminder(bot, base, index=topic_index, server=server)
+        else:  # Proper index given
+            return usage_reminder(bot, base, index=topic_index, server=server)
 
     response = ''
     invoker = utilities.get_invoker(bot, server=server)
@@ -179,7 +179,7 @@ def usage_reminder(
         command = command.shortcut
     invoker = utilities.get_invoker(bot, server=server)
 
-    if index is None:
+    if index is None:  # List all commands or shortcuts
         if shortcut:
             response = '**Shortcuts**:\n'
         else:
@@ -192,7 +192,7 @@ def usage_reminder(
             else:
                 syntax = syntax if syntax else '[Syntax not provided]'
                 response += '`{0}{1} {2}`\n'.format(invoker, base, syntax)
-    else:
+    else:  # Help on a specific command
         if shortcut:
             syntax, result = command.help[index]
             response = '`{0}{1} {2}`\t→\t`{0}{3} {4}`'.format(
@@ -282,25 +282,23 @@ def add_manuals(bot):
         try:
             with open(directory + plugin + '-manual.json', 'r') as manual_file:
                 loaded_manual = (plugin, json.load(manual_file))
-                if 'entries' not in loaded_manual[1]:
+            if 'entries' not in loaded_manual[1]:
+                raise BotException(
+                    EXCEPTION,
+                    "The manual for plugin {} has no entries.".format(plugin))
+            if 'order' not in loaded_manual[1]:
+                raise BotException(
+                    EXCEPTION,
+                    "The manual for plugin {} has no order.".format(plugin))
+            for entry in loaded_manual[1]['order']:
+                if entry not in loaded_manual[1]['entries']:
                     raise BotException(
-                        EXCEPTION,
-                        "The manual for plugin {} has no entries.".format(
-                            plugin))
-                if 'order' not in loaded_manual[1]:
-                    raise BotException(
-                        EXCEPTION,
-                        "The manual for plugin {} has no order.".format(
-                            plugin))
-                for entry in loaded_manual[1]['order']:
-                    if entry not in loaded_manual[1]['entries']:
-                        raise BotException(
-                            EXCEPTION, "The manual for plugin {0} is missing "
-                            "the entry {1}.".format(plugin, entry))
-                if plugin == 'base':
-                    bot.manuals.append(loaded_manual)
-                else:
-                    manual_order.append(loaded_manual)
+                        EXCEPTION, "The manual for plugin {0} is missing "
+                        "the entry {1}.".format(plugin, entry))
+            if plugin == 'base':
+                bot.manuals.append(loaded_manual)
+            else:
+                manual_order.append(loaded_manual)
         except FileNotFoundError:
             if plugin == 'base':
                 raise BotException(

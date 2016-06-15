@@ -139,10 +139,11 @@ def match_blueprint(
 
     if find_index:
         return closest_index
-    if closest_index == -1 or closest_index_matches <= 1:  # Low confidence
+    if ((closest_index == -1 or closest_index_matches <= 1) and
+            len(command.blueprints) > 1):  # Low confidence
         quick_help = commands.usage_reminder(bot, base, server=server)
     else:
-        closest_index += 1
+        closest_index = 1 if closest_index == -1 else closest_index + 1
         quick_help = commands.usage_reminder(
             bot, base, index=closest_index, server=server)
     raise BotException(EXCEPTION, "Invalid syntax.", quick_help)

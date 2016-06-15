@@ -3,6 +3,7 @@ import functools
 import urllib
 import shutil
 import logging
+import os
 
 from jshbot import data
 from jshbot.exceptions import BotException
@@ -163,12 +164,14 @@ async def get_log_text(bot, channel, **log_arguments):
     return large_text
 
 
-async def send_text_as_file(bot, channel, text, filename):
+async def send_text_as_file(bot, channel, text, filename, extra=None):
     """Sends the given text as a text file."""
     file_location = '{0}/temp/{1}.txt'.format(bot.path, filename)
     with open(file_location, 'w') as text_file:
         text_file.write(text)
-    await bot.send_file(channel, file_location)
+    reference = await bot.send_file(channel, file_location, content=extra)
+    asyncio.ensure_future(future(os.remove, file_location))
+    return reference
 
 
 def get_invoker(bot, server=None):
