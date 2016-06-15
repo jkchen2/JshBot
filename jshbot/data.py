@@ -15,7 +15,6 @@ def check_folders(bot):
     for directory in directories:
         full_path = '{0}/{1}/'.format(bot.path, directory)
         if not os.path.exists(full_path):
-            os.path.crea
             logging.warn("Directory {} is empty.".format(directory))
             os.makedirs(full_path)
 
