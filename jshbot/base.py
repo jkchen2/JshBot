@@ -13,7 +13,7 @@ from jshbot.exceptions import BotException
 __version__ = '0.1.8'
 EXCEPTION = 'Base'
 uses_configuration = False
-local_dictionary = {}
+global_dictionary = {}
 
 
 def get_commands():
@@ -70,10 +70,10 @@ def get_commands():
 
     new_commands.append(Command(
         'owner', SubCommands(
-            ('addmod ^', 'addmod <user>', 'Adds the user to the moderators '
-             'list. Use responsibly.'),
+            ('addmod ^', 'addmod <user>', 'Adds the user to the bot '
+             'moderators list. Use responsibly.'),
             ('removemod ^', 'removemod <user>', 'Removes the user from the '
-             'moderators list.'),
+             'bot moderators list.'),
             ('feedback ^', 'feedback <message>', 'Sends a message to the bot '
              'owners. NOTE: Your user ID will be sent as well. Please use '
              'reasonably.'),
@@ -114,19 +114,23 @@ def get_commands():
 
     new_commands.append(Command(
         'help', SubCommands(
-            ('manual &', 'manual (<entry number>)', 'Gets the available '
-             'manuals. If an entry number is provided, this will get the '
-             'manual pages for that entry.'),
-            ('?here :&', 'help (here) <"command"> (<topic>)', 'Gets the '
+            ('manual ?here ^', 'manual (here) <entry number>', 'Gets the '
+             'given manual entry. It is recommended to read through some of '
+             'the first few pages if you do not understand how the bot '
+             'works.'),
+            ('manual ?here', 'manual (here)', 'Lists the available manual '
+             'entries.'),
+            ('?here :&', 'help (here) <base> (<topic>)', 'Gets the '
              'help of the given command. If a topic index is provided, it '
-             'will get specific help regarding that command. If the \'here\' '
-             'option is specified, this will not send a direct message.'),
+             'will get specific help regarding that command.'),
             ('?here', '(here)', 'Gets the general help text. This '
-             'will list all available help commands to you. If the \'here\' '
-             'option is specified, this will not send a direct message.')),
+             'will list all available commands to you.')),
         shortcuts=Shortcuts(
-            ('manual', 'manual {}', '&', 'manual (<entry>)', '(<entry>)')),
-        description='Command help and usage manuals.'))
+            ('manual', 'manual {}', '&', 'manual (<arguments>)',
+             '(<arguments>)')),
+        description='Command help and usage manuals.',
+        other=('For all of these commands, if the \'here\' option is '
+               'specified, a direct message will not be sent.')))
 
     return new_commands
 
@@ -160,8 +164,8 @@ async def base_wrapper(
         minutes = uptime_struct.tm_min
         seconds = uptime_struct.tm_sec
         response = (
-            "The bot has been on since **{0}**\n{1} days\n{2} hours\n"
-            "{3} minutes\n{4} seconds").format(
+            "The bot has been on since **{0}**\n{1} days, {2} hours, "
+            "{3} minutes, and {4} seconds").format(
                 bot.readable_time, days, hours, minutes, seconds)
 
     elif blueprint_index == 3:  # Announcement
@@ -172,6 +176,9 @@ async def base_wrapper(
             response = announcement
 
     elif blueprint_index in (4, 5):  # Join/leave voice channel
+        if message.channel.is_private:
+            raise BotException(
+                EXCEPTION, "This command cannot be used in direct messages.")
         voice_channel = message.author.voice_channel
         if not voice_channel:
             raise BotException(EXCEPTION, "You are not in a voice channel.")
@@ -278,26 +285,7 @@ async def mod_wrapper(bot, message, blueprint_index, options, arguments):
                 response = "User is now unblocked."
 
     elif blueprint_index == 4:  # clear
-        response = '```\n'
-        for i in range(0, 80):
-            response += '.\n'
-        response += random.choice([
-            "Think twice before scrolling up.",
-            "clear ver {}".format(bot.version),
-            "Can you find the one comma?",
-            "Are people watching? If so, best not to scroll up.",
-            "Don't worry, just censorship doing its thing.",
-            "This is why we can't have nice things.",
-            "The only one who can spam is ME.",
-            "That made me feel a bit queasy...",
-            "We need a better content filter. 18+ checks, maybe?",
-            "You ANIMALS. At least I'm not one.",
-            "Scroll up if you want to be on a list.",
-            "I'll bet the NSA will have a fun time scrolling up.",
-            "So much wasted space...",
-            "This is pretty annoying, huh? Well TOO BAD.",
-            "No time to delete!"])
-        response += '```\n'
+        response = '\n'*80 + "The chat was pushed up by a bot moderator."
 
     elif blueprint_index in (5, 6):  # mute or unmute
         server_id = message.server.id
@@ -531,7 +519,7 @@ async def debug_wrapper(bot, message, blueprint_index, options, arguments):
     response = ''
     message_type = 0
     extra = None
-    global local_dictionary
+    global global_dictionary
 
     if blueprint_index == 0:  # List plugins
         plugins = list(bot.plugins.keys())
@@ -562,7 +550,7 @@ async def debug_wrapper(bot, message, blueprint_index, options, arguments):
         response = "Debug environment local dictionary reset."
 
     elif blueprint_index == 4:  # Exec
-        local_dictionary['message'] = message
+        global_dictionary['message'] = message
 
         # Sanitize input
         arguments = arguments[0]
@@ -570,13 +558,13 @@ async def debug_wrapper(bot, message, blueprint_index, options, arguments):
             arguments = arguments[6:-3]
         else:
             arguments = arguments.strip('`')
-        pass_in = [arguments, {}, local_dictionary]
+        pass_in = [arguments, global_dictionary]
 
         # Check if the previous result should be sent as a file
         if arguments in ('saf', 'file'):
             await utilities.send_text_as_file(
                 bot, message.channel,
-                str(local_dictionary['result']), 'result')
+                str(global_dictionary['result']), 'result')
         else:
             used_exec = False
 
@@ -588,24 +576,24 @@ async def debug_wrapper(bot, message, blueprint_index, options, arguments):
                     try:
                         if arguments.startswith('await '):
                             pass_in[0] = arguments[6:]
-                            local_dictionary['result'] = await eval(*pass_in)
+                            global_dictionary['result'] = await eval(*pass_in)
                         else:
-                            local_dictionary['result'] = eval(*pass_in)
+                            global_dictionary['result'] = eval(*pass_in)
                     except SyntaxError:  # May need to use exec
                         exec(*pass_in)
                         used_exec = True
 
             except Exception as e:
-                local_dictionary['last_traceback'] = traceback.format_exc()
+                global_dictionary['last_traceback'] = traceback.format_exc()
                 response = '`{0}: {1}`'.format(type(e).__name__, e)
 
             else:  # Get response if it exists
                 if used_exec:
                     result = 'Executed.'
-                elif local_dictionary['result'] is None:
+                elif global_dictionary['result'] is None:
                     result = 'Evaluated. (returned None)'
                 else:
-                    result = str(local_dictionary['result'])
+                    result = str(global_dictionary['result'])
                 if len(result) >= 1998:
                     raise BotException(
                         EXCEPTION, "Exec result is too long. (try 'file')")
@@ -622,33 +610,33 @@ async def help_wrapper(bot, message, blueprint_index, options, arguments):
     message_type = 0
     extra = None
     direct = message.channel.is_private
+    is_owner = data.is_owner(bot, message.author.id)
+    server = message.server if 'here' in options else None
 
-    if blueprint_index == 0:  # manual
-        if arguments[0]:
-            try:
-                entry = int(arguments[0])
-            except:
-                raise BotException(EXCEPTION, "That is not a valid number.")
+    if blueprint_index == 0:  # Detailed manual
+        try:
+            entry = int(arguments[0])
+        except:
+            raise BotException(EXCEPTION, "That is not a valid number.")
+        response = commands.get_manual(bot, entry, server=server)
+
+    elif blueprint_index == 1:  # General manual
+        response = commands.get_general_manual(bot, server=server)
+
+    elif blueprint_index == 2:  # Detailed help
+        if len(arguments) == 2 and arguments[1]:
+            topic = arguments[1]
         else:
-            entry = None
-        response = commands.get_manual(bot, entry=entry, server=server)
+            topic = None
+        response = commands.get_help(
+            bot, arguments[0], topic=topic,
+            is_owner=is_owner, server=server)
 
-    elif blueprint_index in (1, 2):  # help, detailed or general
-        is_owner = data.is_owner(bot, message.author.id)
-        server = message.server if 'here' in options else None
-        if blueprint_index == 1:  # Detailed
-            if len(arguments) == 2 and arguments[1]:
-                topic = arguments[1]
-            else:
-                topic = None
-            response = commands.get_help(
-                bot, arguments[0], topic=topic,
-                is_owner=is_owner, server=server)
-        else:  # General
-            response = commands.get_general_help(
-                bot, is_owner=is_owner, server=server)
+    elif blueprint_index == 3:  # General help
+        response = commands.get_general_help(
+            bot, is_owner=is_owner, server=server)
 
-    if not direct and 'here' not in options:  # Terminal reminder message
+    if not direct and server is None:  # Terminal reminder message
         await bot.send_message(message.author, response)
         response = "Check your direct messages!"
         message_type = 2
@@ -713,7 +701,9 @@ async def handle_active_message(bot, message_reference, extra):
         logging.debug("Reloading plugins and commands...")
         bot.commands = {}
         bot.plugins = {}
+        bot.manuals = []
         plugins.add_plugins(bot)
+        commands.add_manuals(bot)
         logging.debug("Reloading configurations...")
         bot.configurations = {}
         configurations.add_configurations(bot)
@@ -726,15 +716,15 @@ async def handle_active_message(bot, message_reference, extra):
 
 def setup_debug_environment(bot):
     """Resets the local dictionary for the debug command."""
-    global local_dictionary
-    local_dictionary = {}
+    global global_dictionary
+    global_dictionary = {}
     import pprint
 
     def say(text):
         calling_locals = inspect.currentframe().f_back.f_locals
         asyncio.ensure_future(bot.send_message(
             calling_locals['message'].channel, str(text)))
-    local_dictionary.update({
+    global_dictionary.update({
         'bot': bot,
         'inspect': inspect,
         'traceback': traceback,
@@ -754,6 +744,24 @@ async def on_server_join(bot, server):
     # Add server to the list
     logging.debug("Joining server")
     data.add_server(bot, server)
+    invoker = utilities.get_invoker(bot)
+    text = (
+        "Hello! You are receiving this notification because this bot was "
+        "added to one of your servers, specifically '{0.name}' (ID: {0.id}). "
+        "If you are aware of this and approve of the addition, feel free to "
+        "continue and use the bot. However, if you did not approve of this "
+        "addition, it is highly recommended you kick or ban this bot as there "
+        "may be potential for users to use the bot to spam. Only users that "
+        "have the administrator permission can add bots to servers. "
+        "Unfortunately, there is no way to track who added the bot.\n\n"
+        "To read more about the functionality and usage of the bot, type "
+        "`{1}manual` to see a list of topics, and `{1}help` to see a list of "
+        "commands. **As a server owner, it is highly recommended that you "
+        "read `{1}manual 5` and `{1}manual 4` for moderating and configuring "
+        "the bot.**\n\nThat's all for now. If you have any questions, please "
+        "refer to the manual, or send the bot owners a message using "
+        "`{1}owner feedback <message>`.").format(server, invoker)
+    await bot.send_message(server.owner, text)
 
 async def on_message_edit(bot, before, after):
     """Integrates with the core to handle edited messages."""
