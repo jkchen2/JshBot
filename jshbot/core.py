@@ -30,7 +30,12 @@ exception_insults = [
     'So... cold...',
     'Yup. Jsh is still awful at Python.',
     'Yeah, I was a mistake.',
-    'Maybe it won\'t happen next time! *Right...?*'
+    'Maybe it won\'t happen next time! *Right...?*',
+    'Darn.',
+    'I... have failed...',
+    'Well, it was worth a shot.',
+    'That one stung a bit.',
+    'Of *course*. Nothing ever works out, does it?'
 ]
 
 
@@ -38,7 +43,7 @@ class Bot(discord.Client):
 
     def __init__(self, start_file, debug):
         self.version = '0.3.0-alpha'
-        self.date = 'June 10th, 2016'
+        self.date = 'June 14th, 2016'
         self.time = int(time.time())
         self.readable_time = time.strftime('%c')
         self.debug = debug
@@ -67,6 +72,10 @@ class Bot(discord.Client):
         self.data = {'global_users': {}, 'global_plugins': {}}
         self.volatile_data = {'global_users': {}, 'global_plugins': {}}
         self.data_changed = []
+
+        logging.debug("Loading manuals...")
+        self.manuals = []
+        commands.add_manuals(self)
 
         logging.debug("Loading configurations...")
         self.configurations = {}
@@ -125,11 +134,11 @@ class Bot(discord.Client):
             if not has_mention_invoker:
                 clean_content = content.lower()
                 has_name_invoker = clean_content.startswith(
-                    self.user.name.lower() + ' ')
+                    self.user.name.lower())
                 if (not has_name_invoker and not message.channel.is_private and
                         message.server.me.nick):
                     has_nick_invoker = clean_content.startswith(
-                        message.server.me.nick.lower() + ' ')
+                        message.server.me.nick.lower())
                     if has_nick_invoker:  # Clean up content (nickname)
                         content = content[len(message.server.me.nick):].strip()
                 else:  # Clean up content (name)
@@ -246,6 +255,7 @@ class Bot(discord.Client):
             typing_task.cancel()
         try:
             if replacement_message:
+                self.extra = replacement_message
                 message_reference = await self.edit_message(
                     replacement_message, response[0])
             elif response[0]:
@@ -281,6 +291,8 @@ class Bot(discord.Client):
         # 0 - normal
         # 1 - permanent
         # 2 - terminal (deletes itself after 'extra' seconds)
+        #   If 'extra' is a tuple of (seconds, message), it will delete
+        #   both the bot response and the given message reference.
         # 3 - active (pass the reference back to the plugin to edit)
         # If message_type is >= 1, do not add to the edit dictionary
 
@@ -294,12 +306,19 @@ class Bot(discord.Client):
                     del self.edit_dictionary[message.id]
 
         elif response[2] == 2:  # Terminal
-            if not response[3]:
-                delay = 10
-            else:
-                delay = int(response[3])
+            delay, extra_message = 10, None
+            if response[3]:
+                if type(response[3]) is tuple:
+                    delay, extra_message = response[3]
+                else:
+                    delay = int(response[3])
             await asyncio.sleep(delay)
             await self.delete_message(message_reference)
+            if extra_message:
+                try:
+                    await self.delete_message(extra_message)
+                except:  # Ignore for permissions errors
+                    pass
 
         elif response[2] == 3:  # Active
             try:
