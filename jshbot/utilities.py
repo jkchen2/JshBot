@@ -91,7 +91,9 @@ async def join_and_ready(
         except Exception as e:
             raise BotException(
                 EXCEPTION, "Failed to join the voice channel.", e=e)
-        player = None
+        player = get_player(bot, server.id)
+        if player is not None and player.is_playing():
+            player.stop()
     else:
         voice_client = bot.voice_client_in(server)
         if voice_client.channel != voice_channel:
@@ -133,6 +135,7 @@ async def leave_and_stop(bot, server, member=None, safe=True):
                 EXCEPTION, "Bot not connected to your voice channel.")
     else:
         await voice_client.disconnect()
+    await asyncio.sleep(0.5)  # god why
 
 
 def get_formatted_message(message):

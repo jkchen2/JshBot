@@ -43,7 +43,7 @@ class Bot(discord.Client):
 
     def __init__(self, start_file, debug):
         self.version = '0.3.0-alpha'
-        self.date = 'June 15th, 2016'
+        self.date = 'June 23rd, 2016'
         self.time = int(time.time())
         self.readable_time = time.strftime('%c')
         self.debug = debug
@@ -246,6 +246,10 @@ class Bot(discord.Client):
             self.last_exception = e
             logging.error(e)
             logging.error(self.last_traceback)
+            await utilities.notify_owners(
+                self, '{0}\n{1}\n{2}\n{3}'.format(
+                    message.content, parsed_input,
+                    self.last_exception, self.last_traceback))
             insult = random.choice(exception_insults)
             error = '{0}\n`{1}: {2}`'.format(insult,  type(e).__name__, e)
             response = (error, False, 0, None)
@@ -279,6 +283,10 @@ class Bot(discord.Client):
             self.last_exception = e
             logging.error(e)
             logging.error(self.last_exception)
+            await utilities.notify_owners(
+                self, '{0}\n{1}\n{2}\n{3}'.format(
+                    message.content, parsed_input,
+                    self.last_exception, self.last_traceback))
             return
 
         # Incremement the spam dictionary entry
