@@ -91,9 +91,6 @@ async def join_and_ready(
         except Exception as e:
             raise BotException(
                 EXCEPTION, "Failed to join the voice channel.", e=e)
-        player = get_player(bot, server.id)
-        if player is not None and player.is_playing():
-            player.stop()
     else:
         voice_client = bot.voice_client_in(server)
         if voice_client.channel != voice_channel:
@@ -102,9 +99,14 @@ async def join_and_ready(
             except Exception as e:
                 raise BotException(
                     EXCEPTION, "Failed to move to the voice channel.", e=e)
-        player = get_player(bot, server.id)
-        if player is not None and player.is_playing():
+
+    player = get_player(bot, server.id)
+    if player is not None:
+        if player.is_playing():
             player.stop()
+        elif not player.is_done():
+            raise BotException(
+                EXCEPTION, "Audio is pending, please try again later.")
 
     if include_player:
         return (voice_client, player)

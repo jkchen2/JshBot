@@ -482,7 +482,11 @@ async def add_to_cache(bot, url, name=None, file_location=None):
             bot, url, include_name=True)
     if name:
         cleaned_name = utilities.get_cleaned_filename(name)
-    download_stat = os.stat(file_location)
+    try:
+        download_stat = os.stat(file_location)
+    except FileNotFoundError:
+        raise BotException(
+            EXCEPTION, "The audio could not be saved. Please try again later.")
     cache_limit = bot.configurations['core']['cache_size_limit'] * 1000 * 1000
     store = cache_limit > 0 and download_stat.st_size < cache_limit / 2
 

@@ -14,6 +14,7 @@ from jshbot import configurations, plugins, commands, parser, data, utilities
 from jshbot.exceptions import BotException
 
 EXCEPTION = 'Core'
+why = None
 
 exception_insults = [
     'Ow.',
@@ -35,7 +36,8 @@ exception_insults = [
     'I... have failed...',
     'Well, it was worth a shot.',
     'That one stung a bit.',
-    'Of *course*. Nothing ever works out, does it?'
+    'Of *course*. Nothing ever works out, does it?',
+    'I yelled at Jsh for you.'
 ]
 
 
@@ -43,7 +45,7 @@ class Bot(discord.Client):
 
     def __init__(self, start_file, debug):
         self.version = '0.3.0-alpha'
-        self.date = 'June 23rd, 2016'
+        self.date = 'June 24th, 2016'
         self.time = int(time.time())
         self.readable_time = time.strftime('%c')
         self.debug = debug
@@ -93,6 +95,7 @@ class Bot(discord.Client):
         self.last_exception = None
         self.last_traceback = None
         self.extra = None
+        self.fresh_boot = True
 
     def get_token(self):
         return self.configurations['core']['token']
@@ -350,6 +353,17 @@ class Bot(discord.Client):
         data.check_all(self)
         data.load_data(self)
 
+        debug_channel = self.get_channel('177337850122076160')
+        if self.fresh_boot and debug_channel is not None:
+            log_file = '{}/logs.txt'.format(self.path)
+            if not os.path.isfile(log_file):
+                await self.send_message(debug_channel, "Started up fresh.")
+            else:
+                await self.send_file(debug_channel, log_file, content="Logs:")
+            self.fresh_boot = False
+        else:
+            await self.send_message(debug_channel, "Reconnected.")
+
         plugins.broadcast_event(self, 0)
 
         if self.debug:
@@ -455,8 +469,21 @@ class Bot(discord.Client):
 
 def initialize(start_file, debug=False):
     if debug:
-        logging.basicConfig(stream=sys.stdout, level=logging.DEBUG)
-    bot = Bot(start_file, debug)
-    bot.run(bot.get_token())
+        import logging.handlers
+        path = os.path.split(os.path.realpath(start_file))[0]
+        log_file = '{}/logs.txt'.format(path)
+        logging.basicConfig(
+                level=logging.DEBUG,
+                handlers=[logging.handlers.RotatingFileHandler(
+                    log_file, maxBytes=500000, backupCount=3)])
+    try:
+        bot = Bot(start_file, debug)
+        bot.run(bot.get_token())
+    except Exception as e:
+        if debug:
+            error_message = '{0}\n{1}'.format(e, traceback.format_exc())
+            with open('{}/error.txt'.format(path), 'w') as error_file:
+                error_file.write(error_message)
+            print("Error file written.")
     logging.error("Bot disconnected. Shutting down...")
     bot.shutdown()
