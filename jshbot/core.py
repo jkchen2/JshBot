@@ -3,6 +3,7 @@ import discord
 import logging
 import os.path
 import random
+import shutil
 import time
 import sys
 import os
@@ -353,16 +354,25 @@ class Bot(discord.Client):
         data.check_all(self)
         data.load_data(self)
 
-        debug_channel = self.get_channel('177337850122076160')
-        if self.fresh_boot and debug_channel is not None:
-            log_file = '{}/logs.txt'.format(self.path)
-            if not os.path.isfile(log_file):
-                await self.send_message(debug_channel, "Started up fresh.")
+        if self.debug:
+            debug_channel = self.get_channel(
+                self.configurations['core']['debug_channel'])
+            if self.fresh_boot and debug_channel is not None:
+                log_file = '{}/last_logs.txt'.format(self.path)
+                error_file = '{}/error.txt'.format(self.path)
+                if not os.path.isfile(log_file):
+                    await self.send_message(debug_channel, "Started up fresh.")
+                else:
+                    await self.send_file(
+                        debug_channel, log_file, content="Logs:")
+                if not os.path.isfile(error_file):
+                    await self.send_message(debug_channel, "No error log.")
+                else:
+                    await self.send_file(
+                        debug_channel, error_file, content="Last error:")
+                self.fresh_boot = False
             else:
-                await self.send_file(debug_channel, log_file, content="Logs:")
-            self.fresh_boot = False
-        else:
-            await self.send_message(debug_channel, "Reconnected.")
+                await self.send_message(debug_channel, "Reconnected.")
 
         plugins.broadcast_event(self, 0)
 
@@ -472,10 +482,12 @@ def initialize(start_file, debug=False):
         import logging.handlers
         path = os.path.split(os.path.realpath(start_file))[0]
         log_file = '{}/logs.txt'.format(path)
+        if os.path.isfile(log_file):
+            shutil.copy2(log_file, '{}/last_logs.txt'.format(path))
         logging.basicConfig(
                 level=logging.DEBUG,
                 handlers=[logging.handlers.RotatingFileHandler(
-                    log_file, maxBytes=500000, backupCount=3)])
+                    log_file, maxBytes=1000000, backupCount=3)])
     try:
         bot = Bot(start_file, debug)
         bot.run(bot.get_token())
