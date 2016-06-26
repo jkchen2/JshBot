@@ -64,23 +64,23 @@ def get_player(bot, server_id):
 
 def set_player(bot, server_id, player):
     """Sets the voice player of the given server."""
-    # TODO: Type check player
     data.add(
         bot, 'base', 'voice_player', player,
         server_id=server_id, volatile=True)
 
 
 async def join_and_ready(
-        bot, voice_channel, server, include_player=False, is_mod=False):
+        bot, voice_channel, include_player=False, is_mod=False):
     """Joins the voice channel and stops any player if it exists.
 
     Returns the voice_client object from bot.join_voice_channel.
     If include_player is True, this will return a tuple of both the voice
     client and the player (None if not found).
     """
+    server = voice_channel.server
     muted = voice_channel.id in data.get(
         bot, 'base', 'muted_channels', server_id=server.id, default=[])
-    if voice_channel is not None and voice_channel == server.afk_channel:
+    if voice_channel == server.afk_channel:
         raise BotException(EXCEPTION, "This is the AFK channel.")
     if muted and not is_mod:
         raise BotException(
@@ -104,7 +104,7 @@ async def join_and_ready(
     if player is not None:
         if player.is_playing():
             player.stop()
-        elif not player.is_done():
+        elif not player.is_done():  # Can this even happen?
             raise BotException(
                 EXCEPTION, "Audio is pending, please try again later.")
 
@@ -118,7 +118,7 @@ async def leave_and_stop(bot, server, member=None, safe=True):
     """Leaves any voice channel in the given server and stops any players.
 
     Keyword arguments:
-    channel -- Checks that the the bot is connected to the member's
+    member -- Checks that the the bot is connected to the member's
         voice channel. The safe option overrides this.
     safe -- Prevents exceptions from being thrown. Can be seen as 'silent'.
     """
@@ -137,7 +137,15 @@ async def leave_and_stop(bot, server, member=None, safe=True):
                 EXCEPTION, "Bot not connected to your voice channel.")
     else:
         await voice_client.disconnect()
-    await asyncio.sleep(0.5)  # god why
+
+
+async def delayed_leave(bot, server, player, delay=60):
+    """Leaves the voice channel associated with the given server.
+
+    This command does nothing if the current player of the server is not the
+    same as the one given.
+    """
+    # TODO: Implement
 
 
 def get_formatted_message(message):
@@ -147,9 +155,7 @@ def get_formatted_message(message):
     else:
         edited = ''
     if message.attachments:
-        urls = []
-        for attachment in message.attachments:
-            urls.append(attachment['url'])
+        urls = [attachment['url'] for attachment in message.attachments]
         attached = ' (attached {})'.format(urls)
     else:
         attached = ''

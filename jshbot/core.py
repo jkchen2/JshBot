@@ -10,6 +10,7 @@ import os
 
 # Debug
 import traceback
+import logging.handlers
 
 from jshbot import configurations, plugins, commands, parser, data, utilities
 from jshbot.exceptions import BotException
@@ -96,7 +97,7 @@ class Bot(discord.Client):
         self.last_exception = None
         self.last_traceback = None
         self.extra = None
-        self.fresh_boot = True
+        self.fresh_boot = None
 
     def get_token(self):
         return self.configurations['core']['token']
@@ -354,6 +355,11 @@ class Bot(discord.Client):
         data.check_all(self)
         data.load_data(self)
 
+        if self.fresh_boot is None:
+            self.fresh_boot = True
+        elif self.fresh_boot:
+            self.fresh_boot = False
+
         if self.debug:
             debug_channel = self.get_channel(
                 self.configurations['core']['debug_channel'])
@@ -370,8 +376,7 @@ class Bot(discord.Client):
                 else:
                     await self.send_file(
                         debug_channel, error_file, content="Last error:")
-                self.fresh_boot = False
-            else:
+            elif debug_channel is not None:
                 await self.send_message(debug_channel, "Reconnected.")
 
         plugins.broadcast_event(self, 0)
@@ -479,7 +484,6 @@ class Bot(discord.Client):
 
 def initialize(start_file, debug=False):
     if debug:
-        import logging.handlers
         path = os.path.split(os.path.realpath(start_file))[0]
         log_file = '{}/logs.txt'.format(path)
         if os.path.isfile(log_file):
