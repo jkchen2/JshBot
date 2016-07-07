@@ -36,7 +36,7 @@ def future(function, *args, **kwargs):
     return loop.run_in_executor(None, function)
 
 
-def get_cleaned_filename(name, limit=200, extension=None):
+def get_cleaned_filename(name, cleaner=False, limit=200, extension=None):
     """Cleans up the filename to a limited set of ASCII characters."""
     if extension:
         extension = '.{}'.format(extension)
@@ -45,12 +45,12 @@ def get_cleaned_filename(name, limit=200, extension=None):
         extension = ''
     cleaned_list = []
     for char in name:
-        num = ord(char)
-        if (48 <= num <= 57 or  # [0-9]
-                65 <= num <= 90 or  # [A-Z]
-                97 <= num <= 122 or  # [a-z]
-                num in (95, 45)):  # Underscore and dash
-            cleaned_list.append(char)
+        if cleaner:  # Does not include underscores or dashes
+            if char.isalnum():
+                cleaned_list.append(char)
+        else:
+            if char.isalnum() or ord(char) in (95, 45):
+                cleaned_list.append(char)
     if len(cleaned_list) > limit:  # Because Windows file limitations
         cleaned_list = cleaned_list[:limit]
     return ''.join(cleaned_list).lower() + extension
