@@ -47,7 +47,7 @@ class Bot(discord.Client):
 
     def __init__(self, start_file, debug):
         self.version = '0.3.0-alpha'
-        self.date = 'June 24th, 2016'
+        self.date = 'July 7th, 2016'
         self.time = int(time.time())
         self.readable_time = time.strftime('%c')
         self.debug = debug
@@ -96,8 +96,8 @@ class Bot(discord.Client):
         self.edit_timeout = config['edit_timeout']
         self.last_exception = None
         self.last_traceback = None
-        self.extra = None
         self.fresh_boot = None
+        self.extra = None
 
     def get_token(self):
         return self.configurations['core']['token']
@@ -473,7 +473,8 @@ class Bot(discord.Client):
 
     def shutdown(self):
         logging.debug("Writing data on shutdown...")
-        self.save_data(force=True)
+        if self.fresh_boot is not None:  # Don't write blank data
+            self.save_data(force=True)
         logging.debug("Closing down!")
         try:
             asyncio.ensure_future(self.logout())

@@ -224,6 +224,14 @@ async def notify_owners(bot, message, user_id=None):
 def make_backup(bot):
     """Makes a backup of the data directory."""
     logging.debug("Making backup...")
+    backup_indices = '{0}/temp/backup{{}}.zip'.format(bot.path)
+    if os.path.isfile(backup_indices.format(5)):
+        os.remove(backup_indices.format(5))
+    for it in range(1, 5):
+        backup_file_from = backup_indices.format(5-it)
+        backup_file_to = backup_indices.format(6-it)
+        if os.path.isfile(backup_file_from):
+            os.rename(backup_file_from, backup_file_to)
     shutil.make_archive(
-        '{}/temp/backup'.format(bot.path), 'zip', '{}/data'.format(bot.path))
+        backup_indices.format(1)[:-4], 'zip', '{}/data'.format(bot.path))
     logging.debug("Finished making backup.")
