@@ -395,10 +395,12 @@ def get_member(
     else:
         raise BotException(
             EXCEPTION, "No server specified for strict user search.")
+
+    # TODO: Check for duplicates
     result = discord.utils.get(members, id=identity)  # No conflict
-    if result is None:  # Potential conflict
+    if result is None:  # Name - potential conflict
         result = discord.utils.get(members, name=identity)
-    if result is None:  # Potentially a lot of conflict
+    if result is None:  # Nickname - potentially a lot of conflict
         result = discord.utils.get(members, nick=identity)
 
     if result:

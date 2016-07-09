@@ -10,7 +10,7 @@ from jshbot import data, utilities, commands, plugins, configurations
 from jshbot.commands import Command, SubCommands, Shortcuts
 from jshbot.exceptions import BotException
 
-__version__ = '0.1.8'
+__version__ = '0.1.9'
 EXCEPTION = 'Base'
 uses_configuration = False
 global_dictionary = {}
@@ -120,6 +120,8 @@ def get_commands():
              'works.'),
             ('manual ?here', 'manual (here)', 'Lists the available manual '
              'entries.'),
+            ('all ?here', 'all (here)', 'Shows all of the commands and '
+             'related help.'),
             ('?here :&', 'help (here) <base> (<topic>)', 'Gets the '
              'help of the given command. If a topic index is provided, it '
              'will get specific help regarding that command.'),
@@ -626,7 +628,33 @@ async def help_wrapper(bot, message, blueprint_index, options, arguments):
     elif blueprint_index == 1:  # General manual
         response = commands.get_general_manual(bot, server=server)
 
-    elif blueprint_index == 2:  # Detailed help
+    elif blueprint_index == 2:  # All help
+        base_list = []
+        for command in bot.commands.values():
+            if command.base not in base_list and not command.hidden:
+                base_list.append(command.base)
+        base_list.sort()
+        help_list = ["Here is a list of all commands:\r\n"]
+        for base_command in base_list:
+            base_usage = commands.usage_reminder(bot, base_command)
+            base_usage = base_usage[base_usage.index('\n') + 1:].replace(
+                '\n', '\r\n').replace('`', '')
+            help_list.append(base_usage[:-2])
+        help_list.append("\r\nHere is all of the help:\r\n")
+        for base_command in base_list:
+            help_list.append('\r\n\r\n# {} #\r\n'.format(base_command))
+            base_help = commands.get_help(bot, base_command)
+            help_list.append(
+                base_help.replace('\n', '\r\n').replace('`', '') + '\r\n')
+            current_help_length = len(bot.commands[base_command].help)
+            for it in range(1, current_help_length + 1):
+                subcommand_help = commands.usage_reminder(
+                    bot, base_command, index=it).replace('`', '')
+                help_list.append(subcommand_help.replace('\n', '\r\n\t'))
+
+        response = '\r\n'.join(help_list)
+
+    elif blueprint_index == 3:  # Detailed help
         if len(arguments) == 2 and arguments[1]:
             topic = arguments[1]
         else:
@@ -635,15 +663,23 @@ async def help_wrapper(bot, message, blueprint_index, options, arguments):
             bot, arguments[0], topic=topic,
             is_owner=is_owner, server=server)
 
-    elif blueprint_index == 3:  # General help
+    elif blueprint_index == 4:  # General help
         response = commands.get_general_help(
             bot, is_owner=is_owner, server=server)
 
     if not direct and server is None:  # Terminal reminder message
-        await bot.send_message(message.author, response)
+        if len(response) > 1800:
+            await utilities.send_text_as_file(
+                bot, message.author, response, 'help')
+        else:
+            await bot.send_message(message.author, response)
         response = "Check your direct messages!"
         message_type = 2
         extra = (10, message)  # Deletes the given message too
+    elif len(response) > 1800:
+        await utilities.send_text_as_file(
+            bot, message.channel, response, 'help')
+        response = ''
 
     return (response, message_type, extra)
 
@@ -768,7 +804,7 @@ async def on_server_join(bot, server):
 
 async def on_message_edit(bot, before, after):
     """Integrates with the core to handle edited messages."""
-    if before.id in bot.edit_dictionary:
+    if before.content != after.content and before.id in bot.edit_dictionary:
         message_reference = bot.edit_dictionary.pop(before.id)
         await bot.on_message(after, replacement_message=message_reference)
 
