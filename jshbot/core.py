@@ -47,7 +47,7 @@ class Bot(discord.Client):
 
     def __init__(self, start_file, debug):
         self.version = '0.3.0-alpha'
-        self.date = 'July 7th, 2016'
+        self.date = 'July 12th, 2016'
         self.time = int(time.time())
         self.readable_time = time.strftime('%c')
         self.debug = debug
@@ -191,8 +191,6 @@ class Bot(discord.Client):
         return result  # Clear to respond
 
     async def on_message(self, message, replacement_message=None):
-        plugins.broadcast_event(self, 2, message)
-
         # Ensure bot can respond properly
         try:
             initial_data = self.can_respond(message)
@@ -379,8 +377,6 @@ class Bot(discord.Client):
             elif debug_channel is not None:
                 await self.send_message(debug_channel, "Reconnected.")
 
-        plugins.broadcast_event(self, 0)
-
         if self.debug:
             logging.debug("=== {0: ^40} ===".format(
                 self.user.name + ' online'))
@@ -390,50 +386,10 @@ class Bot(discord.Client):
         asyncio.ensure_future(self.spam_clear_loop())
         await self.save_loop()
 
-    async def on_error(self, event, *args, **kwargs):
-        plugins.broadcast_event(self, 1, event, *args, **kwargs)
-    async def on_socket_raw_receive(self, msg):
-        plugins.broadcast_event(self, 3, msg)
-    async def on_socket_raw_send(self, payload):
-        plugins.broadcast_event(self, 4, payload)
-    async def on_message_delete(self, message):
-        plugins.broadcast_event(self, 5, message)
-    async def on_message_edit(self, before, after):
-        plugins.broadcast_event(self, 6, before, after)
-    async def on_channel_delete(self, channel):
-        plugins.broadcast_event(self, 7, channel)
-    async def on_channel_create(self, channel):
-        plugins.broadcast_event(self, 8, channel)
-    async def on_channel_update(self, before, after):
-        plugins.broadcast_event(self, 9, before, after)
-    async def on_member_join(self, member):
-        plugins.broadcast_event(self, 10, member)
-    async def on_member_update(self, before, after):
-        plugins.broadcast_event(self, 11, before, after)
-    async def on_server_join(self, server):
-        plugins.broadcast_event(self, 12, server)
-    async def on_server_remove(self, server):
-        plugins.broadcast_event(self, 13, server)
-    async def on_server_update(self, before, after):
-        plugins.broadcast_event(self, 14, before, after)
-    async def on_server_role_create(self, server, role):
-        plugins.broadcast_event(self, 15, server, role)
-    async def on_server_role_delete(self, server, role):
-        plugins.broadcast_event(self, 16, server, role)
-    async def on_server_role_update(self, before, after):
-        plugins.broadcast_event(self, 17, before, after)
-    async def on_server_available(self, server):
-        plugins.broadcast_event(self, 18, server)
-    async def on_server_unavailable(self, server):
-        plugins.broadcast_event(self, 19, server)
-    async def on_voice_state_update(self, before, after):
-        plugins.broadcast_event(self, 20, before, after)
-    async def on_member_ban(self, member):
-        plugins.broadcast_event(self, 21, member)
-    async def on_member_unban(self, server, user):
-        plugins.broadcast_event(self, 22, server, user)
-    async def on_typing(self, channel, user, when):
-        plugins.broadcast_event(self, 23, channel, user, when)
+    # Take advantage of dispatch to intercept all events
+    def dispatch(self, event, *args, **kwargs):
+        super().dispatch(event, *args, **kwargs)
+        plugins.broadcast_event(self, 'on_' + event, *args, **kwargs)
 
     async def spam_clear_loop(self):
         """Loop to clear the spam dictionary periodically."""
