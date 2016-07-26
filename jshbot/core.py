@@ -13,7 +13,7 @@ import traceback
 import logging.handlers
 
 from jshbot import configurations, plugins, commands, parser, data, utilities
-from jshbot.exceptions import BotException
+from jshbot.exceptions import BotException, ErrorTypes
 
 EXCEPTION = 'Core'
 why = None
@@ -47,7 +47,7 @@ class Bot(discord.Client):
 
     def __init__(self, start_file, debug):
         self.version = '0.3.0-alpha'
-        self.date = 'July 12th, 2016'
+        self.date = 'July 26th, 2016'
         self.time = int(time.time())
         self.readable_time = time.strftime('%c')
         self.debug = debug
@@ -92,10 +92,13 @@ class Bot(discord.Client):
         self.spam_limit = config['command_limit']
         self.spam_timeout = config['command_limit_timeout']
         self.command_invokers = config['command_invokers']
-        self.owners = config['owners']
+        self.locked_commands = config['locked_commands']
         self.edit_timeout = config['edit_timeout']
+        self.selfbot = config['selfbot_mode']
+        self.owners = config['owners']
         self.last_exception = None
         self.last_traceback = None
+        self.last_response = None
         self.fresh_boot = None
         self.extra = None
 
@@ -111,7 +114,7 @@ class Bot(discord.Client):
         """
         # Ignore empty messages and messages by bots
         if (not message.content or message.author.bot or
-                message.author.id == self.user.id):
+                message.author.id == self.user.id) and not self.selfbot:
             return None
 
         # Check that the message starts with a valid invoker
@@ -160,6 +163,12 @@ class Bot(discord.Client):
         else:  # Any invoker will do
             if not (has_regular_invoker or has_mention_invoker or
                     has_name_invoker or has_nick_invoker):
+                return None
+
+        if self.selfbot:  # Selfbot check
+            if message.author.id == self.owners[0]:
+                return (content, False, False, True)
+            else:
                 return None
 
         # Respond to direct messages
@@ -221,8 +230,8 @@ class Bot(discord.Client):
             if spam_value == self.spam_limit:
                 self.spam_dictionary[message.author.id] = self.spam_limit + 1
                 await self.send_message(
-                    message.channel, "{}, you appear to be issuing/editing "
-                    "commands too quickly. Please wait {} seconds.".format(
+                    message.channel, "{0}, you appear to be issuing/editing "
+                    "commands too quickly. Please wait {1} seconds.".format(
                         message.author.mention, self.spam_timeout))
             return
 
@@ -230,67 +239,45 @@ class Bot(discord.Client):
         if not replacement_message:
             typing_task = asyncio.ensure_future(
                 self.send_typing(message.channel))
+            edit = None
         else:
             typing_task = None
+            edit = replacement_message
 
         # Parse command and reply
         try:
             logging.debug(message.author.name + ': ' + message.content)
+            parsed_input = None
             parsed_input = parser.parse(
                 self, command, base, parameters, server=message.server)
             logging.debug('\t' + str(parsed_input))
             print(parsed_input[:-1])  # Temp
             response = await (commands.execute(
                 self, message, command, parsed_input, initial_data))
-        except BotException as e:  # Respond with error message
-            response = (str(e), False, 0, None)
+            if self.selfbot:
+                response = ('\u200b' + response[0], *response[1:])
         except Exception as e:  # General error
-            self.last_traceback = traceback.format_exc()
-            self.last_exception = e
-            logging.error(e)
-            logging.error(self.last_traceback)
-            await utilities.notify_owners(
-                self, '{0}\n{1}\n{2}\n{3}'.format(
-                    message.content, parsed_input,
-                    self.last_exception, self.last_traceback))
-            insult = random.choice(exception_insults)
-            error = '{0}\n`{1}: {2}`'.format(insult,  type(e).__name__, e)
-            response = (error, False, 0, None)
+            response = ('', False, 0, None)
+            message_reference = await self.handle_error(
+                e, message, parsed_input, response, edit=edit)
 
-        # If a replacement message is given, edit it
-        if typing_task:
-            typing_task.cancel()
-        try:
-            if replacement_message:
-                self.extra = replacement_message
-                message_reference = await self.edit_message(
-                    replacement_message, response[0])
-            elif response[0]:
-                message_reference = await self.send_message(
-                    message.channel, response[0], tts=response[1])
-            else:  # Empty message
-                response = (None, None, 1, None)
-        except discord.HTTPException as e:
-            self.last_exception = e
-            if 'too long' in e.args[0]:
-                message_reference = await utilities.send_text_as_file(
-                    self, message.channel, response[0], 'response',
-                    extra="The response is too long. Here is a text file of "
-                    "the contents.")
-            else:
-                message_reference = await self.send_message(
-                    message.channel, "Huh, I couldn't deliver the message "
-                    "for some reason.\n{}".format(e))
-        except Exception as e:
-            self.last_traceback = traceback.format_exc()
-            self.last_exception = e
-            logging.error(e)
-            logging.error(self.last_exception)
-            await utilities.notify_owners(
-                self, '{0}\n{1}\n{2}\n{3}'.format(
-                    message.content, parsed_input,
-                    self.last_exception, self.last_traceback))
-            return
+        else:  # Attempt to respond
+            if typing_task:
+                typing_task.cancel()
+            try:
+                if replacement_message:
+                    self.extra = replacement_message
+                    message_reference = await self.edit_message(
+                        replacement_message, response[0])
+                elif response[0]:
+                    message_reference = await self.send_message(
+                        message.channel, response[0], tts=response[1])
+                else:  # Empty message
+                    message_reference = None
+                    response = (None, None, 1, None)
+            except Exception as e:
+                message_reference = await self.handle_error(
+                    e, message, parsed_input, response, edit=edit)
 
         # Incremement the spam dictionary entry
         if message.author.id in self.spam_dictionary:
@@ -307,7 +294,10 @@ class Bot(discord.Client):
         #   If 'extra' is a tuple of (seconds, message), it will delete
         #   both the bot response and the given message reference.
         # 3 - active (pass the reference back to the plugin to edit)
+        # 4 - replace (deletes command message)
         # If message_type is >= 1, do not add to the edit dictionary
+
+        self.last_response = message_reference
 
         if response[2] == 0:  # Normal
             # Edited commands are handled in base.py
@@ -330,25 +320,74 @@ class Bot(discord.Client):
             if extra_message:
                 try:
                     await self.delete_message(extra_message)
-                except:  # Ignore for permissions errors
+                except:  # Ignore permissions errors
                     pass
 
         elif response[2] == 3:  # Active
             try:
                 await commands.handle_active_message(
                     self, message_reference, command, response[3])
-            except BotException as e:  # Respond with error message
-                await self.edit_message(message_reference, str(e))
             except Exception as e:  # General error
-                self.last_traceback = traceback.format_exc()
-                self.last_exception = e
-                logging.error(e)
-                logging.error(self.last_traceback)
-                insult = random.choice(exception_insults)
-                error = '{0}\n`{1}: {2}`'.format(insult,  type(e).__name__, e)
-                await self.edit_message(message_reference, error)
+                message_reference = await self.handle_error(
+                    e, message, parsed_input, response, edit=message_reference)
+                self.last_response = message_reference
+
+        elif response[2] == 4:  # Replace
+            try:
+                await self.delete_message(message)
+            except Exception as e:
+                message_reference = await self.handle_error(
+                    e, message, parsed_input, response, edit=message_reference)
+                self.last_response = message_reference
+
+    async def handle_error(
+            self, error, message, parsed_input, text, edit=None):
+        """Common error handler for sending responses."""
+        send_function = self.edit_message if edit else self.send_message
+        location = edit if edit else message.channel
+        self.last_traceback = traceback.format_exc()
+        self.last_exception = error
+
+        if type(error) is BotException:
+            message_reference = await send_function(location, str(error))
+
+        elif type(error) is discord.HTTPException and message and text:
+            self.last_exception = error
+            if 'too long' in error.args[0]:
+                message_reference = await utilities.send_text_as_file(
+                    self, message.channel, text, 'response',
+                    extra="The response is too long. Here is a text file of "
+                    "the contents.")
+            else:
+                message_reference = await send_function(
+                    location, "Huh, I couldn't deliver the message "
+                    "for some reason.\n{}".format(error))
+
+        else:
+            logging.error(error)
+            logging.error(self.last_exception)
+            await utilities.notify_owners(
+                self, '{0}\n{1}\n{2}\n{3}'.format(
+                    message.content, parsed_input,
+                    self.last_exception, self.last_traceback))
+            insult = random.choice(exception_insults)
+            error = '{0}\n`{1}: {2}`'.format(
+                insult,  type(error).__name__, error)
+            message_reference = await send_function(location, error)
+
+        return message_reference
 
     async def on_ready(self):
+        if self.selfbot:
+            if len(self.owners) != 1:
+                raise BotException(
+                    EXCEPTION, "There can be only one owner for a selfbot.",
+                    error_type=ErrorTypes.STARTUP)
+            elif self.owners[0] != self.user.id:
+                raise BotException(
+                    EXCEPTION, "Token does not match the owner.",
+                    error_type=ErrorTypes.STARTUP)
+
         # Make sure server data is ready
         data.check_all(self)
         data.load_data(self)
@@ -362,8 +401,8 @@ class Bot(discord.Client):
             debug_channel = self.get_channel(
                 self.configurations['core']['debug_channel'])
             if self.fresh_boot and debug_channel is not None:
-                log_file = '{}/last_logs.txt'.format(self.path)
-                error_file = '{}/error.txt'.format(self.path)
+                log_file = '{}/temp/last_logs.txt'.format(self.path)
+                error_file = '{}/temp/error.txt'.format(self.path)
                 if not os.path.isfile(log_file):
                     await self.send_message(debug_channel, "Started up fresh.")
                 else:
@@ -383,13 +422,24 @@ class Bot(discord.Client):
         else:
             print("=== {0: ^40} ===".format(self.user.name + ' online'))
 
-        asyncio.ensure_future(self.spam_clear_loop())
-        await self.save_loop()
+        if self.fresh_boot:
+            if self.selfbot:
+                asyncio.ensure_future(self.selfbot_away_loop())
+            asyncio.ensure_future(self.spam_clear_loop())
+            asyncio.ensure_future(self.save_loop())
 
     # Take advantage of dispatch to intercept all events
     def dispatch(self, event, *args, **kwargs):
         super().dispatch(event, *args, **kwargs)
         plugins.broadcast_event(self, 'on_' + event, *args, **kwargs)
+
+    async def selfbot_away_loop(self):
+        """Sets the status to 'away' every 5 minutes."""
+        while True:
+            await asyncio.sleep(300)
+            self_status = next(iter(self.servers)).me.status
+            if type(self_status) is not discord.Status.idle:
+                await self.change_status(idle=True)
 
     async def spam_clear_loop(self):
         """Loop to clear the spam dictionary periodically."""
@@ -442,20 +492,24 @@ class Bot(discord.Client):
 def initialize(start_file, debug=False):
     if debug:
         path = os.path.split(os.path.realpath(start_file))[0]
-        log_file = '{}/logs.txt'.format(path)
+        log_file = '{}/temp/logs.txt'.format(path)
         if os.path.isfile(log_file):
-            shutil.copy2(log_file, '{}/last_logs.txt'.format(path))
+            shutil.copy2(log_file, '{}/temp/last_logs.txt'.format(path))
         logging.basicConfig(
                 level=logging.DEBUG,
                 handlers=[logging.handlers.RotatingFileHandler(
                     log_file, maxBytes=1000000, backupCount=3)])
     try:
         bot = Bot(start_file, debug)
-        bot.run(bot.get_token())
+        not_selfbot = not bot.selfbot
+        bot.run(bot.get_token(), bot=not_selfbot)
     except Exception as e:
+        print("An exception occurred.")
+        print(e)
+        traceback.print_exc()
         if debug:
             error_message = '{0}\n{1}'.format(e, traceback.format_exc())
-            with open('{}/error.txt'.format(path), 'w') as error_file:
+            with open('{}/temp/error.txt'.format(path), 'w') as error_file:
                 error_file.write(error_message)
             print("Error file written.")
     logging.error("Bot disconnected. Shutting down...")

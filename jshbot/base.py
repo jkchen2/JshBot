@@ -66,7 +66,7 @@ def get_commands():
              'bot will only respond to its name or mention as an invoker.')),
         shortcuts=Shortcuts(('clear', 'clear', '', 'clear', '')),
         description='Commands for server bot moderators.',
-        elevated_level=1))
+        elevated_level=1, no_selfbot=True))
 
     new_commands.append(Command(
         'owner', SubCommands(
@@ -80,7 +80,8 @@ def get_commands():
             ('notifications', 'notifications', 'Toggles notifications from '
              'the bot regarding moderation events (such as muting channels '
              'and blocking users from bot interaction).')),
-        description='Commands for server owners.', elevated_level=2))
+        description='Commands for server owners.',
+        elevated_level=2, no_selfbot=True))
 
     new_commands.append(Command(
         'botowner', SubCommands(
@@ -490,7 +491,7 @@ async def botowner_wrapper(bot, message, blueprint_index, options, arguments):
     elif blueprint_index == 4:  # backup
         utilities.make_backup(bot)
         await bot.send_file(
-            message.channel, '{}/temp/backup.zip'.format(bot.path))
+            message.channel, '{}/temp/backup1.zip'.format(bot.path))
     elif blueprint_index == 5:  # blacklist
         blacklist = data.get(bot, 'base', 'blacklist', default=[])
         if not arguments[0]:
@@ -520,7 +521,8 @@ async def botowner_wrapper(bot, message, blueprint_index, options, arguments):
     return (response, message_type, extra)
 
 
-async def debug_wrapper(bot, message, blueprint_index, options, arguments):
+async def debug_wrapper(
+        bot, message, blueprint_index, options, arguments, cleaned_content):
     response = ''
     message_type = 0
     extra = None
@@ -558,7 +560,7 @@ async def debug_wrapper(bot, message, blueprint_index, options, arguments):
         global_dictionary['message'] = message
 
         # Sanitize input
-        arguments = arguments[0]
+        arguments = cleaned_content[6:]
         if arguments.startswith('```py\n') and arguments.endswith('```'):
             arguments = arguments[6:-3]
         else:
@@ -714,7 +716,7 @@ async def get_response(
 
     elif base == 'debug':
         response, message_type, extra = await debug_wrapper(
-            bot, message, blueprint_index, options, arguments)
+            bot, message, blueprint_index, options, arguments, cleaned_content)
 
     elif base == 'help':
         response, message_type, extra = await help_wrapper(

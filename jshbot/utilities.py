@@ -211,14 +211,17 @@ async def notify_owners(bot, message, user_id=None):
     If user_id is specified, this will check that the user is not in the
     blacklist.
     """
-    if user_id:
-        blacklist = data.get(bot, 'base', 'blacklist', default=[])
-        if user_id in blacklist:
-            await asyncio.sleep(0.5)
-            return
-    for owner in bot.owners:
-        member = data.get_member(bot, owner)
-        await bot.send_message(member, message)
+    if bot.selfbot:
+        print("Notification:\n{}".format(message))
+    else:
+        if user_id:
+            blacklist = data.get(bot, 'base', 'blacklist', default=[])
+            if user_id in blacklist:
+                await asyncio.sleep(0.5)
+                return
+        for owner in bot.owners:
+            member = data.get_member(bot, owner)
+            await bot.send_message(member, message)
 
 
 def make_backup(bot):

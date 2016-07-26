@@ -10,7 +10,7 @@ class Command():
     def __init__(
             self, base, sub_commands, description='', other='', shortcuts=None,
             function=None, hidden=False, elevated_level=0, allow_direct=True,
-            strict_syntax=False):
+            strict_syntax=False, no_selfbot=False):
         self.base = base
         self.description = description
         self.other = other
@@ -19,6 +19,7 @@ class Command():
         self.allow_direct = allow_direct
         self.shortcut = shortcuts
         self.strict = strict_syntax
+        self.no_selfbot = no_selfbot
         self.plugin = None  # Added later
 
         # 1 - bot moderators, 2 - server owners, 3 - bot owners
@@ -311,6 +312,14 @@ def add_manuals(bot):
 
 async def execute(bot, message, command, parsed_input, initial_data):
     """Calls get_response of the given plugin associated with the base."""
+    if bot.selfbot and command.no_selfbot:
+        raise BotException(
+            EXCEPTION, "This command cannot be used in selfbot mode.")
+
+    if not initial_data[3] and command.base in bot.locked_commands:
+        raise BotException(
+            EXCEPTION, "This command is locked by the bot owner.")
+
     if message.channel.is_private:
         if not command.allow_direct:
             raise BotException(
