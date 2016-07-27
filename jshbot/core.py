@@ -265,16 +265,17 @@ class Bot(discord.Client):
             if typing_task:
                 typing_task.cancel()
             try:
-                if replacement_message:
-                    self.extra = replacement_message
-                    message_reference = await self.edit_message(
-                        replacement_message, response[0])
-                elif response[0]:
-                    message_reference = await self.send_message(
-                        message.channel, response[0], tts=response[1])
-                else:  # Empty message
-                    message_reference = None
-                    response = (None, None, 1, None)
+                message_reference = None
+                if response[2] != 5:  # Handle file sending separately
+                    if replacement_message:
+                        self.extra = replacement_message
+                        message_reference = await self.edit_message(
+                            replacement_message, response[0])
+                    elif response[0]:
+                        message_reference = await self.send_message(
+                            message.channel, response[0], tts=response[1])
+                    else:  # Empty message
+                        response = (None, None, 1, None)
             except Exception as e:
                 message_reference = await self.handle_error(
                     e, message, parsed_input, response, edit=edit)
@@ -295,6 +296,8 @@ class Bot(discord.Client):
         #   both the bot response and the given message reference.
         # 3 - active (pass the reference back to the plugin to edit)
         # 4 - replace (deletes command message)
+        # 5 - send file (response[0] should be a file pointer)
+        #   If 'extra' is provided, it will be the file name.
         # If message_type is >= 1, do not add to the edit dictionary
 
         self.last_response = message_reference
@@ -335,6 +338,28 @@ class Bot(discord.Client):
         elif response[2] == 4:  # Replace
             try:
                 await self.delete_message(message)
+            except Exception as e:
+                message_reference = await self.handle_error(
+                    e, message, parsed_input, response, edit=message_reference)
+                self.last_response = message_reference
+
+        elif response[2] == 5:  # Send file
+            try:
+                if type(response[3]) is str and response[3]:
+                    filename = response[3]
+                    content = None
+                elif (type(response[3]) is tuple and
+                        len(response[3]) == 2 and response[3][1]):
+                    filename, content = response[3]
+                else:
+                    filename, content = None, None
+                await self.send_file(
+                    message.channel, response[0],
+                    filename=filename, content=content)
+                try:
+                    response[0].close()
+                except:  # Ignore closing exceptions
+                    pass
             except Exception as e:
                 message_reference = await self.handle_error(
                     e, message, parsed_input, response, edit=message_reference)
@@ -437,9 +462,10 @@ class Bot(discord.Client):
         """Sets the status to 'away' every 5 minutes."""
         while True:
             await asyncio.sleep(300)
-            self_status = next(iter(self.servers)).me.status
+            self_member = next(iter(self.servers)).me
+            self_status, self_game = self_member.status, self_member.game
             if type(self_status) is not discord.Status.idle:
-                await self.change_status(idle=True)
+                await self.change_status(game=self_game, idle=True)
 
     async def spam_clear_loop(self):
         """Loop to clear the spam dictionary periodically."""
