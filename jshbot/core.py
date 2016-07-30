@@ -254,7 +254,7 @@ class Bot(discord.Client):
             print(parsed_input[:-1])  # Temp
             response = await (commands.execute(
                 self, message, command, parsed_input, initial_data))
-            if self.selfbot:
+            if self.selfbot and response[2] != 5:
                 response = ('\u200b' + response[0], *response[1:])
         except Exception as e:  # General error
             response = ('', False, 0, None)
