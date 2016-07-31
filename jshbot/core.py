@@ -47,7 +47,7 @@ class Bot(discord.Client):
 
     def __init__(self, start_file, debug):
         self.version = '0.3.0-alpha'
-        self.date = 'July 26th, 2016'
+        self.date = 'July 30th, 2016'
         self.time = int(time.time())
         self.readable_time = time.strftime('%c')
         self.debug = debug
@@ -112,6 +112,8 @@ class Bot(discord.Client):
         server/channel/user is not muted or blocked. Admins and mods
         override this.
         """
+        if self.fresh_boot is None:  # Ignore until bot is ready
+            return
         # Ignore empty messages and messages by bots
         if (not message.content or message.author.bot or
                 message.author.id == self.user.id) and not self.selfbot:
@@ -271,10 +273,11 @@ class Bot(discord.Client):
                         self.extra = replacement_message
                         message_reference = await self.edit_message(
                             replacement_message, response[0])
-                    elif response[0]:
+                    elif (response[0] and
+                            not (self.selfbot and response[2] == 4)):
                         message_reference = await self.send_message(
                             message.channel, response[0], tts=response[1])
-                    else:  # Empty message
+                    elif not response[0]:  # Empty message
                         response = (None, None, 1, None)
             except Exception as e:
                 message_reference = await self.handle_error(
@@ -337,7 +340,10 @@ class Bot(discord.Client):
 
         elif response[2] == 4:  # Replace
             try:
-                await self.delete_message(message)
+                if self.selfbot and not replacement_message:  # Edit instead
+                    await self.edit_message(message, response[0])
+                else:
+                    await self.delete_message(message)
             except Exception as e:
                 message_reference = await self.handle_error(
                     e, message, parsed_input, response, edit=message_reference)
@@ -388,8 +394,20 @@ class Bot(discord.Client):
                     location, "Huh, I couldn't deliver the message "
                     "for some reason.\n{}".format(error))
 
+        elif type(error) is discord.Forbidden:
+            message_reference = None
+            try:
+                await self.send_message(
+                    message.author, "Sorry, I don't have permission to "
+                    "respond to you in that channel. The bot may have had its "
+                    "`send_messages` permissions revoked.\nIf you are a bot "
+                    "moderator or server owner, you can mute channels with "
+                    "`{}mod mute <channel>`".format(self.command_invokers[0]))
+            except:  # User has blocked the bot
+                pass
+
         else:
-            logging.error(error)
+            logging.error(self.last_traceback)
             logging.error(self.last_exception)
             await utilities.notify_owners(
                 self, '{0}\n{1}\n{2}\n{3}'.format(
@@ -403,21 +421,19 @@ class Bot(discord.Client):
         return message_reference
 
     async def on_ready(self):
-        if self.selfbot:
-            if len(self.owners) != 1:
-                raise BotException(
-                    EXCEPTION, "There can be only one owner for a selfbot.",
-                    error_type=ErrorTypes.STARTUP)
-            elif self.owners[0] != self.user.id:
-                raise BotException(
-                    EXCEPTION, "Token does not match the owner.",
-                    error_type=ErrorTypes.STARTUP)
-
-        # Make sure server data is ready
-        data.check_all(self)
-        data.load_data(self)
-
         if self.fresh_boot is None:
+            if self.selfbot:  # Selfbot safety checks
+                if len(self.owners) != 1:
+                    raise BotException(
+                        EXCEPTION, "There can be only one owner for "
+                        "a selfbot.", error_type=ErrorTypes.STARTUP)
+                elif self.owners[0] != self.user.id:
+                    raise BotException(
+                        EXCEPTION, "Token does not match the owner.",
+                        error_type=ErrorTypes.STARTUP)
+            # Make sure server data is ready
+            data.check_all(self)
+            data.load_data(self)
             self.fresh_boot = True
         elif self.fresh_boot:
             self.fresh_boot = False

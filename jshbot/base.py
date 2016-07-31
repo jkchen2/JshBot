@@ -5,6 +5,7 @@ import time
 import logging
 import inspect
 import traceback
+import re
 
 from jshbot import data, utilities, commands, plugins, configurations
 from jshbot.commands import Command, SubCommands, Shortcuts
@@ -669,7 +670,7 @@ async def help_wrapper(bot, message, blueprint_index, options, arguments):
         response = commands.get_general_help(
             bot, is_owner=is_owner, server=server)
 
-    if not direct and server is None:  # Terminal reminder message
+    if not direct and server is None and not bot.selfbot:  # Terminal reminder
         if len(response) > 1800:
             await utilities.send_text_as_file(
                 bot, message.author, response, 'help')
@@ -740,8 +741,19 @@ async def handle_active_message(bot, message_reference, extra):
 
     elif extra[0] == 'reload':
         logging.debug("Reloading plugins and commands...")
-        bot.commands = {}
+
+        # Cancel running tasks associated with plugins
+        tasks = asyncio.Task.all_tasks()
+        pattern = re.compile('([^/(:\d>$)])+(?!.*\/)')
+        for task in tasks:
+            callback_info = task._repr_info()[1]
+            plugin_name = pattern.search(callback_info).group(0)
+            if plugin_name in bot.plugins.keys():
+                logging.debug("Canceling task: {}".format(task))
+                task.cancel()
+
         bot.plugins = {}
+        bot.commands = {}
         bot.manuals = []
         plugins.add_plugins(bot)
         commands.add_manuals(bot)
@@ -750,6 +762,7 @@ async def handle_active_message(bot, message_reference, extra):
         configurations.add_configurations(bot)
         bot.volatile_data = {'global_users': {}, 'global_plugins': {}}
         data.check_all(bot)
+        bot.fresh_boot = True  # Reset one-time startup
         plugins.broadcast_event(bot, 'on_ready')
         await asyncio.sleep(1)
         await bot.edit_message(message_reference, "Reloaded!")
@@ -801,7 +814,8 @@ async def on_server_join(bot, server):
         "read `{1}manual 5` and `{1}manual 4` for moderating and configuring "
         "the bot.**\n\nThat's all for now. If you have any questions, please "
         "refer to the manual, or send the bot owners a message using "
-        "`{1}owner feedback <message>`.").format(server, invoker)
+        "`{1}owner feedback <message>`.\n\nCheck out the Wiki for more: "
+        "https://github.com/jkchen2/JshBot/wiki").format(server, invoker)
     await bot.send_message(server.owner, text)
 
 async def on_message_edit(bot, before, after):

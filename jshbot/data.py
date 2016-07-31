@@ -422,11 +422,14 @@ def get_member(
 
 
 def get_channel(
-        bot, identity, server, attribute=None, safe=False):
-    """Like get_member(), but gets the channel instead. Always strict."""
+        bot, identity, server=None, attribute=None, safe=False, strict=False):
+    """Like get_member(), but gets the channel instead."""
     if identity.startswith('<#') and identity.endswith('>'):
         identity = identity.strip('<#>')
-    channels = server.channels
+    if server is None:
+        channels = bot.get_all_channels()
+    else:
+        channels = server.channels
     result = discord.utils.get(channels, id=identity)
     if result is None:
         result = discord.utils.get(channels, name=identity)
