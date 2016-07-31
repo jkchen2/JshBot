@@ -11,6 +11,18 @@ class Command():
             self, base, sub_commands, description='', other='', shortcuts=None,
             function=None, hidden=False, elevated_level=0, allow_direct=True,
             strict_syntax=False, no_selfbot=False):
+        """
+        Keyword arguments:
+        shortcuts -- a Shortcuts object that specifies the command's shortcuts.
+        function -- a custom function to call instead of get_response().
+        hidden -- prevents the command from showing up in the help command.
+        elevated_level -- limits usage to a certain permission level. 0 is
+            everybody, 1 is bot moderators, 2 is server owners, and 3 is bot
+            owners. This is a hierarchy model.
+        allow_direct -- allows the command to be used in direct messages.
+        strict_syntax -- this used to do something.
+        no_selfbot -- disallows the command to be used in selfbot mode.
+        """
         self.base = base
         self.description = description
         self.other = other

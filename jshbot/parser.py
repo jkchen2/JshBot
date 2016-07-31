@@ -126,7 +126,7 @@ def match_blueprint(
                 closest_index = blueprint_index
                 closest_index_matches = 2  # Always get detailed help
                 break
-            if matches >= closest_index_matches:
+            elif matches >= closest_index_matches:
                 closest_index = blueprint_index
                 closest_index_matches = matches
         else:
