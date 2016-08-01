@@ -39,7 +39,8 @@ exception_insults = [
     'Well, it was worth a shot.',
     'That one stung a bit.',
     'Of *course*. Nothing ever works out, does it?',
-    'I yelled at Jsh for you.'
+    'I yelled at Jsh for you.',
+    'Minsoo is bad at osu!. He wanted me to tell you that.'
 ]
 
 
@@ -47,7 +48,7 @@ class Bot(discord.Client):
 
     def __init__(self, start_file, debug):
         self.version = '0.3.0-alpha'
-        self.date = 'July 30th, 2016'
+        self.date = 'August fest, 2016'
         self.time = int(time.time())
         self.readable_time = time.strftime('%c')
         self.debug = debug
@@ -270,9 +271,12 @@ class Bot(discord.Client):
                 message_reference = None
                 if response[2] != 5:  # Handle file sending separately
                     if replacement_message:
-                        self.extra = replacement_message
-                        message_reference = await self.edit_message(
-                            replacement_message, response[0])
+                        try:
+                            message_reference = await self.edit_message(
+                                replacement_message, response[0])
+                        except discord.NotFound:  # Message deleted
+                            response = ('', False, 0, None)
+                            message_reference = None
                     elif (response[0] and
                             not (self.selfbot and response[2] == 4)):
                         message_reference = await self.send_message(
@@ -398,11 +402,16 @@ class Bot(discord.Client):
             message_reference = None
             try:
                 await self.send_message(
-                    message.author, "Sorry, I don't have permission to "
-                    "respond to you in that channel. The bot may have had its "
-                    "`send_messages` permissions revoked.\nIf you are a bot "
-                    "moderator or server owner, you can mute channels with "
-                    "`{}mod mute <channel>`".format(self.command_invokers[0]))
+                    message.author, "Sorry, I don't have permission to carry"
+                    "out that command in that channel. The bot may have had "
+                    "its `Send Messages` permission revoked (or any other "
+                    "necessary permissions, like `Manage Messages` or "
+                    "`Speak`).\nIf you are a bot moderator or server owner, "
+                    "you can mute channels with `{}mod mute <channel>` "
+                    "instead of using permissions directly. If that's not the "
+                    "issue, be sure to check that the bot has the proper "
+                    "permissions on the server and each channel!".format(
+                        self.command_invokers[0]))
             except:  # User has blocked the bot
                 pass
 
