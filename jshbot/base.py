@@ -194,7 +194,7 @@ async def base_wrapper(
         try:
             if blueprint_index == 4:
                 await utilities.join_and_ready(
-                    bot, voice_channel, is_mod=data.is_mod(
+                    bot, voice_channel, reconnect=True, is_mod=data.is_mod(
                         bot, message.server, message.author.id))
                 response = "Joined {}.".format(voice_channel.name)
             else:

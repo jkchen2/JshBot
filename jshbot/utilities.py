@@ -70,7 +70,8 @@ def set_player(bot, server_id, player):
 
 
 async def join_and_ready(
-        bot, voice_channel, include_player=False, is_mod=False):
+        bot, voice_channel, include_player=False,
+        is_mod=False, reconnect=False):
     """Joins the voice channel and stops any player if it exists.
 
     Returns the voice_client object from bot.join_voice_channel.
@@ -85,6 +86,8 @@ async def join_and_ready(
     if muted and not is_mod:
         raise BotException(
             EXCEPTION, "The bot is muted in this voice channel.")
+    if reconnect:
+        await leave_and_stop(bot, server)
     if not bot.is_voice_connected(server):
         try:
             voice_client = await bot.join_voice_channel(voice_channel)
