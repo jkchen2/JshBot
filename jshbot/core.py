@@ -347,7 +347,10 @@ class Bot(discord.Client):
                 if self.selfbot and not replacement_message:  # Edit instead
                     await self.edit_message(message, response[0])
                 else:
-                    await self.delete_message(message)
+                    try:
+                        await self.delete_message(message)
+                    except:  # Ignore permissions errors
+                        pass
             except Exception as e:
                 message_reference = await self.handle_error(
                     e, message, parsed_input, response, edit=message_reference)
