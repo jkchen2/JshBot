@@ -8,11 +8,14 @@ EXCEPTION = 'Commands'
 
 class Command():
     def __init__(
-            self, base, sub_commands, description='', other='', shortcuts=None,
-            function=None, hidden=False, elevated_level=0, allow_direct=True,
-            strict_syntax=False, no_selfbot=False):
+            self, base, sub_commands, description='', other='', group='other',
+            shortcuts=None, function=None, hidden=False, elevated_level=0,
+            allow_direct=True, strict_syntax=False, no_selfbot=False):
         """
         Keyword arguments:
+        description -- small description of the command
+        other -- extra text displayed at the bottom of the help message
+        group -- categorizes the command with other commands of the same group
         shortcuts -- a Shortcuts object that specifies the command's shortcuts.
         function -- a custom function to call instead of get_response().
         hidden -- prevents the command from showing up in the help command.
@@ -26,6 +29,7 @@ class Command():
         self.base = base
         self.description = description
         self.other = other
+        self.group = group.title()
         self.function = function
         self.hidden = hidden
         self.allow_direct = allow_direct
@@ -95,32 +99,39 @@ def get_manual(bot, entry, server=None):
 
 def get_general_help(bot, server=None, is_owner=False):
     """Gets the general help. Lists all base commands that aren't shortcuts."""
-    response = "Here is a list of commands by plugin:\n"
+    response = "Here is a list of commands by group:\n"
     invoker = utilities.get_invoker(bot, server=server)
+
+    '''
     plugin_pairs = []
     for plugin_name, plugin in bot.plugins.items():
         plugin_pairs.append((plugin_name, plugin[1]))
     plugin_pairs.sort()
+    '''
+    group_dictionary = {}
 
-    for plugin_pair in plugin_pairs:
+    for plugin_name, plugin in bot.plugins.items():
         visible_commands = []
-        for command in plugin_pair[1]:
+        for command in plugin[1]:
             level = command.elevated_level
             hidden = command.hidden
+            group = command.group
             if (((level < 3 and not hidden) or is_owner) and
                     command not in visible_commands):
-                visible_commands.append(command)
-        listing = []
-        for command in visible_commands:
-            if command.description:
-                description = command.description
-            else:
-                description = '[Description not provided]'
-            listing.append('\t**`{0}`** -- {1}'.format(
-                command.base, description))
-        if listing:
-            response += '\n***`{}`***\n'.format(plugin_pair[0])
-            response += '\n'.join(sorted(listing)) + '\n'
+                if command.description:
+                    description = command.description
+                else:
+                    description = '[Description not provided]'
+                if group_dictionary.get(group) is None:
+                    group_dictionary[group] = []
+                group_dictionary[group].append('**`{0}`** -- {1}'.format(
+                    command.base, description))
+
+    listing = []
+    for group, entries in sorted(list(group_dictionary.items())):
+        listing.append('\n***`{0}`***\n\t{1}'.format(
+            group, '\n\t'.join(sorted(entries))))
+    response += '\n'.join(listing) + '\n'
 
     response += ("\nGet help on a command with `{0}help <command>`\n"
                  "Confused by the syntax? See `{0}manual 3`").format(invoker)

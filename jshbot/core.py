@@ -402,7 +402,7 @@ class Bot(discord.Client):
             message_reference = None
             try:
                 await self.send_message(
-                    message.author, "Sorry, I don't have permission to carry"
+                    message.author, "Sorry, I don't have permission to carry "
                     "out that command in that channel. The bot may have had "
                     "its `Send Messages` permission revoked (or any other "
                     "necessary permissions, like `Manage Messages` or "

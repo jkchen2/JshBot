@@ -28,7 +28,7 @@ def get_commands():
         'ping', SubCommands(
             ('&', '(<message>)', 'The bot will respond with "Pong!" and the '
              'given message if it is included.')),
-        description='Pings the bot for a response.'))
+        description='Pings the bot for a response.', group='base'))
 
     new_commands.append(Command(
         'base', SubCommands(
@@ -44,7 +44,8 @@ def get_commands():
             ('join', 'join', '', 'join', ''),
             ('leave', 'leave', '', 'leave', ''),
             ('stfu', 'leave', '', 'leave', '')),
-        description='Essential bot commands that anybody can use.'))
+        description='Essential bot commands that anybody can use.',
+        group='base'))
 
     new_commands.append(Command(
         'mod', SubCommands(
@@ -67,7 +68,7 @@ def get_commands():
              'bot will only respond to its name or mention as an invoker.')),
         shortcuts=Shortcuts(('clear', 'clear', '', 'clear', '')),
         description='Commands for server bot moderators.',
-        elevated_level=1, no_selfbot=True))
+        elevated_level=1, no_selfbot=True, group='base'))
 
     new_commands.append(Command(
         'owner', SubCommands(
@@ -82,7 +83,7 @@ def get_commands():
              'the bot regarding moderation events (such as muting channels '
              'and blocking users from bot interaction).')),
         description='Commands for server owners.',
-        elevated_level=2, no_selfbot=True))
+        elevated_level=2, no_selfbot=True, group='base'))
 
     new_commands.append(Command(
         'botowner', SubCommands(
@@ -100,7 +101,7 @@ def get_commands():
              'announcement text.')),
         shortcuts=Shortcuts(('reload', 'reload', '', 'reload', '')),
         description='Commands for the bot owner.',
-        elevated_level=3))
+        elevated_level=3, group='base'))
 
     new_commands.append(Command(
         'debug', SubCommands(
@@ -112,7 +113,7 @@ def get_commands():
             ('^', '<python>', 'Evaluates or executes the given code.')),
         description='Commands to help the bot owner debug stuff.',
         other='Be careful with these commands! They can break the bot.',
-        elevated_level=3))
+        elevated_level=3, group='base'))
 
     new_commands.append(Command(
         'help', SubCommands(
@@ -134,7 +135,7 @@ def get_commands():
              '(<arguments>)')),
         description='Command help and usage manuals.',
         other=('For all of these commands, if the \'here\' option is '
-               'specified, a direct message will not be sent.')))
+               'specified, a direct message will not be sent.'), group='base'))
 
     return new_commands
 
