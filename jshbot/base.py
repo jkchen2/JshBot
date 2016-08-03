@@ -799,6 +799,8 @@ async def on_server_join(bot, server):
     # Add server to the list
     logging.debug("Joining server")
     data.add_server(bot, server)
+    if bot.selfbot:  # Don't send DMs if in selfbot mode
+        return
     invoker = utilities.get_invoker(bot)
     text = (
         "Hello! You are receiving this notification because this bot was "
