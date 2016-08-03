@@ -3,6 +3,8 @@ import logging
 import os
 import json
 
+from types import GeneratorType
+
 from jshbot import utilities
 from jshbot.exceptions import BotException
 
@@ -382,26 +384,38 @@ def get_member(
 
     Keyword arguments:
     server -- if specified, will look here for identity first
-    attribute -- gets the found member's attribute instead of the member istelf
+    attribute -- gets the found member's attribute instead of the member itself
     safe -- returns None if not found instead of raising an exception
     strict -- will look only in the specified server
     """
     if identity.startswith('<@') and identity.endswith('>'):
         identity = identity.strip('<@!>')
-    if server:
-        members = server.members
-    elif not strict:
-        members = bot.get_all_members()
+        use_id = True
     else:
+        use_id = False
+
+    if strict and server is None:
         raise BotException(
             EXCEPTION, "No server specified for strict user search.")
 
-    # TODO: Check for duplicates
-    result = discord.utils.get(members, id=identity)  # No conflict
-    if result is None:  # Name - potential conflict
-        result = discord.utils.get(members, name=identity)
-    if result is None:  # Nickname - potentially a lot of conflict
-        result = discord.utils.get(members, nick=identity)
+    for test in ({'id': identity}, {'name': identity}, {'nick': identity}):
+        members = server.members if server else bot.get_all_members()
+        result = discord.utils.get(members, **test)
+        if result:  # Check for duplicates
+            if use_id:
+                break
+            elif type(members) is GeneratorType:
+                duplicate = result
+                while duplicate:
+                    duplicate = discord.utils.get(members, **test)
+                    if duplicate and duplicate != result:
+                        bot.extra = (duplicate, result)
+                        raise BotException(
+                            EXCEPTION, "Duplicate found; use a mention.")
+            elif list(members).count(result) > 1:
+                raise BotException(
+                    EXCEPTION, "Duplicate found; use a mention.")
+            break
 
     if result:
         if attribute:
@@ -415,7 +429,11 @@ def get_member(
         else:
             return result
     else:
-        if safe:
+        if not strict and server:  # Search again using all members
+            return get_member(
+                bot, identity, server=None, attribute=attribute,
+                safe=safe, strict=False)
+        elif safe:
             return None
         else:
             raise BotException(EXCEPTION, "{} not found.".format(identity))
