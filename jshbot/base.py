@@ -11,7 +11,7 @@ from jshbot import data, utilities, commands, plugins, configurations
 from jshbot.commands import Command, SubCommands, Shortcuts
 from jshbot.exceptions import BotException
 
-__version__ = '0.1.9'
+__version__ = '0.1.10'
 EXCEPTION = 'Base'
 uses_configuration = False
 global_dictionary = {}
@@ -294,7 +294,8 @@ async def mod_wrapper(bot, message, blueprint_index, options, arguments):
                 response = "User is now unblocked."
 
     elif blueprint_index == 4:  # clear
-        response = '\n'*80 + "The chat was pushed up by a bot moderator."
+        response = (
+            '​' + '\n'*80 + "The chat was pushed up by a bot moderator.")
 
     elif blueprint_index in (5, 6):  # mute or unmute
         server_id = message.server.id
@@ -603,11 +604,11 @@ async def debug_wrapper(
                     result = 'Evaluated. (returned None)'
                 else:
                     result = str(global_dictionary['result'])
-                if len(result) >= 1998:
+                if len(result) >= 1980:
                     raise BotException(
                         EXCEPTION, "Exec result is too long. (try 'file')")
                 if '\n' in result:  # Better formatting
-                    response = '```python\n{}\n```'.format(result)
+                    response = '```py\n{}\n```'.format(result)
                 else:  # One line response
                     response = '`{}`'.format(result)
 
@@ -776,9 +777,11 @@ def setup_debug_environment(bot):
     import pprint
 
     def say(text):
-        calling_locals = inspect.currentframe().f_back.f_locals
-        asyncio.ensure_future(bot.send_message(
-            calling_locals['message'].channel, str(text)))
+        message = globals()['global_dictionary']['message']
+        asyncio.ensure_future(bot.send_message(message.channel, str(text)))
+    async def async_say(text):
+        message = globals()['global_dictionary']['message']
+        return await bot.send_message(message.channel, str(text))
     global_dictionary.update({
         'bot': bot,
         'inspect': inspect,
@@ -786,6 +789,7 @@ def setup_debug_environment(bot):
         'last_traceback': '',
         'result': '',
         'say': say,
+        'async_say': async_say,
         'pformat': pprint.pformat
     })
 

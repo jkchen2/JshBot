@@ -567,4 +567,7 @@ def initialize(start_file, debug=False):
                 error_file.write(error_message)
             print("Error file written.")
     logging.error("Bot disconnected. Shutting down...")
-    bot.shutdown()
+    try:
+        bot.shutdown()
+    except:
+        logging.error("Failed to shut down bot properly. Giving up.")
