@@ -1,4 +1,5 @@
 import asyncio
+import aiohttp
 import functools
 import urllib
 import shutil
@@ -27,6 +28,17 @@ async def download_url(bot, url, include_name=False, extension=None):
             return file_location
     except Exception as e:
         raise BotException(EXCEPTION, "Failed to download the file.", e=e)
+
+
+async def get_url(bot, url):
+    """Uses aiohttp to asynchronously get a url response"""
+    try:
+        with aiohttp.ClientSession(loop=bot.loop) as session:
+            # return session.get(url)
+            async with session.get(url) as response:
+                return (response.status, await response.text())
+    except Exception as e:
+        raise BotException(EXCEPTION, "Failed to retrieve URL.", e)
 
 
 def future(function, *args, **kwargs):
