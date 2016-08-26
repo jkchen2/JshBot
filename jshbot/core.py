@@ -48,7 +48,7 @@ class Bot(discord.Client):
 
     def __init__(self, start_file, debug):
         self.version = '0.3.0-alpha'
-        self.date = 'August fest, 2016'
+        self.date = 'August 24th, 2016'
         self.time = int(time.time())
         self.readable_time = time.strftime('%c')
         self.debug = debug
@@ -379,7 +379,7 @@ class Bot(discord.Client):
                 self.last_response = message_reference
 
     async def handle_error(
-            self, error, message, parsed_input, text, edit=None):
+            self, error, message, parsed_input, response, edit=None):
         """Common error handler for sending responses."""
         send_function = self.edit_message if edit else self.send_message
         location = edit if edit else message.channel
@@ -389,11 +389,11 @@ class Bot(discord.Client):
         if type(error) is BotException:
             message_reference = await send_function(location, str(error))
 
-        elif type(error) is discord.HTTPException and message and text:
+        elif type(error) is discord.HTTPException and message and response:
             self.last_exception = error
-            if 'too long' in error.args[0]:
+            if len(response[0]) > 1998:
                 message_reference = await utilities.send_text_as_file(
-                    self, message.channel, text, 'response',
+                    self, message.channel, response[0], 'response',
                     extra="The response is too long. Here is a text file of "
                     "the contents.")
             else:
@@ -422,7 +422,7 @@ class Bot(discord.Client):
             logging.error(self.last_traceback)
             logging.error(self.last_exception)
             await utilities.notify_owners(
-                self, '{0}\n{1}\n{2}\n{3}'.format(
+                self, '```\n{0}\n{1}\n{2}\n{3}```'.format(
                     message.content, parsed_input,
                     self.last_exception, self.last_traceback))
             insult = random.choice(exception_insults)
@@ -567,7 +567,4 @@ def initialize(start_file, debug=False):
                 error_file.write(error_message)
             print("Error file written.")
     logging.error("Bot disconnected. Shutting down...")
-    try:
-        bot.shutdown()
-    except:
-        logging.error("Failed to shut down bot properly. Giving up.")
+    bot.shutdown()
