@@ -1,7 +1,8 @@
 import asyncio
 import logging
-import os.path
 import importlib.util
+import os.path
+import sys
 
 # Debug
 import traceback
@@ -19,6 +20,10 @@ def add_plugins(bot):
     In addition, this also sets the commands given by each plugin.
     """
     directory = '{}/plugins'.format(bot.path)
+    data_directory = '{}/plugins/plugin_data'.format(bot.path)
+    if os.path.isdir(data_directory):
+        logging.debug("Setting plugin_data as plugin import path.")
+        sys.path.append(data_directory)
     try:
         plugins_list = os.listdir(directory)
     except FileNotFoundError:
@@ -69,4 +74,8 @@ def broadcast_event(bot, event, *args, **kwargs):
     for plugin in bot.plugins.values():
         function = getattr(plugin[0], event, None)
         if function:
-            asyncio.ensure_future(function(bot, *args, **kwargs))
+            try:
+                asyncio.ensure_future(function(bot, *args, **kwargs))
+            except TypeError as e:
+                logging.error(traceback.format_exc())
+                logging.error("Bypassing event error: " + e)
