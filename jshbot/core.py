@@ -48,7 +48,7 @@ class Bot(discord.Client):
 
     def __init__(self, start_file, debug):
         self.version = '0.3.0-alpha'
-        self.date = 'August 24th, 2016'
+        self.date = 'August 27th, 2016'
         self.time = int(time.time())
         self.readable_time = time.strftime('%c')
         self.debug = debug
@@ -447,6 +447,7 @@ class Bot(discord.Client):
             data.check_all(self)
             data.load_data(self)
             self.fresh_boot = True
+            plugins.broadcast_event(self, 'on_ready_boot')
         elif self.fresh_boot:
             self.fresh_boot = False
 

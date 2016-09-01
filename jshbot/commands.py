@@ -82,7 +82,7 @@ def get_manual(bot, entry, server=None):
     """Gets the given manual entry."""
     invoker = utilities.get_invoker(bot, server=server)
     base_invoker = utilities.get_invoker(bot)
-    if entry == 0:
+    if entry <= 0:
         raise BotException(EXCEPTION, "Invalid manual entry.")
     for manual in bot.manuals:
         manual_length = len(manual[1]['order'])
@@ -359,13 +359,13 @@ async def execute(bot, message, command, parsed_input, initial_data):
     if command.elevated_level > 0:
         if command.elevated_level == 1 and not any(initial_data[1:]):
             raise BotException(
-                EXCEPTION, "Only server moderators can use this command.")
+                EXCEPTION, "Only bot moderators can use this command.")
         elif command.elevated_level == 2 and not any(initial_data[2:]):
             raise BotException(
-                EXCEPTION, "Only server owners can use this command.")
+                EXCEPTION, "Only server owner can use this command.")
         elif command.elevated_level >= 3 and not initial_data[3]:
             raise BotException(
-                EXCEPTION, "Only the bot owners can use this command.")
+                EXCEPTION, "Only the bot owner(s) can use this command.")
 
     if command.base in disabled_commands and not any(initial_data[1:]):
         raise BotException(

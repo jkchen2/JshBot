@@ -188,10 +188,6 @@ def fill_shortcut(bot, shortcut, base, parameters, server=None):
             elif argument_type in ('^', '+'):
                 if len(parameters[current:]) == 1 and argument_type == '^':
                     combined = parameters[current]
-                    if (combined.startswith('"') and
-                            combined.endswith('"') and not
-                            combined.endswith('\\"')):
-                        combined = combined[1:-1]
                 else:
                     combined = ''.join(parameters[current:])
                 assert combined

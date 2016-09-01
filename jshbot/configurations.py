@@ -42,14 +42,14 @@ def get(bot, plugin_name, key=None, extra=None, extension='json'):
     """Gets the configuration file for the given plugin.
 
     Keyword arguments:
-    key -- Gets the specified key from the config file.
+    key -- Gets the specified key from the config file, otherwise everything.
     extra -- Looks for <plugin_name>-<extra>.<extension>
     extension -- If 'json', reads the file as json, otherwise reads it as text.
     """
-    if extra:
+    if extra:  # Open from external configuration file
         filename = '{0}/config/{1}-{2}.{3}'.format(
             bot.path, plugin_name, extra, extension)
-    else:
+    else:  # Open from configuration dictionary
         try:
             config = bot.configurations[plugin_name]
         except KeyError:

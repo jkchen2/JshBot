@@ -383,10 +383,10 @@ def get_member(
     """Gets a member given the identity.
 
     Keyword arguments:
-    server -- if specified, will look here for identity first
-    attribute -- gets the found member's attribute instead of the member itself
-    safe -- returns None if not found instead of raising an exception
-    strict -- will look only in the specified server
+    server -- if specified, will look here for identity first.
+    attribute -- gets the member's attribute instead of the member itself.
+    safe -- returns None if not found instead of raising an exception.
+    strict -- will look only in the specified server.
     """
     if identity.startswith('<@') and identity.endswith('>'):
         identity = identity.strip('<@!>')
