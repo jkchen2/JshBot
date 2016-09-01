@@ -3,6 +3,7 @@
     "owners": [""],
     "token": "",
     "debug_channel": "",
+    "upload_channel": "",
     "edit_timeout": 120,
     "save_interval": 1800,
     "cache_size_limit": 1000,

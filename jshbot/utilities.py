@@ -1,12 +1,11 @@
 import asyncio
 import aiohttp
 import functools
-import urllib
 import shutil
 import logging
 import os
 
-from jshbot import data
+from jshbot import data, configurations
 from jshbot.exceptions import BotException
 
 EXCEPTION = 'Utilities'
@@ -21,7 +20,13 @@ async def download_url(bot, url, include_name=False, extension=None):
     cleaned_name = get_cleaned_filename(url, extension=extension)
     file_location = '{0}/temp/{1}'.format(bot.path, cleaned_name)
     try:
-        await future(urllib.request.urlretrieve, url, file_location)
+        response_code, downloaded_bytes = await get_url(
+            bot, url, get_bytes=True, headers={'User-Agent': 'Mozilla/5.0'})
+        if response_code != 200:
+            raise BotException(
+                EXCEPTION, "Failed to download file.", response_code)
+        with open(file_location, 'wb') as download:
+            download.write(downloaded_bytes)
         if include_name:
             return (file_location, cleaned_name)
         else:
@@ -30,15 +35,92 @@ async def download_url(bot, url, include_name=False, extension=None):
         raise BotException(EXCEPTION, "Failed to download the file.", e=e)
 
 
-async def get_url(bot, url):
-    """Uses aiohttp to asynchronously get a url response"""
+def delete_temporary_file(bot, filename, safe=True):
+    """Deletes the given file from the temp folder."""
     try:
-        with aiohttp.ClientSession(loop=bot.loop) as session:
-            # return session.get(url)
-            async with session.get(url) as response:
-                return (response.status, await response.text())
+        os.remove('{0}/temp/{1}'.format(bot.path, filename))
     except Exception as e:
-        raise BotException(EXCEPTION, "Failed to retrieve URL.", e)
+        if not safe:
+            raise BotException(EXCEPTION, "File could not be deleted.", e=e)
+
+
+async def get_url(bot, urls, headers={}, get_bytes=False):
+    """Uses aiohttp to asynchronously get a url response, or multiple."""
+    read_method = 'read' if get_bytes else 'text'
+    try:
+        with aiohttp.ClientSession(headers=headers, loop=bot.loop) as session:
+
+            async def fetch(url, read_method='text'):
+                if not url:  # Why
+                    return (None, None)
+                async with session.get(url) as response:
+                    return (
+                        response.status,
+                        await getattr(response, read_method)())
+
+            if isinstance(urls, list) or isinstance(urls, tuple):
+                coroutines = [fetch(url, read_method) for url in urls]
+                result = await parallelize(coroutines)
+            else:
+                result = await fetch(urls, read_method)
+            return result
+    except Exception as e:
+        raise BotException(EXCEPTION, "Failed to retrieve a URL.", e)
+
+
+async def upload_to_discord(bot, fp, filename=None, rewind=True, close=False):
+    """Uploads the given file-like object to the upload channel.
+
+    If the upload channel is specified in the configuration files, files
+    will be uploaded there. Otherwise, a new server will be created, and
+    used as the upload channel."""
+    channel_id = configurations.get(bot, 'core', 'upload_channel')
+    if not channel_id:  # Check to see if a server was already created
+        channel_id = data.get(bot, 'core', 'upload_channel')
+    channel = bot.get_channel(channel_id)
+
+    if channel is None:  # Create server
+        logging.debug("Creating server for upload channel...")
+        try:
+            server = await bot.create_server('uploads')
+        except Exception as e:
+            raise BotException(
+                EXCEPTION,
+                "Failed to create upload server. This bot is not whitelisted "
+                "to create servers.", e=e)
+        data.add(bot, 'core', 'upload_channel', server.id)
+        channel = bot.get_channel(server.id)
+
+    if channel is None:  # Shouldn't happen
+        raise BotException(EXCEPTION, "Failed to get upload channel.")
+
+    try:
+        message = await bot.send_file(channel, fp, filename=filename)
+        upload_url = message.attachments[0]['url']
+    except Exception as e:
+        raise BotException(EXCEPTION, "Failed to upload file.", e=e)
+
+    if close:
+        try:
+            fp.close()
+        except:
+            pass
+    elif rewind:
+        try:
+            fp.seek(0)
+        except:
+            pass
+
+    return upload_url
+
+
+async def parallelize(coroutines, return_exceptions=False):
+    """Uses asyncio.gather to "parallelize" the coroutines (not really)."""
+    try:
+        return await asyncio.gather(
+            *coroutines, return_exceptions=return_exceptions)
+    except Exception as e:
+        raise BotException(EXCEPTION, "Failed to await coroutines.", e=e)
 
 
 def future(function, *args, **kwargs):
@@ -236,7 +318,10 @@ async def notify_owners(bot, message, user_id=None):
                 return
         for owner in bot.owners:
             member = data.get_member(bot, owner)
-            await bot.send_message(member, message)
+            if len(message) > 1998:
+                await send_text_as_file(bot, member, message, 'notification')
+            else:
+                await bot.send_message(member, message)
 
 
 def make_backup(bot):
