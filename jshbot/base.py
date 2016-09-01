@@ -125,11 +125,11 @@ def get_commands():
              'entries.'),
             ('all ?here', 'all (here)', 'Shows all of the commands and '
              'related help.'),
-            ('?here :&', 'help (here) <base> (<topic>)', 'Gets the '
+            ('?here :&', '(here) <base> (<topic>)', 'Gets the '
              'help of the given command. If a topic index is provided, it '
              'will get specific help regarding that command.'),
-            ('?here', '(here)', 'Gets the general help text. This '
-             'will list all available commands to you.')),
+            ('?here', '(here)', 'Gets the general help text. '
+             'This will list all available commands to you.')),
         shortcuts=Shortcuts(
             ('manual', 'manual {}', '&', 'manual (<arguments>)',
              '(<arguments>)')),
@@ -673,7 +673,7 @@ async def help_wrapper(bot, message, blueprint_index, options, arguments):
             bot, is_owner=is_owner, server=server)
 
     if not direct and server is None and not bot.selfbot:  # Terminal reminder
-        if len(response) > 1800:
+        if len(response) > 1900:
             await utilities.send_text_as_file(
                 bot, message.author, response, 'help')
         else:
@@ -681,7 +681,7 @@ async def help_wrapper(bot, message, blueprint_index, options, arguments):
         response = "Check your direct messages!"
         message_type = 2
         extra = (10, message)  # Deletes the given message too
-    elif len(response) > 1800:
+    elif len(response) > 1900:
         await utilities.send_text_as_file(
             bot, message.channel, response, 'help')
         response = ''
@@ -742,6 +742,7 @@ async def handle_active_message(bot, message_reference, extra):
         await bot.edit_message(message_reference, latency_time)
 
     elif extra[0] == 'reload':
+        data.save_data(bot)  # Safety save
         logging.debug("Reloading plugins and commands...")
 
         # Cancel running tasks associated with plugins
@@ -766,6 +767,7 @@ async def handle_active_message(bot, message_reference, extra):
         data.check_all(bot)
         bot.fresh_boot = True  # Reset one-time startup
         plugins.broadcast_event(bot, 'on_ready')
+        plugins.broadcast_event(bot, 'on_ready_boot')
         await asyncio.sleep(1)
         await bot.edit_message(message_reference, "Reloaded!")
 
