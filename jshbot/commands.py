@@ -362,7 +362,7 @@ async def execute(bot, message, command, parsed_input, initial_data):
                 EXCEPTION, "Only bot moderators can use this command.")
         elif command.elevated_level == 2 and not any(initial_data[2:]):
             raise BotException(
-                EXCEPTION, "Only server owner can use this command.")
+                EXCEPTION, "Only the server owner can use this command.")
         elif command.elevated_level >= 3 and not initial_data[3]:
             raise BotException(
                 EXCEPTION, "Only the bot owner(s) can use this command.")
