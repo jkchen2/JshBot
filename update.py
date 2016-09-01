@@ -1,6 +1,7 @@
 import shutil
 import os
 from urllib.request import urlretrieve
+from distutils.dir_util import copy_tree
 
 # This is a dirty update script that I'm just writing for the ease of updating
 #   files right now. I might write a better one later.
@@ -55,9 +56,18 @@ for plugin in os.listdir(directory + '/plugins'):
         copy_directory = directory + '/plugins/'
         config_directory = directory + '/config/'
         from_directory = current_directory + plugin[:-3] + '/'
-        for update_file in os.listdir(from_directory):
+        try:
+            updated_files = os.listdir(from_directory)
+        except FileNotFoundError:
+            print("Skipped " + plugin[:-3] + " (possibly a library file)")
+            continue
+        for update_file in updated_files:
             if update_file.endswith('.py'):
                 shutil.copy2(from_directory + update_file, copy_directory)
+            elif os.path.isdir(from_directory + update_file):
+                copy_tree(
+                    from_directory + update_file,
+                    copy_directory + update_file)
             elif (update_file.endswith('manual.json') or
                     not os.path.isfile(config_directory + update_file)):
                 shutil.copy2(from_directory + update_file, config_directory)
