@@ -48,7 +48,7 @@ class Bot(discord.Client):
 
     def __init__(self, start_file, debug):
         self.version = '0.3.0-alpha'
-        self.date = 'August 27th, 2016'
+        self.date = 'September 2nd, 2016'
         self.time = int(time.time())
         self.readable_time = time.strftime('%c')
         self.debug = debug
@@ -311,6 +311,8 @@ class Bot(discord.Client):
 
         if response[2] == 0:  # Normal
             # Edited commands are handled in base.py
+            if message_reference is None:  # Forbidden exception
+                return
             wait_time = self.edit_timeout
             if wait_time:
                 self.edit_dictionary[message.id] = message_reference
@@ -334,6 +336,8 @@ class Bot(discord.Client):
                     pass
 
         elif response[2] == 3:  # Active
+            if message_reference is None:  # Forbidden exception
+                return
             try:
                 await commands.handle_active_message(
                     self, message_reference, command, response[3])
