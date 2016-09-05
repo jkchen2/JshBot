@@ -48,7 +48,7 @@ class Bot(discord.Client):
 
     def __init__(self, start_file, debug):
         self.version = '0.3.0-alpha'
-        self.date = 'September 2nd, 2016'
+        self.date = 'September 5th, 2016'
         self.time = int(time.time())
         self.readable_time = time.strftime('%c')
         self.debug = debug
@@ -560,16 +560,13 @@ def initialize(start_file, debug=False):
                     log_file, maxBytes=1000000, backupCount=3)])
     try:
         bot = Bot(start_file, debug)
-        not_selfbot = not bot.selfbot
-        bot.run(bot.get_token(), bot=not_selfbot)
+        bot.run(bot.get_token(), bot=not bot.selfbot)
     except Exception as e:
-        print("An exception occurred.")
-        print(e)
+        logging.error("An uncaught exception occurred.\n{}".format(e))
         traceback.print_exc()
-        if debug:
-            error_message = '{0}\n{1}'.format(e, traceback.format_exc())
-            with open('{}/temp/error.txt'.format(path), 'w') as error_file:
-                error_file.write(error_message)
-            print("Error file written.")
-    logging.error("Bot disconnected. Shutting down...")
+        error_message = '{0}\n{1}'.format(e, traceback.format_exc())
+        with open('{}/temp/error.txt'.format(path), 'w') as error_file:
+            error_file.write(error_message)
+        logging.error("Error file written.")
+    logging.warn("Bot disconnected. Shutting down...")
     bot.shutdown()

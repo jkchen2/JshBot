@@ -593,6 +593,8 @@ async def debug_wrapper(
                         exec(*pass_in)
                         used_exec = True
 
+            except BotException as e:
+                response = str(e)
             except Exception as e:
                 global_dictionary['last_traceback'] = traceback.format_exc()
                 response = '`{0}: {1}`'.format(type(e).__name__, e)

@@ -4,6 +4,7 @@ import functools
 import shutil
 import logging
 import os
+import io
 
 from jshbot import data, configurations
 from jshbot.exceptions import BotException
@@ -257,19 +258,17 @@ def get_formatted_message(message):
     else:
         attached = ''
     return ("{0.author.name}#{0.author.discriminator} ({0.author.id}) "
-            "at {0.timestamp}{1}{2}:\n\t{0.content}\n").format(
+            "at {0.timestamp}{1}{2}:\r\n\t{0.content}").format(
                 message, edited, attached)
 
 
 async def get_log_text(bot, channel, **log_arguments):
     """Wrapper function for Carter's time machine."""
     messages = []
-    large_text = ''
     async for message in bot.logs_from(channel, **log_arguments):
         messages.append(message)
-    for message in reversed(messages):
-        large_text += get_formatted_message(message)
-    return large_text
+    return '\r\n\r\n'.join(
+        get_formatted_message(message) for message in reversed(messages))
 
 
 async def send_text_as_file(bot, channel, text, filename, extra=None):
@@ -280,6 +279,14 @@ async def send_text_as_file(bot, channel, text, filename, extra=None):
     reference = await bot.send_file(channel, file_location, content=extra)
     asyncio.ensure_future(future(os.remove, file_location))
     return reference
+
+
+def get_text_as_file(bot, text):
+    """Converts the text into a bytes object using BytesIO."""
+    try:
+        return io.StringIO(str(text))
+    except Exception as e:
+        raise BotException(EXCEPTION, "Failed to convert text to a file.", e=e)
 
 
 def get_invoker(bot, server=None):
