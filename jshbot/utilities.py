@@ -284,7 +284,8 @@ async def send_text_as_file(bot, channel, text, filename, extra=None):
 def get_text_as_file(bot, text):
     """Converts the text into a bytes object using BytesIO."""
     try:
-        return io.StringIO(str(text))
+        # return io.BytesIO(bytes(str(text)), str.encode)
+        return io.BytesIO(bytes(str(text), 'utf-8'))
     except Exception as e:
         raise BotException(EXCEPTION, "Failed to convert text to a file.", e=e)
 
