@@ -40,7 +40,8 @@ exception_insults = [
     'That one stung a bit.',
     'Of *course*. Nothing ever works out, does it?',
     'I yelled at Jsh for you.',
-    'Minsoo is bad at osu!. He wanted me to tell you that.'
+    'Minsoo is bad at osu!. He wanted me to tell you that.',
+    'Existence is pain.'
 ]
 
 
@@ -48,7 +49,7 @@ class Bot(discord.Client):
 
     def __init__(self, start_file, debug):
         self.version = '0.3.0-alpha'
-        self.date = 'September 5th, 2016'
+        self.date = 'September 27th, 2016'
         self.time = int(time.time())
         self.readable_time = time.strftime('%c')
         self.debug = debug
@@ -232,6 +233,8 @@ class Bot(discord.Client):
         if spam_value >= self.spam_limit:
             if spam_value == self.spam_limit:
                 self.spam_dictionary[message.author.id] = self.spam_limit + 1
+                plugins.broadcast_event(
+                    self, 'bot_on_user_ratelimit', message.author)
                 await self.send_message(
                     message.channel, "{0}, you appear to be issuing/editing "
                     "commands too quickly. Please wait {1} seconds.".format(
@@ -253,6 +256,8 @@ class Bot(discord.Client):
             parsed_input = None
             parsed_input = parser.parse(
                 self, command, base, parameters, server=message.server)
+            plugins.broadcast_event(
+                self, 'bot_on_command', command, parsed_input, message.author)
             logging.debug('\t' + str(parsed_input))
             print(parsed_input[:-1])  # Temp
             response = await (commands.execute(
@@ -283,6 +288,9 @@ class Bot(discord.Client):
                             message.channel, response[0], tts=response[1])
                     elif not response[0]:  # Empty message
                         response = (None, None, 1, None)
+                    plugins.broadcast_event(
+                        self, 'bot_on_response', response,
+                        message_reference, message)
             except Exception as e:
                 message_reference = await self.handle_error(
                     e, message, parsed_input, response, edit=edit)
@@ -377,6 +385,9 @@ class Bot(discord.Client):
                     response[0].close()
                 except:  # Ignore closing exceptions
                     pass
+                plugins.broadcast_event(
+                    self, 'bot_on_response', response,
+                    message_reference, message)
             except Exception as e:
                 message_reference = await self.handle_error(
                     e, message, parsed_input, response, edit=message_reference)
@@ -391,9 +402,12 @@ class Bot(discord.Client):
         self.last_exception = error
 
         if type(error) is BotException:
+            plugins.broadcast_event(self, 'bot_on_error', error, message)
             message_reference = await send_function(location, str(error))
 
         elif type(error) is discord.HTTPException and message and response:
+            plugins.broadcast_event(
+                self, 'bot_on_discord_error', error, message)
             self.last_exception = error
             if len(response[0]) > 1998:
                 message_reference = await utilities.send_text_as_file(
@@ -406,6 +420,8 @@ class Bot(discord.Client):
                     "for some reason.\n{}".format(error))
 
         elif type(error) is discord.Forbidden:
+            plugins.broadcast_event(
+                self, 'bot_on_discord_error', error, message)
             message_reference = None
             try:
                 await self.send_message(
@@ -423,6 +439,8 @@ class Bot(discord.Client):
                 pass
 
         else:
+            plugins.broadcast_event(
+                self, 'bot_on_general_error', error, message)
             logging.error(self.last_traceback)
             logging.error(self.last_exception)
             await utilities.notify_owners(
@@ -451,7 +469,7 @@ class Bot(discord.Client):
             data.check_all(self)
             data.load_data(self)
             self.fresh_boot = True
-            plugins.broadcast_event(self, 'on_ready_boot')
+            plugins.broadcast_event(self, 'bot_on_ready_boot')
         elif self.fresh_boot:
             self.fresh_boot = False
 
@@ -497,8 +515,8 @@ class Bot(discord.Client):
             await asyncio.sleep(300)
             self_member = next(iter(self.servers)).me
             self_status, self_game = self_member.status, self_member.game
-            if type(self_status) is not discord.Status.idle:
-                await self.change_status(game=self_game, idle=True)
+            if not isinstance(self_status, discord.Status.idle):
+                await self.change_presence(game=self_game, afk=True)
 
     async def spam_clear_loop(self):
         """Loop to clear the spam dictionary periodically."""
