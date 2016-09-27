@@ -1,3 +1,4 @@
+import discord
 import asyncio
 import aiohttp
 import functools
@@ -10,6 +11,31 @@ from jshbot import data, configurations
 from jshbot.exceptions import BotException
 
 EXCEPTION = 'Utilities'
+
+
+def add_bot_permissions(bot, plugin_name, **permissions):
+    """Adds the given permissions to the bot for authentication generation."""
+    dummy = discord.Permissions()
+    for permission in permissions:
+        try:
+            getattr(dummy, permission.lower())
+        except:  # Permission not found
+            raise BotException(
+                EXCEPTION, "Permission '{}' does not exist", permission)
+    current = data.get(
+        bot, plugin_name, 'permissions', create=True, volatile=True)
+    if current is None:
+        data.add(bot, plugin_name, 'permissions', permissions, volatile=True)
+
+
+def get_permission_bits(bot):
+    """Calculates all of the permissions for each plugin."""
+    dummy = discord.Permissions()
+    for plugin in bot.plugins.keys():
+        for permission in data.get(
+                bot, plugin, 'permissions', volatile=True, default={}):
+            setattr(dummy, permission.lower(), True)
+    return dummy.value
 
 
 async def download_url(bot, url, include_name=False, extension=None):
@@ -237,7 +263,7 @@ async def leave_and_stop(bot, server, member=None, safe=True):
         await voice_client.disconnect()
 
 
-async def delayed_leave(bot, server, player, delay=60):
+async def delayed_leave(bot, server_id, player, delay=60):
     """Leaves the voice channel associated with the given server.
 
     This command does nothing if the current player of the server is not the

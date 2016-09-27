@@ -225,15 +225,26 @@ def parse(bot, command, base, parameters, server=None):
     return (base, blueprint_index, options, arguments, command.keywords)
 
 
-def guess_index(bot, text):
+def guess_index(bot, text, safe=True):
     """Guesses the closest command and returns the base and index."""
+    if not text:
+        if safe:
+            return (None, -1)
+        else:
+            raise BotException(EXCEPTION, "No guess text.")
     text = text.strip()
     split_content = text.split(' ', 1)
     if len(split_content) == 1:
         split_content.append('')
     base, parameters = split_content
     base = base.lower()
-    command = bot.commands[base]
+    try:
+        command = bot.commands[base]
+    except KeyError:
+        if safe:
+            return (None, -1)
+        else:
+            raise BotException(EXCEPTION, "Invalid base.")
     parameters, quoted_indices = split_parameters(parameters, quote_list=True)
     return (base, match_blueprint(
         bot, base, parameters, quoted_indices, command, find_index=True))

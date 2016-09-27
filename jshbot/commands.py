@@ -367,9 +367,12 @@ async def execute(bot, message, command, parsed_input, initial_data):
             raise BotException(
                 EXCEPTION, "Only the bot owner(s) can use this command.")
 
-    if command.base in disabled_commands and not any(initial_data[1:]):
-        raise BotException(
-            EXCEPTION, "This command is disabled on this server.")
+    for disabled_base, disabled_index in disabled_commands:
+        if (command.base == disabled_base and
+                disabled_index in (-1, parsed_input[1]) and
+                not any(initial_data[1:])):
+            raise BotException(
+                EXCEPTION, "This command is disabled on this server.")
 
     if command.function:
         given_function = command.function

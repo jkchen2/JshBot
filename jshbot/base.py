@@ -7,11 +7,11 @@ import inspect
 import traceback
 import re
 
-from jshbot import data, utilities, commands, plugins, configurations
+from jshbot import parser, data, utilities, commands, plugins, configurations
 from jshbot.commands import Command, SubCommands, Shortcuts
 from jshbot.exceptions import BotException
 
-__version__ = '0.1.10'
+__version__ = '0.1.11'
 EXCEPTION = 'Base'
 uses_configuration = False
 global_dictionary = {}
@@ -37,15 +37,19 @@ def get_commands():
             ('uptime', 'uptime', 'Gets the uptime of the bot.'),
             ('announcement', 'announcement', 'Gets the current announcement '
              'set by the bot owners.'),
+            ('invite ?details', 'invite (details)', 'Generates an invite for '
+             'the bot. If "details" is included, this will include a '
+             'breakown of what each permission is used for.'),
             ('join', 'join', 'Joins the voice channel you are in.'),
             ('leave', 'leave', 'Leaves the voice channel you are in.')),
         shortcuts=Shortcuts(
             ('announcement', 'announcement', '', 'announcement', ''),
+            ('invite', 'invite {}', '&', 'invite (details)', '(details)'),
             ('join', 'join', '', 'join', ''),
             ('leave', 'leave', '', 'leave', ''),
             ('stfu', 'leave', '', 'leave', '')),
         description='Essential bot commands that anybody can use.',
-        group='base'))
+        group='base', function=base_wrapper))
 
     new_commands.append(Command(
         'mod', SubCommands(
@@ -68,7 +72,7 @@ def get_commands():
              'bot will only respond to its name or mention as an invoker.')),
         shortcuts=Shortcuts(('clear', 'clear', '', 'clear', '')),
         description='Commands for server bot moderators.',
-        elevated_level=1, no_selfbot=True, group='base'))
+        elevated_level=1, no_selfbot=True, group='base', function=mod_wrapper))
 
     new_commands.append(Command(
         'owner', SubCommands(
@@ -83,7 +87,8 @@ def get_commands():
              'the bot regarding moderation events (such as muting channels '
              'and blocking users from bot interaction).')),
         description='Commands for server owners.',
-        elevated_level=2, no_selfbot=True, group='base'))
+        elevated_level=2, no_selfbot=True,
+        group='base', function=owner_wrapper))
 
     new_commands.append(Command(
         'botowner', SubCommands(
@@ -101,7 +106,7 @@ def get_commands():
              'announcement text.')),
         shortcuts=Shortcuts(('reload', 'reload', '', 'reload', '')),
         description='Commands for the bot owner.',
-        elevated_level=3, group='base'))
+        elevated_level=3, group='base', function=botowner_wrapper))
 
     new_commands.append(Command(
         'debug', SubCommands(
@@ -113,7 +118,7 @@ def get_commands():
             ('^', '<python>', 'Evaluates or executes the given code.')),
         description='Commands to help the bot owner debug stuff.',
         other='Be careful with these commands! They can break the bot.',
-        elevated_level=3, group='base'))
+        elevated_level=3, group='base', function=debug_wrapper))
 
     new_commands.append(Command(
         'help', SubCommands(
@@ -135,14 +140,16 @@ def get_commands():
              '(<arguments>)')),
         description='Command help and usage manuals.',
         other=('For all of these commands, if the \'here\' option is '
-               'specified, a direct message will not be sent.'), group='base'))
+               'specified, a direct message will not be sent.'),
+        group='base', function=help_wrapper))
 
     return new_commands
 
 
 async def base_wrapper(
-        bot, message, direct, blueprint_index, options, arguments):
-    response = ''
+        bot, message, base, blueprint_index, options, arguments,
+        keywords, cleaned_content):
+    response, tts, message_type, extra = ('', False, 0, None)
 
     if blueprint_index == 0:  # version
         response = '`{}`\n{}'.format(bot.version, bot.date)
@@ -184,7 +191,32 @@ async def base_wrapper(
         else:
             response = announcement
 
-    elif blueprint_index in (4, 5):  # Join/leave voice channel
+    elif blueprint_index == 4:  # Invite
+        if bot.selfbot:
+            raise BotException(EXCEPTION, "Nope.")
+        response_list = []
+
+        if 'details' in options:
+            for plugin in bot.plugins.keys():
+                permission_items = data.get(
+                    bot, plugin, 'permissions',
+                    volatile=True, default={}).items()
+                if permission_items:
+                    response_list.append('***`{}`***'.format(plugin))
+                    response_list.append('\t' + '\n\t'.join(
+                        ['**`{0[0]}`** -- {0[1]}'.format(item)
+                            for item in permission_items]) + '\n')
+
+        permissions_number = utilities.get_permission_bits(bot)
+        app_id = (await bot.application_info()).id
+        response_list.append(
+            'https://discordapp.com/oauth2/authorize?&client_id={0}'
+            '&scope=bot&permissions={1}\n**Remember: you must have the '
+            '"Administrator" role on the server you are trying to add the '
+            'bot to.**'.format(app_id, permissions_number))
+        response = '\n'.join(response_list)
+
+    elif blueprint_index in (5, 6):  # Join/leave voice channel
         if message.channel.is_private:
             raise BotException(
                 EXCEPTION, "This command cannot be used in direct messages.")
@@ -192,7 +224,7 @@ async def base_wrapper(
         if not voice_channel:
             raise BotException(EXCEPTION, "You are not in a voice channel.")
         try:
-            if blueprint_index == 4:
+            if blueprint_index == 5:
                 await utilities.join_and_ready(
                     bot, voice_channel, reconnect=True, is_mod=data.is_mod(
                         bot, message.server, message.author.id))
@@ -204,21 +236,29 @@ async def base_wrapper(
         except BotException as e:
             raise e  # Pass up
         except Exception as e:
-            action = 'join' if blueprint_index == 4 else 'leave'
+            action = 'join' if blueprint_index == 5 else 'leave'
             raise BotException(
                 EXCEPTION, "Failed to {} the voice channel.".format(action),
                 e=e)
 
-    return response
+    return (response, tts, message_type, extra)
 
 
-async def mod_wrapper(bot, message, blueprint_index, options, arguments):
-    response = ''
+async def mod_wrapper(
+        bot, message, base, blueprint_index, options, arguments,
+        keywords, cleaned_content):
+    response, tts, message_type, extra = ('', False, 0, None)
     mod_action = ''
 
     if blueprint_index == 0:  # info
         server_data = data.get(
             bot, 'base', None, server_id=message.server.id, default={})
+        disabled_commands = server_data.get('disabled', [])
+        display_list = []
+        for disabled_command in disabled_commands:
+            display_list.append('{0} ({1})'.format(
+                disabled_command[0],
+                'all' if disabled_command[1] == -1 else disabled_command[1]+1))
         response = (
             '```\n'
             'Information for server {0}\n'
@@ -238,34 +278,41 @@ async def mod_wrapper(bot, message, blueprint_index, options, arguments):
                 server_data.get('muted_channels', []),
                 server_data.get('command_invoker', None),
                 server_data.get('mention_mode', False),
-                server_data.get('disabled', []))
+                display_list)
 
-    elif blueprint_index == 1:  # toggle command
-        to_toggle = arguments[0].lower()
-        try:
-            command = bot.commands[to_toggle]
-        except KeyError:
+    elif blueprint_index == 1:  # Toggle command
+        try:  # Explicit index
+            split_arguments = arguments[0].split()
+            command = bot.commands[split_arguments[0]]
+            guess = [command.base, int(split_arguments[1]) - 1]
+            assert -1 < guess[1] < len(command.blueprints)
+        except IndexError:  # No index
+            guess = [command.base, -1]
+        except:  # Guess the help index
+            guess = list(parser.guess_index(bot, arguments[0]))
+        if guess[0] is None:
             raise BotException(EXCEPTION, "Invalid base.")
 
-        to_toggle = command.base
-        if command.plugin.__name__ == 'jshbot.base':
+        command = bot.commands[guess[0]]
+        if command.plugin is bot.commands['base'].plugin:
             raise BotException(
                 EXCEPTION, "The base commands cannot be disabled.")
-        pass_in = (bot, 'base', 'disabled', to_toggle)
+        pass_in = (bot, 'base', 'disabled', guess)
         pass_in_keywords = {'server_id': message.server.id}
         disabled_commands = data.get(
             *pass_in[:-1], **pass_in_keywords, default=[])
-        if to_toggle in disabled_commands:
+        if guess in disabled_commands:
             data.list_data_remove(*pass_in, **pass_in_keywords)
             response = "Enabled"
         else:
             data.list_data_append(*pass_in, **pass_in_keywords)
             response = "Disabled"
-        response += " the `{}` command and all associated subcommands.".format(
-            to_toggle)
+        response += " the `{0}` command {1}.".format(
+            guess[0], "and all associated subcommands"
+            if guess[1] == -1 else "(subcommand {})".format(guess[1] + 1))
         mod_action = response
 
-    elif blueprint_index in (2, 3):  # block or unblock
+    elif blueprint_index in (2, 3):  # Block or unblock
         user = data.get_member(bot, arguments[0], message.server)
         block = blueprint_index == 2
         mod_action = 'Blocked {}' if block else 'Unblocked {}'
@@ -293,11 +340,11 @@ async def mod_wrapper(bot, message, blueprint_index, options, arguments):
                     server_id=message.server.id)
                 response = "User is now unblocked."
 
-    elif blueprint_index == 4:  # clear
+    elif blueprint_index == 4:  # Clear
         response = (
             '​' + '\n'*80 + "The chat was pushed up by a bot moderator.")
 
-    elif blueprint_index in (5, 6):  # mute or unmute
+    elif blueprint_index in (5, 6):  # Mute or unmute
         server_id = message.server.id
         mute = blueprint_index == 5
         mod_action = 'Muted {}' if mute else 'Unmuted {}'
@@ -315,7 +362,7 @@ async def mod_wrapper(bot, message, blueprint_index, options, arguments):
                     data.list_data_append(
                         bot, 'base', 'muted_channels',
                         channel.id, server_id=server_id)
-                    if str(channel.type) == 'voice':  # Disconnect
+                    if str(channel.type) == 'voice':  # disconnect
                         await utilities.leave_and_stop(bot, message.server)
                     response = "Channel muted."
             else:  # unmute
@@ -341,7 +388,7 @@ async def mod_wrapper(bot, message, blueprint_index, options, arguments):
                 data.add(bot, 'base', 'muted', mute, server_id=server_id)
                 response = "Server {}muted.".format('' if mute else 'un')
 
-    elif blueprint_index == 7:  # invoker
+    elif blueprint_index == 7:  # Invoker
         if len(arguments[0]) > 10:
             raise BotException(
                 EXCEPTION,
@@ -360,7 +407,7 @@ async def mod_wrapper(bot, message, blueprint_index, options, arguments):
             response = "Custom command invoker cleared."
             mod_action = "Removed the custom command invoker."
 
-    elif blueprint_index == 8:  # mention
+    elif blueprint_index == 8:  # Mention
         current_mode = data.get(
             bot, 'base', 'mention_mode',
             server_id=message.server.id, default=False)
@@ -390,17 +437,20 @@ async def mod_wrapper(bot, message, blueprint_index, options, arguments):
         await utilities.send_text_as_file(
             bot, message.server.owner, logs, 'context')
 
-    return response
+    return (response, tts, message_type, extra)
 
 
-async def owner_wrapper(bot, message, blueprint_index, options, arguments):
-    response = ''
+async def owner_wrapper(
+        bot, message, base, blueprint_index, options, arguments,
+        keywords, cleaned_content):
+    response, tts, message_type, extra = ('', False, 0, None)
     mod_action = ''
+
     send_notifications = data.get(
         bot, 'base', 'notifications',
         server_id=message.server.id, default=True)
 
-    if blueprint_index in (0, 1):  # add or remove moderator
+    if blueprint_index in (0, 1):  # Add or remove moderator
         user = data.get_member(bot, arguments[0], server=message.server)
         user_is_mod = data.is_mod(
             bot, message.server, user.id, strict=True)
@@ -430,7 +480,7 @@ async def owner_wrapper(bot, message, blueprint_index, options, arguments):
                     user.id, server_id=message.server.id)
                 response = "User is no longer a moderator."
 
-    elif blueprint_index == 2:  # send feedback
+    elif blueprint_index == 2:  # Send feedback
         if data.get(bot, 'base', 'feedbackdisabled', default=False):
             response = ("Feedback has been temporarily disabled, probably "
                         "due to some troll spammers.")
@@ -445,7 +495,7 @@ async def owner_wrapper(bot, message, blueprint_index, options, arguments):
             await utilities.notify_owners(bot, text, user_id=message.author.id)
             response = "Message sent to bot owners."
 
-    elif blueprint_index == 3:  # toggle notifications
+    elif blueprint_index == 3:  # Toggle notifications
         response = ("Bot moderator activity notifications are now turned "
                     "{}").format("OFF." if send_notifications else "ON.")
         data.add(
@@ -467,35 +517,35 @@ async def owner_wrapper(bot, message, blueprint_index, options, arguments):
         await utilities.send_text_as_file(
             bot, message.server.owner, logs, 'context')
 
-    return response
+    return (response, tts, message_type, extra)
 
 
-async def botowner_wrapper(bot, message, blueprint_index, options, arguments):
-    response = ''
-    message_type = 0
-    extra = None
+async def botowner_wrapper(
+        bot, message, base, blueprint_index, options, arguments,
+        keywords, cleaned_content):
+    response, tts, message_type, extra = ('', False, 0, None)
 
-    if blueprint_index == 0:  # halt
+    if blueprint_index == 0:  # Halt
         await bot.send_message(message.channel, "Going down...")
         bot.shutdown()
-    elif blueprint_index == 1:  # restart
+    elif blueprint_index == 1:  # Restart
         await bot.send_message(message.channel, "Restarting...")
         bot.restart()
-    elif blueprint_index == 2:  # reload
+    elif blueprint_index == 2:  # Reload
         response = "Reloading..."
         message_type = 3
         extra = ('reload',)
-    elif blueprint_index == 3:  # ip
+    elif blueprint_index == 3:  # IP
         s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
         s.connect(('8.8.8.8', 80))  # Thanks Google
         ip = s.getsockname()[0]
         s.close()
         response = "Local IP: " + ip
-    elif blueprint_index == 4:  # backup
+    elif blueprint_index == 4:  # Backup
         utilities.make_backup(bot)
         await bot.send_file(
             message.channel, '{}/temp/backup1.zip'.format(bot.path))
-    elif blueprint_index == 5:  # blacklist
+    elif blueprint_index == 5:  # Blacklist
         blacklist = data.get(bot, 'base', 'blacklist', default=[])
         if not arguments[0]:
             response = "Blacklisted entries: {}".format(blacklist)
@@ -507,7 +557,7 @@ async def botowner_wrapper(bot, message, blueprint_index, options, arguments):
             else:
                 data.list_data_append(bot, 'base', 'blacklist', user_id)
                 response = "User added to blacklist."
-    elif blueprint_index == 6:  # toggle feedback
+    elif blueprint_index == 6:  # Toggle feedback
         status = data.get(bot, 'base', 'feedbackdisabled', default=False)
         action = "enabled" if status else "disabled"
         data.add(bot, 'base', 'feedbackdisabled', not status)
@@ -521,14 +571,13 @@ async def botowner_wrapper(bot, message, blueprint_index, options, arguments):
             data.add(bot, 'base', 'announcement', '')
             response = "Announcement cleared!"
 
-    return (response, message_type, extra)
+    return (response, tts, message_type, extra)
 
 
 async def debug_wrapper(
-        bot, message, blueprint_index, options, arguments, cleaned_content):
-    response = ''
-    message_type = 0
-    extra = None
+        bot, message, base, blueprint_index, options, arguments,
+        keywords, cleaned_content):
+    response, tts, message_type, extra = ('', False, 0, None)
     global global_dictionary
 
     if blueprint_index == 0:  # List plugins
@@ -614,13 +663,13 @@ async def debug_wrapper(
                 else:  # One line response
                     response = '`{}`'.format(result)
 
-    return (response, message_type, extra)
+    return (response, tts, message_type, extra)
 
 
-async def help_wrapper(bot, message, blueprint_index, options, arguments):
-    response = ''
-    message_type = 0
-    extra = None
+async def help_wrapper(
+        bot, message, base, blueprint_index, options, arguments,
+        keywords, cleaned_content):
+    response, tts, message_type, extra = ('', False, 0, None)
     direct = message.channel.is_private
     is_owner = data.is_owner(bot, message.author.id)
     server = message.server if 'here' in options else None
@@ -688,7 +737,7 @@ async def help_wrapper(bot, message, blueprint_index, options, arguments):
             bot, message.channel, response, 'help')
         response = ''
 
-    return (response, message_type, extra)
+    return (response, tts, message_type, extra)
 
 
 async def get_response(
@@ -701,32 +750,6 @@ async def get_response(
             response = 'Pong!\n{}'.format(arguments[0])
         else:
             response = 'Pong!'
-
-    elif base == 'base':
-        response = await base_wrapper(
-            bot, message, message.channel.is_private,
-            blueprint_index, options, arguments)
-
-    elif base == 'mod':
-        response = await mod_wrapper(
-            bot, message, blueprint_index, options, arguments)
-
-    elif base == 'owner':
-        response = await owner_wrapper(
-            bot, message, blueprint_index, options, arguments)
-
-    elif base == 'botowner':
-        response, message_type, extra = await botowner_wrapper(
-            bot, message, blueprint_index, options, arguments)
-
-    elif base == 'debug':
-        response, message_type, extra = await debug_wrapper(
-            bot, message, blueprint_index, options, arguments, cleaned_content)
-
-    elif base == 'help':
-        response, message_type, extra = await help_wrapper(
-            bot, message, blueprint_index, options, arguments)
-
     else:
         response = "This should not be seen. Your command was: " + base
 
@@ -769,8 +792,8 @@ async def handle_active_message(bot, message_reference, extra):
         data.check_all(bot)
         bot.fresh_boot = True  # Reset one-time startup
         plugins.broadcast_event(bot, 'on_ready')
-        plugins.broadcast_event(bot, 'on_ready_boot')
-        await asyncio.sleep(1)
+        plugins.broadcast_event(bot, 'bot_on_ready_boot')
+        await asyncio.sleep(1)  # Deception
         await bot.edit_message(message_reference, "Reloaded!")
 
 
@@ -800,8 +823,24 @@ def setup_debug_environment(bot):
 
 # Standard discord.py event functions
 
-async def on_ready(bot):
+async def bot_on_ready_boot(bot):
+    """Sets up permissions and the debug environment."""
     setup_debug_environment(bot)
+    permissions = {
+        'read_messages': "Standard.",
+        'send_messages': "Standard.",
+        'manage_messages': (
+            "Deletes messages of certain commands (like `help`)."),
+        'attach_files': (
+            "Uploads responses longer than 2000 "
+            "characters long as a text file."),
+        'read_message_history': (
+            "Gets chat context when bot moderators change settings."),
+        'connect': "Allows the bot to connect to voice channels. (Framework)",
+        'speak': "Allows the bot to speak. (Framework)"
+    }
+    utilities.add_bot_permissions(bot, 'base', **permissions)
+
 
 async def on_server_join(bot, server):
     # Add server to the list
@@ -829,11 +868,13 @@ async def on_server_join(bot, server):
         "https://github.com/jkchen2/JshBot/wiki").format(server, invoker)
     await bot.send_message(server.owner, text)
 
+
 async def on_message_edit(bot, before, after):
     """Integrates with the core to handle edited messages."""
     if before.content != after.content and before.id in bot.edit_dictionary:
         message_reference = bot.edit_dictionary.pop(before.id)
         await bot.on_message(after, replacement_message=message_reference)
+
 
 async def on_error(bot, event, *args, **kwargs):
     """Gets uncaught exceptions."""
