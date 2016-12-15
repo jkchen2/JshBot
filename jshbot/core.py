@@ -18,6 +18,11 @@ from jshbot.exceptions import BotException, ErrorTypes
 EXCEPTION = 'Core'
 why = None
 
+instances = []
+bot_data = {'global_users': {}, 'global_plugins': {}}
+volatile_data = {'global_users': {}, 'global_plugins': {}}
+data_changed = []
+
 exception_insults = [
     'Ow.',
     'Ah, shucks.',
@@ -47,8 +52,8 @@ exception_insults = [
 
 class Bot(discord.Client):
 
-    def __init__(self, start_file, debug):
-        self.version = '0.3.0-alpha'
+    def __init__(self, start_file, debug, shard_id=None, shard_count=None):
+        self.version = '0.3.0-never-ending-alpha'
         self.date = 'September 27th, 2016'
         self.time = int(time.time())
         self.readable_time = time.strftime('%c')
@@ -63,7 +68,7 @@ class Bot(discord.Client):
                 "Starting up JshBot " + self.version))
             print("=== {0: ^40} ===".format(self.readable_time))
 
-        super().__init__()
+        super().__init__(shard_id=shard_id, shard_count=shard_count)
 
         self.path = os.path.split(os.path.realpath(start_file))[0]
         logging.debug("Setting directory to {}".format(self.path))
@@ -75,9 +80,10 @@ class Bot(discord.Client):
         plugins.add_plugins(self)
 
         logging.debug("Setting up data...")
-        self.data = {'global_users': {}, 'global_plugins': {}}
-        self.volatile_data = {'global_users': {}, 'global_plugins': {}}
-        self.data_changed = []
+        global bot_data, volatile_data, data_changed, instances
+        self.data = bot_data
+        self.volatile_data = volatile_data
+        self.data_changed = data_changed
 
         logging.debug("Loading manuals...")
         self.manuals = []
@@ -259,7 +265,7 @@ class Bot(discord.Client):
             plugins.broadcast_event(
                 self, 'bot_on_command', command, parsed_input, message.author)
             logging.debug('\t' + str(parsed_input))
-            print(parsed_input[:-1])  # Temp
+            print(self.instance_number, parsed_input[:-1])  # Temp
             response = await (commands.execute(
                 self, message, command, parsed_input, initial_data))
             if self.selfbot and response[2] != 5:
@@ -456,6 +462,8 @@ class Bot(discord.Client):
 
     async def on_ready(self):
         if self.fresh_boot is None:
+            self.all_instances = instances
+            self.instance_number = instances.index(self)
             if self.selfbot:  # Selfbot safety checks
                 if len(self.owners) != 1:
                     raise BotException(
@@ -470,6 +478,7 @@ class Bot(discord.Client):
             data.load_data(self)
             self.fresh_boot = True
             plugins.broadcast_event(self, 'bot_on_ready_boot')
+
         elif self.fresh_boot:
             self.fresh_boot = False
 
@@ -494,15 +503,20 @@ class Bot(discord.Client):
 
         if self.debug:
             logging.debug("=== {0: ^40} ===".format(
-                self.user.name + ' online'))
+                self.user.name + ' online (instance {})'.format(
+                    self.instance_number)))
         else:
-            print("=== {0: ^40} ===".format(self.user.name + ' online'))
+            print("=== {0: ^40} ===".format(
+                self.user.name + ' online (instance {})'.format(
+                    self.instance_number)))
 
         if self.fresh_boot:
-            if self.selfbot:
-                asyncio.ensure_future(self.selfbot_away_loop())
             asyncio.ensure_future(self.spam_clear_loop())
-            asyncio.ensure_future(self.save_loop())
+            if self.instance_number == 0:
+                asyncio.ensure_future(self.save_loop())
+                asyncio.ensure_future(self.backup_loop())
+                if self.selfbot:
+                    asyncio.ensure_future(self.selfbot_away_loop())
 
     # Take advantage of dispatch to intercept all events
     def dispatch(self, event, *args, **kwargs):
@@ -532,7 +546,7 @@ class Bot(discord.Client):
                 self.spam_dictionary = {}
 
     async def save_loop(self):
-        """Runs the loop that periodically saves data."""
+        """Runs the loop that periodically saves data (minutes)."""
         try:
             interval = int(self.configurations['core']['save_interval'])
             interval = 0 if interval <= 0 else interval
@@ -542,6 +556,29 @@ class Bot(discord.Client):
         while interval:
             await asyncio.sleep(interval)
             self.save_data()
+
+    async def backup_loop(self):
+        """Runs the loop that periodically backs up data (hours)."""
+        try:
+            interval = int(self.configurations['core']['backup_interval'])
+            interval = 0 if interval <= 0 else interval * 3600
+        except:
+            logging.warn("Backup interval not configured.")
+            return
+        channel_id = self.configurations['core']['debug_channel']
+        await asyncio.sleep(60)  # Wait for shards to connect
+        for instance in self.all_instances:
+            debug_channel = instance.get_channel(channel_id)
+            if debug_channel:
+                break
+        if not debug_channel:
+            logging.warn("Debug channel not configured.")
+            return
+        while interval:
+            utilities.make_backup(self)
+            await self.send_file(
+                debug_channel, '{}/temp/backup1.zip'.format(self.path))
+            await asyncio.sleep(interval)
 
     def save_data(self, force=False):
         logging.debug("Saving data...")
@@ -560,15 +597,15 @@ class Bot(discord.Client):
             self.save_data(force=True)
         logging.debug("Closing down!")
         try:
-            asyncio.ensure_future(self.logout())
+            self.loop.close()
         except:
             pass
         sys.exit()
 
 
-def initialize(start_file, debug=False):
+def initialize(start_file, debug=False, shards=1):
+    path = os.path.split(os.path.realpath(start_file))[0]
     if debug:
-        path = os.path.split(os.path.realpath(start_file))[0]
         log_file = '{}/temp/logs.txt'.format(path)
         if os.path.isfile(log_file):
             shutil.copy2(log_file, '{}/temp/last_logs.txt'.format(path))
@@ -576,15 +613,50 @@ def initialize(start_file, debug=False):
                 level=logging.DEBUG,
                 handlers=[logging.handlers.RotatingFileHandler(
                     log_file, maxBytes=1000000, backupCount=3)])
-    try:
-        bot = Bot(start_file, debug)
-        bot.run(bot.get_token(), bot=not bot.selfbot)
-    except Exception as e:
+
+    if shards < 1:
+        logging.error("Invalid shard number - must be greater than 1.")
+        sys.exit(1)
+
+    def safe_exit():
+        try:  # From discord.py client.run
+            for bot in instances:
+                loop.run_until_complete(bot.logout())
+            pending = asyncio.Task.all_tasks()
+            gathered = asyncio.gather(*pending)
+        except:
+            logging.error("Failed to log out of bot instances.")
+            pass
+        try:
+            gathered.cancel()
+            loop.run_until_complete(gathered)
+            gathered.exception()
+        except:
+            pass
+        logging.warn("Bot disconnected. Shutting down...")
+        bot = instances[0]
+        bot.shutdown()  # Calls sys.exit
+
+    def exception_handler(loop, context):
+        e = context.get('exception')
         logging.error("An uncaught exception occurred.\n{}".format(e))
         traceback.print_exc()
         error_message = '{0}\n{1}'.format(e, traceback.format_exc())
         with open('{}/temp/error.txt'.format(path), 'w') as error_file:
             error_file.write(error_message)
         logging.error("Error file written.")
-    logging.warn("Bot disconnected. Shutting down...")
-    bot.shutdown()
+        safe_exit()
+
+    global instances
+    loop = asyncio.get_event_loop()
+    try:
+        tasks = []
+        for shard in range(shards):  # Start shard instances
+            bot = Bot(start_file, debug, shard_id=shard, shard_count=shards)
+            instances.append(bot)
+            tasks.append(bot.start(bot.get_token(), bot=not bot.selfbot))
+        loop.set_exception_handler(exception_handler)
+        loop.run_until_complete(asyncio.gather(*tasks))
+    except KeyboardInterrupt:
+        print("Interrupted")
+        safe_exit()

@@ -608,10 +608,11 @@ async def debug_wrapper(
         setup_debug_environment(bot)
         response = "Debug environment local dictionary reset."
 
-    elif blueprint_index == 4:  # Exec
+    elif blueprint_index == 4:  # Repl thingy
         global_dictionary['message'] = message
+        global_dictionary['bot'] = bot
 
-        # Sanitize input
+        # Cleaning up input
         arguments = cleaned_content[6:]
         if arguments.startswith('```py\n') and arguments.endswith('```'):
             arguments = arguments[6:-3]

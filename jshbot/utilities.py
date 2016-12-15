@@ -104,7 +104,10 @@ async def upload_to_discord(bot, fp, filename=None, rewind=True, close=False):
     channel_id = configurations.get(bot, 'core', 'upload_channel')
     if not channel_id:  # Check to see if a server was already created
         channel_id = data.get(bot, 'core', 'upload_channel')
-    channel = bot.get_channel(channel_id)
+    for instance in bot.all_instances:
+        channel = instance.get_channel(channel_id)
+        if channel:
+            break
 
     if channel is None:  # Create server
         logging.debug("Creating server for upload channel...")
