@@ -54,7 +54,7 @@ class Bot(discord.Client):
 
     def __init__(self, start_file, debug, shard_id=None, shard_count=None):
         self.version = '0.3.0-never-ending-alpha'
-        self.date = 'September 27th, 2016'
+        self.date = 'December 15th, 2016'
         self.time = int(time.time())
         self.readable_time = time.strftime('%c')
         self.debug = debug
