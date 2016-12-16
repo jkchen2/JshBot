@@ -645,7 +645,12 @@ def initialize(start_file, debug=False, shards=1):
         with open('{}/temp/error.txt'.format(path), 'w') as error_file:
             error_file.write(error_message)
         logging.error("Error file written.")
-        safe_exit()
+        for bot in instances:  # Dirty tests
+            if not bot.is_logged_in or bot.is_closed:
+                logging.error("An instance lost connection: {}".format(
+                    bot.instance_number))
+                safe_exit()
+                return
 
     global instances
     loop = asyncio.get_event_loop()
