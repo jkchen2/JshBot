@@ -266,11 +266,11 @@ def save_data(bot, force=False):
                     os.remove(directory + check_file)
 
         else:  # Save data that has changed
-            for key in bot.data_changed:
+            for key in bot.data_changed[:]:
                 with open(directory + key + '.json', 'w') as current_file:
                     json.dump(bot.data[key], current_file, indent=4)
-
-        bot.data_changed = []
+                logging.debug("Saved {}".format(directory + key + '.json'))
+                bot.data_changed.remove(key)
 
 
 def load_data(bot):
