@@ -19,6 +19,7 @@ class BotException(Exception):
         self.error_subject = str(error_subject)
         self.error_details = str(error_details)
         self.error_other = args
+        self.provided_exception = e
         other_details = '\n'.join([str(arg) for arg in args])
         self.error_message = "`{subject} error: {details}`\n{others}".format(
             subject=self.error_subject,
