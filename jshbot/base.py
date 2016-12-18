@@ -11,7 +11,7 @@ from jshbot import parser, data, utilities, commands, plugins, configurations
 from jshbot.commands import Command, SubCommands, Shortcuts
 from jshbot.exceptions import BotException
 
-__version__ = '0.1.11'
+__version__ = '0.1.12'
 EXCEPTION = 'Base'
 uses_configuration = False
 global_dictionary = {}
@@ -97,6 +97,8 @@ def get_commands():
             ('reload', 'reload', 'Reloads all external plugins.'),
             ('ip', 'ip', 'Gets the local IP address of the bot.'),
             ('backup', 'backup', 'Gets the data folder as a zip file.'),
+            ('restore', 'restore', 'Does a live data restore from the given '
+             'uploaded file.'),
             ('blacklist &', 'blacklist (<user id>)', 'Blacklist or '
              'unblacklist a user from sending feedback. If no user ID is '
              'specified, this lists all blacklisted entries.'),
@@ -545,6 +547,19 @@ async def botowner_wrapper(
         utilities.make_backup(bot)
         await bot.send_file(
             message.channel, '{}/temp/backup1.zip'.format(bot.path))
+    elif blueprint_index == 5:  # Restore
+        if not message.attachments:
+            raise BotException(EXCEPTION, "No attached backup archive.")
+        else:
+            try:
+                location = await utilities.download_url(
+                    bot, message.attachments[0]['url'], extension='zip')
+            except Exception as e:
+                raise BotException(
+                    EXCEPTION, "Failed to download the file.", e=e)
+            utilities.restore_backup(bot, location)
+            response = "Restored backup file."
+
     elif blueprint_index == 5:  # Blacklist
         blacklist = data.get(bot, 'base', 'blacklist', default=[])
         if not arguments[0]:

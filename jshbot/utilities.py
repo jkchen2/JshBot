@@ -7,7 +7,7 @@ import logging
 import os
 import io
 
-from jshbot import data, configurations
+from jshbot import data, configurations, core
 from jshbot.exceptions import BotException
 
 EXCEPTION = 'Utilities'
@@ -375,3 +375,19 @@ def make_backup(bot):
     shutil.make_archive(
         backup_indices.format(1)[:-4], 'zip', '{}/data'.format(bot.path))
     logging.debug("Finished making backup.")
+
+
+def restore_backup(bot, backup_file):
+    """Restores a backup file given the backup filename."""
+    logging.debug("Restoring from a backup file...")
+    try:
+        core.bot_data = {'global_users': {}, 'global_plugins': {}}
+        core.volatile_data = {'global_users': {}, 'global_plugins': {}}
+        shutil.unpack_archive(backup_file, '{}/data'.format(bot.path))
+        for instance in bot.all_instances:
+            data.check_all(instance)
+            data.load_data(instance)
+    except Exception as e:
+        raise BotException(
+            EXCEPTION, "Failed to extract backup.", e=e)
+    logging.debug("Finished data restore.")
