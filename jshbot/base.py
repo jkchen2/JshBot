@@ -560,7 +560,7 @@ async def botowner_wrapper(
             utilities.restore_backup(bot, location)
             response = "Restored backup file."
 
-    elif blueprint_index == 5:  # Blacklist
+    elif blueprint_index == 6:  # Blacklist
         blacklist = data.get(bot, 'base', 'blacklist', default=[])
         if not arguments[0]:
             response = "Blacklisted entries: {}".format(blacklist)
@@ -572,12 +572,12 @@ async def botowner_wrapper(
             else:
                 data.list_data_append(bot, 'base', 'blacklist', user_id)
                 response = "User added to blacklist."
-    elif blueprint_index == 6:  # Toggle feedback
+    elif blueprint_index == 7:  # Toggle feedback
         status = data.get(bot, 'base', 'feedbackdisabled', default=False)
         action = "enabled" if status else "disabled"
         data.add(bot, 'base', 'feedbackdisabled', not status)
         response = "Feedback has been {}.".format(action)
-    elif blueprint_index == 7:  # Announcement
+    elif blueprint_index == 8:  # Announcement
         if arguments[0]:
             text = '{0}:\n{1}'.format(time.strftime('%c'), arguments[0])
             data.add(bot, 'base', 'announcement', text)
