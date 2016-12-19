@@ -54,7 +54,7 @@ class Bot(discord.Client):
 
     def __init__(self, start_file, debug, shard_id=None, shard_count=None):
         self.version = '0.3.0-never-ending-alpha'
-        self.date = 'December 15th, 2016'
+        self.date = 'December 18th, 2016'
         self.time = int(time.time())
         self.readable_time = time.strftime('%c')
         self.debug = debug
@@ -656,10 +656,16 @@ def initialize(start_file, debug=False, shards=1):
     loop = asyncio.get_event_loop()
     try:
         tasks = []
-        for shard in range(shards):  # Start shard instances
-            bot = Bot(start_file, debug, shard_id=shard, shard_count=shards)
+        if shards == 1:  # Ignore shard number for selfbot mode
+            bot = Bot(start_file, debug)
             instances.append(bot)
             tasks.append(bot.start(bot.get_token(), bot=not bot.selfbot))
+        else:
+            for shard in range(shards):  # Start shard instances
+                bot = Bot(
+                    start_file, debug, shard_id=shard, shard_count=shards)
+                instances.append(bot)
+                tasks.append(bot.start(bot.get_token(), bot=not bot.selfbot))
         loop.set_exception_handler(exception_handler)
         loop.run_until_complete(asyncio.gather(*tasks))
     except KeyboardInterrupt:
