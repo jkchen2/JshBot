@@ -544,4 +544,5 @@ async def add_to_cache(bot, url, name=None, file_location=None):
 def add_server(bot, server):
     """Adds the server to the data dictionary."""
     bot.data[server.id] = {}
+    bot.volatile_data[server.id] = {}
     bot.data_changed.append(server.id)
