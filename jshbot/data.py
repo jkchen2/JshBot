@@ -162,7 +162,7 @@ def remove(bot, plugin_name, key, server_id=None, channel_id=None,
     if not volatile and location_key not in bot.data_changed:
         bot.data_changed.append(location_key)
 
-    elif key:
+    if key:
         return current[plugin_name].pop(key)
     else:  # Remove all data associated with that plugin for the given location
         return current.pop(plugin_name)
