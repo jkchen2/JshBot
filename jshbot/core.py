@@ -16,7 +16,6 @@ from jshbot import configurations, plugins, commands, parser, data, utilities
 from jshbot.exceptions import BotException, ErrorTypes
 
 EXCEPTION = 'Core'
-why = None
 
 instances = []
 bot_data = {'global_users': {}, 'global_plugins': {}}
@@ -46,7 +45,9 @@ exception_insults = [
     'Of *course*. Nothing ever works out, does it?',
     'I yelled at Jsh for you.',
     'Minsoo is bad at osu!. He wanted me to tell you that.',
-    'Existence is pain.'
+    'Existence is pain.',
+    'The Brass is impressed. Good work.',
+    'And the award for worst coded bot goes to...'
 ]
 
 
@@ -54,7 +55,7 @@ class Bot(discord.Client):
 
     def __init__(self, start_file, debug, shard_id=None, shard_count=None):
         self.version = '0.3.0-never-ending-alpha'
-        self.date = 'December 18th, 2016'
+        self.date = 'May 22nd, 2017'
         self.time = int(time.time())
         self.readable_time = time.strftime('%c')
         self.debug = debug
@@ -236,9 +237,15 @@ class Bot(discord.Client):
 
         # Check that user is not spamming
         spam_value = self.spam_dictionary.get(message.author.id, 0)
-        if spam_value >= self.spam_limit:
-            if spam_value == self.spam_limit:
-                self.spam_dictionary[message.author.id] = self.spam_limit + 1
+        if any(initial_data[1:]):  # Moderators ignore custom limit
+            spam_limit = self.spam_limit
+        else:
+            spam_limit = data.get(
+                self, 'base', 'spam_limit',
+                server_id=message.server.id, default=self.spam_limit)
+        if spam_value >= spam_limit:
+            if spam_value == spam_limit:
+                self.spam_dictionary[message.author.id] = spam_limit + 1
                 plugins.broadcast_event(
                     self, 'bot_on_user_ratelimit', message.author)
                 await self.send_message(
@@ -268,14 +275,21 @@ class Bot(discord.Client):
             print(self.instance_number, parsed_input[:-1])  # Temp
             response = await (commands.execute(
                 self, message, command, parsed_input, initial_data))
-            if self.selfbot and response[2] != 5:
+            if (self.selfbot and response[2] != 5 and
+                    not isinstance(response[0], discord.Embed)):
                 response = ('\u200b' + response[0], *response[1:])
         except Exception as e:  # General error
             response = ('', False, 0, None)
             message_reference = await self.handle_error(
                 e, message, parsed_input, response, edit=edit)
 
+
         else:  # Attempt to respond
+            if isinstance(response[0], discord.Embed):  # Embedded messages
+                send_arguments = {'embed': response[0]}
+            else:
+                key = 'new_content' if replacement_message else 'content'
+                send_arguments = {key: response[0]}
             if typing_task:
                 typing_task.cancel()
             try:
@@ -284,14 +298,14 @@ class Bot(discord.Client):
                     if replacement_message:
                         try:
                             message_reference = await self.edit_message(
-                                replacement_message, response[0])
+                                replacement_message, **send_arguments)
                         except discord.NotFound:  # Message deleted
                             response = ('', False, 0, None)
                             message_reference = None
                     elif (response[0] and
                             not (self.selfbot and response[2] == 4)):
                         message_reference = await self.send_message(
-                            message.channel, response[0], tts=response[1])
+                            message.channel, tts=response[1], **send_arguments)
                     elif not response[0]:  # Empty message
                         response = (None, None, 1, None)
                     plugins.broadcast_event(
@@ -310,7 +324,7 @@ class Bot(discord.Client):
         # A response looks like this:
         # (text, tts, message_type, extra)
         # message_type can be:
-        # 0 - normal
+        # 0 - normal (the issuing command can be edited)
         # 1 - permanent
         # 2 - terminal (deletes itself after 'extra' seconds)
         #   If 'extra' is a tuple of (seconds, message), it will delete
@@ -319,6 +333,11 @@ class Bot(discord.Client):
         # 4 - replace (deletes command message)
         # 5 - send file (response[0] should be a file pointer)
         #   If 'extra' is provided, it will be the file name.
+        # 6 - wait for response (pass response message back to the plugin)
+        #   The 'extra' paramter should be a tuple of
+        #   (callback function, wait_for_message keyword arguments, extra)
+        #   The callback function will be passed arguments of
+        #   (message_reference, reply, extra); reply is the response message
         # If message_type is >= 1, do not add to the edit dictionary
 
         self.last_response = message_reference
@@ -363,7 +382,11 @@ class Bot(discord.Client):
         elif response[2] == 4:  # Replace
             try:
                 if self.selfbot and not replacement_message:  # Edit instead
-                    await self.edit_message(message, response[0])
+                    if 'content' in send_arguments:
+                        send_arguments = {
+                            'new_content': send_arguments['content']
+                        }
+                    await self.edit_message(message, **send_arguments)
                 else:
                     try:
                         await self.delete_message(message)
@@ -399,6 +422,16 @@ class Bot(discord.Client):
                     e, message, parsed_input, response, edit=message_reference)
                 self.last_response = message_reference
 
+        elif response[2] == 6:  # Wait for response
+            try:
+                reply = await self.wait_for_message(**response[3][1])
+                await response[3][0](
+                    self, message_reference, reply, response[3][2])
+            except Exception as e:
+                message_reference = await self.handle_error(
+                    e, message, parsed_input, response, edit=message_reference)
+                self.last_response = message_reference
+
     async def handle_error(
             self, error, message, parsed_input, response, edit=None):
         """Common error handler for sending responses."""
@@ -415,9 +448,13 @@ class Bot(discord.Client):
             plugins.broadcast_event(
                 self, 'bot_on_discord_error', error, message)
             self.last_exception = error
-            if len(response[0]) > 1998:
+            if isinstance(response[0], discord.Embed):
+                response_text = str(response[0].to_dict())
+            else:
+                response_text = str(response[0])
+            if len(response_text) > 1998:
                 message_reference = await utilities.send_text_as_file(
-                    self, message.channel, response[0], 'response',
+                    self, message.channel, response_text, 'response',
                     extra="The response is too long. Here is a text file of "
                     "the contents.")
             else:

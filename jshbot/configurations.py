@@ -23,8 +23,7 @@ def add_configurations(bot):
                 configurations_list[plugin] = json.load(config_file)
         except FileNotFoundError:
             module = bot.plugins[plugin][0]
-            if (getattr(module, 'uses_configuration', False) and
-                    module.uses_configuration):
+            if getattr(module, 'uses_configuration', False):
                 raise BotException(
                     EXCEPTION, "Plugin {} requires a configuration file, "
                     "but it was not found.".format(plugin),

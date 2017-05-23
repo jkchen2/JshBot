@@ -11,7 +11,7 @@ from jshbot import parser, data, utilities, commands, plugins, configurations
 from jshbot.commands import Command, SubCommands, Shortcuts
 from jshbot.exceptions import BotException
 
-__version__ = '0.1.12'
+__version__ = '0.1.13'
 EXCEPTION = 'Base'
 uses_configuration = False
 global_dictionary = {}
@@ -69,7 +69,11 @@ def get_commands():
              'invoker for the server. If no invoker is specified, this clears '
              'the custom invoker.'),
             ('mention', 'mention', 'Toggles mention mode. If enabled, the '
-             'bot will only respond to its name or mention as an invoker.')),
+             'bot will only respond to its name or mention as an invoker.'),
+            ('cooldown &', 'cooldown (<number of commands>)', 'Limits the '
+             'number of commands per default time interval to the value '
+             'specified. Bot moderators are not subject to this limit. If no '
+             'value is given, the default cooldown is used (maximum value).')),
         shortcuts=Shortcuts(('clear', 'clear', '', 'clear', '')),
         description='Commands for server bot moderators.',
         elevated_level=1, no_selfbot=True, group='base', function=mod_wrapper))
@@ -261,6 +265,10 @@ async def mod_wrapper(
             display_list.append('{0} ({1})'.format(
                 disabled_command[0],
                 'all' if disabled_command[1] == -1 else disabled_command[1]+1))
+        cooldown_message = (
+            "{} command(s) per {} seconds(s)".format(
+                server_data.get('spam_limit', bot.spam_limit),
+                bot.spam_timeout))
         response = (
             '```\n'
             'Information for server {0}\n'
@@ -272,7 +280,8 @@ async def mod_wrapper(
             'Muted channels: {4}\n'
             'Command invoker: {5}\n'
             'Mention mode: {6}\n'
-            'Disabled commands: {7}```').format(
+            'Disabled commands: {7}\n'
+            'Cooldown: {8}```').format(
                 message.server,
                 server_data.get('moderators', []),
                 server_data.get('blocked', []),
@@ -280,7 +289,7 @@ async def mod_wrapper(
                 server_data.get('muted_channels', []),
                 server_data.get('command_invoker', None),
                 server_data.get('mention_mode', False),
-                display_list)
+                display_list, cooldown_message)
 
     elif blueprint_index == 1:  # Toggle command
         try:  # Explicit index
@@ -420,6 +429,36 @@ async def mod_wrapper(
             'de' if current_mode else '')
         mod_action = "{}activated mention mode.".format(
             'de' if current_mode else '').capitalize()
+
+    elif blueprint_index == 9:  # Cooldown
+        if arguments[0]:
+            try:
+                cooldown = int(arguments[0])
+                if not 1 <= cooldown <= bot.spam_limit:
+                    raise ValueError
+            except ValueError:
+                raise BotException(
+                    EXCEPTION,
+                    "Cooldown value must be between "
+                    "1 and {} inclusive.".format(bot.spam_limit))
+            data.add(
+                bot, 'base', 'spam_limit', cooldown,
+                server_id=message.server.id)
+            cooldown_message = (
+                "{} command(s) per {} seconds(s)".format(
+                    cooldown, bot.spam_timeout))
+            response = "Cooldown set to {}.".format(cooldown_message)
+            mod_action = "set the cooldown to {}.".format(cooldown_message)
+        else:
+            data.remove(
+                bot, 'base', 'spam_limit', server_id=message.server.id)
+            cooldown_message = (
+                "{} command(s) per {} seconds(s)".format(
+                    bot.spam_limit, bot.spam_timeout))
+            response = "Cooldown reset to the default {}.".format(
+                cooldown_message)
+            mod_action = "reset the cooldown to the default {}.".format(
+                cooldown_message)
 
     # Send notification if configured
     send_notifications = data.get(
