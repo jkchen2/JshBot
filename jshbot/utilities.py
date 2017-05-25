@@ -294,17 +294,17 @@ def get_formatted_message(message):
 def get_time_string(total_seconds, text=False, full=False):
     """Gets either digital-clock-like time or time in plain English."""
     total_seconds = int(total_seconds)
-    values = {
-        'weeks': int(total_seconds / 604800),
-        'days': int((total_seconds % 604800) / 86400),
-        'hours': int((total_seconds % 86400) / 3600),
-        'minutes': int((total_seconds % 3600) / 60),
-        'seconds': int(total_seconds % 60)
-    }
+    values = [
+        ('weeks', int(total_seconds / 604800)),
+        ('days', int((total_seconds % 604800) / 86400)),
+        ('hours', int((total_seconds % 86400) / 3600)),
+        ('minutes', int((total_seconds % 3600) / 60)),
+        ('seconds', int(total_seconds % 60))
+    ]
     result = []
 
     if text:
-        for scale, value in values.items():
+        for scale, value in values:
             if value > 0:
                 result.append('{} {}{}'.format(
                     value, scale[:-1], '' if value == 1 else 's'))
@@ -314,7 +314,7 @@ def get_time_string(total_seconds, text=False, full=False):
             result.insert(-1, ' and ')
 
     else:
-        for scale, value in values.items():
+        for scale, value in values:
             if value > 0 or full or scale == 'minutes':
                 if scale in ('hours', 'minutes', 'seconds') and full:
                     format_string = '{:0>2}'
