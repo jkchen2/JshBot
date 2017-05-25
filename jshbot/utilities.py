@@ -291,6 +291,41 @@ def get_formatted_message(message):
                 message, edited, attached)
 
 
+def get_time_string(total_seconds, text=False, full=False):
+    """Gets either digital-clock-like time or time in plain English."""
+    total_seconds = int(total_seconds)
+    values = {
+        'weeks': int(total_seconds / 604800),
+        'days': int((total_seconds % 604800) / 86400),
+        'hours': int((total_seconds % 86400) / 3600),
+        'minutes': int((total_seconds % 3600) / 60),
+        'seconds': int(total_seconds % 60)
+    }
+    result = []
+
+    if text:
+        for scale, value in values.items():
+            if value > 0:
+                result.append('{} {}{}'.format(
+                    value, scale[:-1], '' if value == 1 else 's'))
+        for it in range(len(result) - 2):
+            result.insert((it * 2) + 1, ', ')
+        if len(result) > 1:
+            result.insert(-1, ' and ')
+
+    else:
+        for scale, value in values.items():
+            if value > 0 or full or scale == 'minutes':
+                if scale in ('hours', 'minutes', 'seconds') and full:
+                    format_string = '{:0>2}'
+                else:
+                    format_string = '{}'
+                result.append(format_string.format(value))
+                full = True
+
+    return '{}'.format('' if text else ':').join(result)
+
+
 async def get_log_text(bot, channel, **log_arguments):
     """Wrapper function for Carter's time machine."""
     messages = []
