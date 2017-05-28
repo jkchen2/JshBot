@@ -14,12 +14,13 @@ class BotException(Exception):
 
     def __init__(
             self, error_subject, error_details, *args, e=None,
-            error_type=ErrorTypes.RECOVERABLE, edit_pair=None):
+            error_type=ErrorTypes.RECOVERABLE, edit_pair=None, autodelete=0):
         self.error_type = error_type
         self.error_subject = str(error_subject)
         self.error_details = str(error_details)
         self.error_other = args
         self.provided_exception = e
+        self.autodelete = autodelete
         other_details = '\n'.join([str(arg) for arg in args])
         self.error_message = "`{subject} error: {details}`\n{others}".format(
             subject=self.error_subject,
@@ -39,8 +40,7 @@ class BotException(Exception):
             sys.exit()
 
         if edit_pair:
-            bot = edit_pair[0]
-            message_reference = edit_pair[1]
+            bot, message_reference = edit_pair
             asyncio.ensure_future(
                 bot.edit_message(message_reference, self.error_message))
 

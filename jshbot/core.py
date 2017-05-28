@@ -55,7 +55,7 @@ class Bot(discord.Client):
 
     def __init__(self, start_file, debug, shard_id=None, shard_count=None):
         self.version = '0.3.0-never-ending-alpha'
-        self.date = 'May 22nd, 2017'
+        self.date = 'May 28th, 2017'
         self.time = int(time.time())
         self.readable_time = time.strftime('%c')
         self.debug = debug
@@ -306,8 +306,9 @@ class Bot(discord.Client):
                             not (self.selfbot and response[2] == 4)):
                         message_reference = await self.send_message(
                             message.channel, tts=response[1], **send_arguments)
-                    elif not response[0]:  # Empty message
-                        response = (None, None, 1, None)
+                    elif not response[0]:  # Empty response
+                        message_type = 2 if response[2] == 2 else response[2]
+                        response = (None, None, message_type, response[3])
                     plugins.broadcast_event(
                         self, 'bot_on_response', response,
                         message_reference, message)
@@ -361,7 +362,10 @@ class Bot(discord.Client):
                 else:
                     delay = int(response[3])
             await asyncio.sleep(delay)
-            await self.delete_message(message_reference)
+            try:
+                await self.delete_message(message_reference)
+            except:  # Ignore empty responses
+                pass
             if extra_message:
                 try:
                     await self.delete_message(extra_message)
@@ -443,6 +447,14 @@ class Bot(discord.Client):
         if type(error) is BotException:
             plugins.broadcast_event(self, 'bot_on_error', error, message)
             message_reference = await send_function(location, str(error))
+            if error.autodelete > 0:
+                await asyncio.sleep(error.autodelete)
+                try:
+                    await self.delete_message(message_reference)
+                    await self.delete_message(message)
+                except:
+                    pass
+                return
 
         elif type(error) is discord.HTTPException and message and response:
             plugins.broadcast_event(
