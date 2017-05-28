@@ -229,11 +229,13 @@ async def join_and_ready(
 
     player = get_player(bot, server.id)
     if player is not None:
-        if player.is_playing():
+        if player.is_playing() or not player.is_done():
             player.stop()
+        '''
         elif not player.is_done():  # Can this even happen?
             raise BotException(
                 EXCEPTION, "Audio is pending, please try again later.")
+        '''
 
     if include_player:
         return (voice_client, player)
@@ -308,6 +310,8 @@ def get_time_string(total_seconds, text=False, full=False):
             if value > 0:
                 result.append('{} {}{}'.format(
                     value, scale[:-1], '' if value == 1 else 's'))
+                if not full:
+                    break
         for it in range(len(result) - 2):
             result.insert((it * 2) + 1, ', ')
         if len(result) > 1:
