@@ -1,9 +1,9 @@
 {
     "selfbot_mode": false,
-    "owners": [""],
+    "owners": [],
     "token": "",
-    "debug_channel": "",
-    "upload_channel": "",
+    "debug_channel": 000,
+    "upload_channel": 000,
     "edit_timeout": 120,
     "save_interval": 1800,
     "backup_interval": 6,
