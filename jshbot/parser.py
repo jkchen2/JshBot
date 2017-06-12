@@ -2,9 +2,10 @@ import logging
 import re
 
 from jshbot import commands
-from jshbot.exceptions import BotException
+from jshbot.commands import ArgTypes
+from jshbot.exceptions import ConfiguredBotException
 
-EXCEPTION = "Parser"
+CBException = ConfiguredBotException('Parser')
 
 
 def split_parameters(parameters, include_quotes=False, quote_list=False):
@@ -46,7 +47,7 @@ def split_parameters(parameters, include_quotes=False, quote_list=False):
             add_end = -1
 
     if add_start != -1:  # Unclosed quote
-        logging.warn("Detected an unclsed quote: " + split[add_start])
+        logging.warn("Detected an unclosed quote: " + split[add_start])
         joined_split.append(''.join(split[add_start:index + 1]))
     if quote_list:
         return (joined_split, quoted_indices)
@@ -54,184 +55,291 @@ def split_parameters(parameters, include_quotes=False, quote_list=False):
         return joined_split
 
 
-def match_blueprint(
-        bot, base, parameters, quoted_indices, command,
-        find_index=False, server=None):
-    """Matches the given parameters to a valid blueprint from the command.
+def match_subcommand(bot, command, parameters, message, match_closest=False):
+    """Matches the given parameters to a valid subcommand from the command.
+    Returns a tuple of the subcommand, options, and arguments.
 
-    Returns a tuple of the blueprint index, the dictionary representing the
-    options and the positional arguments, and the list of arguments.
-    If find_index is set to True, this finds the closest match index instead.
+    If match_closest is True, returns the closest matching subcommand or None.
+    No processing (conversion, checking) is done, and returns only the subcommand or None.
     """
+
+    parameters, quoted_indices = split_parameters(parameters, quote_list=True)
     closest_index = -1
     closest_index_matches = 0
-    parameters_length = len(parameters)
-    for blueprint_index, blueprint in enumerate(command.blueprints):
+    closest_index_error = None
+    stripped_parameters = parameters[::2]
+    for subcommand in command.subcommands:
 
-        current = 0
+        print("\n===In subcommand:", subcommand.index)
+        print("Subcommand args:", subcommand.args)
+        current_index = 0
         matches = 0
-        current_options = {}
-        current_arguments = []
+        options = {}
+        arguments = []
+        last_opt_index = -1
+        arg_index = -1
+        used_opts = []
+        exhausted_opts = False
         not_found = False
+        not_found_error = None
 
-        for plan in blueprint:
-            while (current < parameters_length and
-                    parameters[current].isspace()):
-                current += 1  # Skip to content
+        while current_index < len(stripped_parameters):
+            current = stripped_parameters[current_index]
+            print("On index:", current_index)
+            print("Checking:", current)
 
-            if plan[1].isalpha():  # Option
-                if (current < parameters_length and
-                        parameters[current].lower() == plan[1] and
-                        current not in quoted_indices):
-                    if plan[2] and current + 2 < parameters_length:
-                        current_options[plan[1]] = parameters[current + 2]
-                        current += 3
-                        matches += 6
-                    elif plan[2]:  # Positional argument not found
-                        matches += 3
-                        not_found = True
-                        break
-                    else:
-                        current_options[plan[1]] = {}
-                        current += 1
-                        matches += 5
-                elif plan[0]:  # Optional option
-                    matches += 1
-                else:  # Option not found
+            if current_index * 2 in quoted_indices:  # Quoted elements are always arguments
+                print("Quoted element found. Skipping to args.")
+                exhausted_opts = True
+
+            if not exhausted_opts:  # Check opts
+                print("Checking opts.")
+                found_opt = subcommand.opts.get(current.lower(), None)
+                if found_opt:
+
+                    if not exhausted_opts and subcommand.strict_syntax:  # Check strict syntax
+                        if found_opt.index < last_opt_index:  # Syntax out of order
+                            print("Syntax out of order detected. Exhausted opts.")
+                            exhausted_opts = True
+                        else:
+                            last_opt_index = found_opt.index
+
+                    if not exhausted_opts:
+                        if found_opt.name in options:  # Duplicate. Skip to args
+                            print("Duplicate opt found. Skipping to args.")
+                            exhausted_opts = True
+                        else:  # Check for attached argument
+                            if found_opt.attached:  # Required attached argument
+                                if current_index + 1 >= len(stripped_parameters):
+                                    print("Required attachment not found. not_found set to True.")
+                                    not_found_error = (
+                                        'Option \'{opt.name}\' requires an attached '
+                                        'parameter, \'{opt.attached}\'.'.format(opt=found_opt))
+                                    not_found = True
+                                    matches += 3
+                                else:
+                                    print("Opt with attached parameter found:", found_opt.name)
+                                    current_index += 1
+                                    options[found_opt.name] = stripped_parameters[current_index]
+                                    matches += 6
+                            else:  # No attached argument
+                                print("Opt found:", found_opt.name)
+                                options[found_opt.name] = None
+                                matches += 5
+                            used_opts.append(found_opt)
+
+                else:  # Option not found. Skip to args
+                    print("Opt not found. Opts exhausted.")
+                    exhausted_opts = True
+
+                if exhausted_opts:  # No more matching opts - check for optional opts
+                    print("Opts exhausted.")
+                    current_index -= 1  # Search args where we left off
+                    remaining_opts = [o for o in subcommand.opts.values() if o not in used_opts]
+                    for opt in remaining_opts:
+                        if opt.optional:
+                            matches += 1
+                        else:  # Not optional. Unfit subcommand
+                            print("A mandatory option remains. not_found set to True.", opt.name)
+                            not_found_error = (
+                                'Option \'{}\' is required and must be included'.format(opt.name))
+                            not_found = True
+                            break
+
+            else:  # Check args
+                arg_index += 1
+                print("Checking args. arg_index:", arg_index)
+                if arg_index >= len(subcommand.args):  # Too many arguments
+                    print("Detecting that there are too many arguments. not_found = True")
+                    not_found_error = 'Too many arguments.'
                     not_found = True
+                else:
+                    matches += 1
+                    arg = subcommand.args[arg_index]
+                    if arg.argtype in (ArgTypes.SINGLE, ArgTypes.OPTIONAL):
+                        print("Matched SINGLE/OPTIONAL arg.")
+                        arguments.append(current)
+                    else:  # Instant finish grouped arguments
+                        print("Matched GROUPED arg.")
+                        if arg.argtype in (ArgTypes.SPLIT, ArgTypes.SPLIT_OPTIONAL):
+                            arguments += stripped_parameters[current_index:]
+                        else:  # Merged
+                            arguments += [''.join(parameters[current_index * 2:])]
+                        break
+
+            if not_found_error:  # Skip rest of loop and evaluate matches
+                print("Not found: Breaking out of the loop early.")
+                break
+
+            current_index += 1
+
+        # Finished opt/arg while loop
+        print("Finished opt/arg while loop.")
+        if not not_found_error and not exhausted_opts:  # Opts remain
+            print("Checking for remaining mandatory opts.")
+            remaining_opts = [o for o in subcommand.opts.values() if o not in used_opts]
+            # for opt in subcommand.opts.values():
+            for opt in remaining_opts:
+                if opt.optional:
+                    matches += 1
+                else:  # Not optional. Unfit subcommand
+                    print("A mandatory option was required, but not supplied. not_found = True")
+                    not_found_error = (
+                        'Option \'{}\' is required and must be included.'.format(opt.name))
                     break
-
-            elif current < parameters_length:  # Regular argument
+        print("arg_index value:", arg_index)
+        print("subcommand args length:", len(subcommand.args))
+        if not not_found_error and arg_index < len(subcommand.args) - 1:  # Optional arguments
+            print("Checking for optional arguments.")
+            arg = subcommand.args[arg_index + 1]
+            if arg.argtype is ArgTypes.OPTIONAL:
                 matches += 1
-                if plan[1] == ':':
-                    current_arguments.append(parameters[current])
-                    current += 1
-                elif plan[1] in ('+', '#'):  # Instant finish
-                    current_arguments += filter(
-                        lambda c: not c.isspace(), parameters[current:])
-                    current = parameters_length
-                elif plan[1] in ('^', '&'):  # Instant finish
-                    current_arguments += [''.join(parameters[current:])]
-                    current = parameters_length
-            elif plan[1] in ('#', '&'):  # No required arguments instant finish
-                current_arguments.append('')
-                current = parameters_length
+                while (arg and arg.argtype is ArgTypes.OPTIONAL and
+                        arg_index < len(subcommand.args)):
+                    arguments.append(arg.default)
+                    arg_index += 1
+                    try:
+                        arg = subcommand.args[arg_index]
+                    except:
+                        arg = None
+            if arg and arg.argtype in (ArgTypes.SPLIT_OPTIONAL, ArgTypes.MERGED_OPTIONAL):
                 matches += 1
-            else:  # No arguments, more required
-                not_found = True
-                break
+                arguments.append(arg.default)
+            elif arg:
+                print("A mandatory argument was required, but not supplied. not_found = True")
+                not_found_error = 'No value given for argment \'{}\'.'.format(arg.name)
 
-        if not_found or current < parameters_length:
-            if matches >= 1 and command.strict and find_index:
-                closest_index = blueprint_index
-                closest_index_matches = 2  # Always get detailed help
-                break
-            elif matches >= closest_index_matches:
-                closest_index = blueprint_index
+        if not not_found_error and subcommand.attaches:  # Check for message attachment
+            if not message.attachments and not subcommand.attaches.optional:
+                print("Not found triggered. C")
+                not_found_error = 'Missing attachment \'{name}\''.format(
+                    name=subcommand.attaches.name)
+            elif message.attachments:  # No attachment argument, but attachment was provided
+                not_found_error = 'No attachment required, but one was given.'
+
+        if not_found_error:  # Find closest subcommand
+            if matches > closest_index_matches:
+                closest_index = subcommand.index
                 closest_index_matches = matches
-        else:
-            if find_index:
-                if matches > closest_index_matches:
-                    return blueprint_index
-                else:
-                    return closest_index
-            return (blueprint_index, current_options, current_arguments)
+                closest_index_error = not_found_error
+        else:  # Subcommand found. Convert and check
+            if match_closest:  # No additional processing
+                return subcommand
+            else:
 
-    if find_index:
-        return closest_index
-    if ((closest_index == -1 or closest_index_matches <= 1) and
-            len(command.blueprints) > 1):  # Low confidence
-        quick_help = commands.usage_reminder(bot, base, server=server)
+                for option_name, value in options.items():  # Check options
+                    print("Converting and checking 1")
+                    new_value = subcommand.opts[option_name].convert_and_check(bot, message, value)
+                    if new_value is not None:
+                        options[option_name] = new_value
+                for index, pair in enumerate(zip(subcommand.args, arguments)):  # Check arguments
+                    arg, value = pair
+                    if value:
+                        if arg.argtype not in (ArgTypes.SINGLE, ArgTypes.OPTIONAL):
+                            print("Converting and checking 2")
+                            new_values = arg.convert_and_check(bot, message, arguments[index:])
+                            arguments = arguments[:index] + new_values
+                            break
+                        else:
+                            print("Converting and checking 3")
+                            new_value = arg.convert_and_check(bot, message, value)
+                            arguments[index] = new_value
+
+                print("Returning found subcommand:", subcommand)
+                return subcommand, options, arguments
+
+    # Looped through all subcommands. Not found
+    if closest_index == -1 or closest_index_matches <= 1:  # Low confidence
+        guess = command
     else:
-        closest_index = 1 if closest_index == -1 else closest_index + 1
-        quick_help = commands.usage_reminder(
-            bot, base, index=closest_index, server=server)
-    raise BotException(EXCEPTION, "Invalid syntax.", quick_help)
+        guess = command.subcommands[closest_index]
+    print("No subcommand found. Best guess:", guess)
+    if match_closest:
+        print("Returnning closest subcommand:", subcommand)
+        return guess
+    else:
+        if isinstance(guess, commands.SubCommand):
+            syntax_error = 'Invalid syntax: {}'.format(closest_index_error)
+        else:
+            guess = command
+            syntax_error = 'Invalid syntax.'
+        raise CBException(syntax_error, embed_fields=guess.help_embed_fields)
 
 
-def fill_shortcut(bot, shortcut, base, parameters, server=None):
-    """
-    Replaces elements in the syntax using the template with the parameters.
-    Example:
-        (<('create {} {}', ':^')>, 'tag', '"my tag" tag text'])
-    Returns:
-        'create "my tag" tag text'
-    """
+def fill_shortcut(bot, shortcut, parameters, message):
     parameters = split_parameters(parameters, include_quotes=True)
-    parameters_length = len(parameters)
-    base_index = shortcut.bases.index(base)
-    syntax, template = shortcut.format_pairs[base_index]
-
-    if not template:
-        if parameters:
-            raise BotException(
-                EXCEPTION,
-                "Shortcut requires no arguments, but some were given.",
-                commands.usage_reminder(
-                    bot, base, index=base_index, shortcut=True, server=server))
-        return syntax
-
-    try:
-        current = 0
-        to_add = []
-        for argument_type in template:
-            while (current < parameters_length and
-                    parameters[current].isspace()):
-                current += 1
-
-            if argument_type == ':':
-                to_add.append(parameters[current])
-
-            elif argument_type in ('&', '#'):
-                to_add.append(''.join(parameters[current:]))
-
-            elif argument_type in ('^', '+'):
-                if len(parameters[current:]) == 1 and argument_type == '^':
-                    combined = parameters[current]
-                else:
-                    combined = ''.join(parameters[current:])
-                assert combined
-                to_add.append(combined)
-
-            current += 1
-
-        syntax = syntax.format(*to_add)
-    except:
-        reminder = commands.usage_reminder(
-            bot, base, index=base_index, shortcut=True, server=server)
-        raise BotException(EXCEPTION, "Invalid shortcut syntax.", reminder)
-
-    return syntax
+    stripped_parameters = parameters[::2]
+    arguments_dictionary = {}
+    current_index = -1
+    for current_index, current in enumerate(stripped_parameters):
+        if current_index >= len(shortcut.args):
+            raise CBException('Too many arguments.', embed_fields=shortcut.help_embed_fields)
+        else:
+            arg = shortcut.args[current_index]
+            if arg.argtype in (ArgTypes.SINGLE, ArgTypes.OPTIONAL):
+                arguments_dictionary[arg.name] = current
+            else:  # Instant finish grouped arguments
+                if arg.argtype in (ArgTypes.SPLIT, ArgTypes.SPLIT_OPTIONAL):
+                    arguments_dictionary[arg.name] = ''.join(stripped_parameters[current_index:])
+                else:  # Merged
+                    arguments_dictionary[arg.name] = ''.join(parameters[current_index * 2:])
+                break
+    # TODO: TEST THIS!
+    print("Finished shortcut loop.", arguments_dictionary)
+    if current_index < len(shortcut.args) - 1:  # Check for optional arguments
+        arg = shortcut.args[current_index + 1]
+        if arg.argtype is ArgTypes.OPTIONAL:
+            while (arg and arg.argtype is ArgTypes.OPTIONAL and
+                    current_index < len(shortcut.args)):
+                arguments.append(arg.default)
+                current_index += 1
+                try:
+                    arg = shortcut.args[current_index]
+                except:
+                    arg = None
+        if arg and arg.argtype in (ArgTypes.SPLIT_OPTIONAL, ArgTypes.MERGED_OPTIONAL):
+            arguments_dictionary[arg.name] = arg.default
+        elif arg:
+            raise CBException('Not enough arguments.', embed_fields=shortcut.help_embed_fields)
+    print("Finished checking for optional arguments.", arguments_dictionary)
+    for arg in shortcut.args:
+        value = arguments_dictionary[arg.name]
+        if value:
+            print("Converting and checking 4")
+            new_value = arg.convert_and_check(bot, message, value)
+            arguments_dictionary[arg.name] = new_value
+    return shortcut.replacement.format(**arguments_dictionary)
 
 
-def parse(bot, command, base, parameters, server=None):
+def parse(bot, command, parameters, message):
     """Parses the parameters and returns a tuple.
 
-    This matches the parameters to a blueprint given by the command.
-    The tuple is (base, blueprint_index, options, arguments).
+    This matches the parameters to a subcommand.
+    The tuple is (base, subcommand_index, options, arguments).
     """
     parameters = parameters.strip()  # Safety strip
 
-    # Substitute shortcuts
-    if command.shortcut and base in command.shortcut.bases:
-        filled = fill_shortcut(
-            bot, command.shortcut, base, parameters, server=server)
-        return parse(bot, command, command.base, filled)
+    if isinstance(command, commands.Shortcut):  # Fill replacement string
+        print("Filling shortcut...")
+        parameters = fill_shortcut(bot, command, parameters, message)
+        command = command.command  # command is actually a Shortcut. Not confusing at all
+        print("Shortcut filled to:", parameters)
 
-    parameters, quoted_indices = split_parameters(parameters, quote_list=True)
-    blueprint_index, options, arguments = match_blueprint(
-        bot, base, parameters, quoted_indices, command, server=server)
+    print("Attempting to match for a subcommand")
+    subcommand, options, arguments = match_subcommand(bot, command, parameters, message)
+    print("Parser finished.")
 
-    return (base, blueprint_index, options, arguments, command.keywords)
+    return (subcommand, options, arguments)
+    #  return (command, subcommand.index, options, arguments, command.keywords)
 
 
-def guess_index(bot, text, safe=True):
-    """Guesses the closest command and returns the base and index."""
+def guess_command(bot, text, message, safe=True, substitue_shortcuts=True):
+    """Guesses the closest command or subcommand."""
     if not text:
         if safe:
-            return (None, -1)
+            return None
         else:
-            raise BotException(EXCEPTION, "No guess text.")
+            raise CBException("No guess text.")
     text = text.strip()
     split_content = text.split(' ', 1)
     if len(split_content) == 1:
@@ -242,9 +350,16 @@ def guess_index(bot, text, safe=True):
         command = bot.commands[base]
     except KeyError:
         if safe:
-            return (None, -1)
+            return None
         else:
-            raise BotException(EXCEPTION, "Invalid base.")
-    parameters, quoted_indices = split_parameters(parameters, quote_list=True)
-    return (base, match_blueprint(
-        bot, base, parameters, quoted_indices, command, find_index=True))
+            raise CBException("Invalid base.")
+    if isinstance(command, commands.Shortcut) and substitue_shortcuts:
+        try:
+            parameters = fill_shortcut(bot, command, parameters, message)
+            command = command.command
+        except BotException:
+            return command.command
+    if not parameters or isinstance(command, commands.Shortcut):
+        return command
+    else:
+        return match_subcommand(bot, command, parameters, message, match_closest=True)

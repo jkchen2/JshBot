@@ -5,10 +5,10 @@ import json
 
 from types import GeneratorType
 
-from jshbot import utilities
-from jshbot.exceptions import BotException
+from jshbot import core, utilities
+from jshbot.exceptions import ConfiguredBotException
 
-EXCEPTION = 'Data'
+CBException = ConfiguredBotException('Data')
 
 
 def check_folders(bot):
@@ -17,37 +17,45 @@ def check_folders(bot):
     for directory in directories:
         full_path = '{0}/{1}/'.format(bot.path, directory)
         if not os.path.exists(full_path):
-            logging.warn("Directory {} is empty.".format(directory))
+            logging.warn("Directory {} does not exist. Creating...".format(directory))
             os.makedirs(full_path)
 
 
 def check_all(bot):
-    """Refreshes the server listing in the global data dictionary."""
-    for server in bot.servers:
-        if server.id not in bot.data:  # Mirrored with volatile data
-            bot.data[server.id] = {}
-            bot.volatile_data[server.id] = {}
-        elif server.id not in bot.volatile_data:  # Just volatile data
-            bot.volatile_data[server.id] = {}
+    """Refreshes the guild listing in the global data dictionary."""
+    for guild in bot.guilds:
+        guild_id = str(guild.id)
+        if guild_id not in bot.data:  # Mirrored with volatile data
+            bot.data[guild_id] = {}
+            bot.volatile_data[guild_id] = {}
+        elif guild_id not in bot.volatile_data:  # Just volatile data
+            bot.volatile_data[guild_id] = {}
 
 
-def get_location(bot, server_id, channel_id, user_id, volatile, create=True):
+def get_location(bot, guild_id, channel_id, user_id, volatile, create=True):
     """Gets the location given the arguments.
 
     If the create flag is False, no elements will be created when getting the
     location. This also returns the key used to get to the data. It will be a
-    server ID, 'global_users' or 'global_plugins'.
+    guild ID, 'global_users' or 'global_plugins'.
     """
     data = bot.volatile_data if volatile else bot.data
 
-    if server_id:  # Look in the specific server
-        if server_id in data:
-            current = data[server_id]
-            key = server_id
+    # Comply with rewrite giving ints instead of strings
+    if guild_id:
+        guild_id = str(guild_id)
+    if channel_id:
+        channel_id = str(channel_id)
+    if user_id:
+        user_id = str(user_id)
+
+    if guild_id:  # Look in the specific guild
+        if guild_id in data:
+            current = data[guild_id]
+            key = guild_id
         else:  # Server not found - refresh listing
             check_all(bot)
-            raise BotException(
-                EXCEPTION, "Server {} not found.".format(server_id))
+            raise CBException("Server {} not found.".format(guild_id))
         if channel_id:
             if channel_id not in current:
                 if not create:
@@ -77,7 +85,7 @@ def get_location(bot, server_id, channel_id, user_id, volatile, create=True):
     return (current, key)
 
 
-def get(bot, plugin_name, key, server_id=None, channel_id=None, user_id=None,
+def get(bot, plugin_name, key, guild_id=None, channel_id=None, user_id=None,
         default=None, volatile=False, create=False, save=False):
     """Gets the data with the given key.
 
@@ -95,7 +103,7 @@ def get(bot, plugin_name, key, server_id=None, channel_id=None, user_id=None,
     a way that these given functions cannot.
     """
     current, location_key = get_location(
-        bot, server_id, channel_id, user_id, volatile, create=create)
+        bot, guild_id, channel_id, user_id, volatile, create=create)
 
     if save and not volatile and location_key not in bot.data_changed:
         bot.data_changed.append(location_key)
@@ -120,15 +128,14 @@ def get(bot, plugin_name, key, server_id=None, channel_id=None, user_id=None,
         return current.get(plugin_name, default)
 
 
-def add(bot, plugin_name, key, value, server_id=None, channel_id=None,
+def add(bot, plugin_name, key, value, guild_id=None, channel_id=None,
         user_id=None, volatile=False):
     """Adds the given information to the specified location.
 
     Location is specified in the same way as get(). If the value exists,
     this will overwrite it.
     """
-    current, location_key = get_location(
-        bot, server_id, channel_id, user_id, volatile)
+    current, location_key = get_location(bot, guild_id, channel_id, user_id, volatile)
 
     if plugin_name not in current:
         current[plugin_name] = {}
@@ -138,7 +145,14 @@ def add(bot, plugin_name, key, value, server_id=None, channel_id=None,
         bot.data_changed.append(location_key)
 
 
-def remove(bot, plugin_name, key, server_id=None, channel_id=None,
+def set_save_flag(bot, plugin_name, guild_id=None, channel_id=None, user_id=None):
+    """Flags the given location for unsaved changes."""
+    _, location_key = get_location(bot, guild_id, channel_id, user_id, False)
+    if location_key not in bot.data_changed:
+        bot.data_changed.append(location_key)
+
+
+def remove(bot, plugin_name, key, guild_id=None, channel_id=None,
            user_id=None, default=None, safe=False, volatile=False):
     """Removes the given key from the specified location.
 
@@ -150,14 +164,14 @@ def remove(bot, plugin_name, key, server_id=None, channel_id=None,
     for the given location. Use with caution.
     """
     current, location_key = get_location(
-        bot, server_id, channel_id, user_id, volatile)
+        bot, guild_id, channel_id, user_id, volatile)
     if (not current or
             plugin_name not in current or
             key not in current[plugin_name]):
         if safe:
             return default
         else:
-            raise BotException(EXCEPTION, "Key '{}' not found.".format(key))
+            raise CBException("Key '{}' not found.".format(key))
 
     if not volatile and location_key not in bot.data_changed:
         bot.data_changed.append(location_key)
@@ -169,7 +183,7 @@ def remove(bot, plugin_name, key, server_id=None, channel_id=None,
 
 
 def list_data_append(
-        bot, plugin_name, key, value, server_id=None, channel_id=None,
+        bot, plugin_name, key, value, guild_id=None, channel_id=None,
         user_id=None, volatile=False, duplicates=True):
     """Add data to list at location.
 
@@ -178,8 +192,7 @@ def list_data_append(
     flag is set to false, this will not append the data if it is already found
     inside the list.
     """
-    current, location_key = get_location(
-        bot, server_id, channel_id, user_id, volatile)
+    current, location_key = get_location(bot, guild_id, channel_id, user_id, volatile)
     if plugin_name not in current:
         current[plugin_name] = {}
     if key not in current[plugin_name]:  # List doesn't exist
@@ -187,7 +200,7 @@ def list_data_append(
     else:  # List already exists
         current = current[plugin_name][key]
         if type(current) is not list:
-            raise BotException(EXCEPTION, "Data is not a list.")
+            raise CBException("Data is not a list.")
         elif duplicates or value not in current:
             current.append(value)
         if not volatile and location_key not in bot.data_changed:
@@ -195,33 +208,32 @@ def list_data_append(
 
 
 def list_data_remove(
-        bot, plugin_name, key, value=None, server_id=None, channel_id=None,
+        bot, plugin_name, key, value=None, guild_id=None, channel_id=None,
         user_id=None, default=None, safe=False, volatile=False):
     """Remove data from list at location.
 
     Works like remove, but manipulates the list at the location. If the value
     is not specified, it will pop the first element.
     """
-    current, location_key = get_location(
-        bot, server_id, channel_id, user_id, volatile)
+    current, location_key = get_location(bot, guild_id, channel_id, user_id, volatile)
     if (not current or
             plugin_name not in current or
             key not in current[plugin_name]):
         if safe:
             return default
         else:
-            raise BotException(EXCEPTION, "Key '{}' not found.".format(key))
+            raise CBException("Key '{}' not found.".format(key))
     current = current[plugin_name][key]
     if type(current) is not list:
         if safe:
             return default
         else:
-            raise BotException(EXCEPTION, "Data is not a list.")
+            raise CBException("Data is not a list.")
     elif not current:  # Empty, can't pop
         if safe:
             return default
         else:
-            raise BotException(EXCEPTION, "List is empty.")
+            raise CBException("List is empty.")
 
     if not volatile and location_key not in bot.data_changed:
         bot.data_changed.append(location_key)
@@ -232,8 +244,7 @@ def list_data_remove(
             if safe:
                 return default
             else:
-                raise BotException(
-                    EXCEPTION, "Value '{}' not found in list.".format(value))
+                raise CBException("Value '{}' not found in list.".format(value))
         else:
             current.remove(value)
             return value
@@ -257,7 +268,7 @@ def save_data(bot, force=False):
                 keys.append(key)
                 with open(directory + key + '.json', 'w') as current_file:
                     json.dump(value, current_file, indent=4)
-            # Check to see if any server was removed
+            # Check to see if any guild was removed
             files = os.listdir(directory)
             for check_file in files:
                 if (check_file.endswith('.json') and
@@ -266,24 +277,27 @@ def save_data(bot, force=False):
                     os.remove(directory + check_file)
 
         else:  # Save data that has changed
-            for key in bot.data_changed[:]:
+            for key in bot.data_changed:
                 with open(directory + key + '.json', 'w') as current_file:
                     json.dump(bot.data[key], current_file, indent=4)
                 logging.debug("Saved {}".format(directory + key + '.json'))
-                bot.data_changed.remove(key)
+
+        bot.data_changed = []
 
 
 def load_data(bot):
     """Loads the data from the data directory."""
 
+    logging.debug("Loading data...")
     directory = bot.path + '/data/'
-    for server in bot.servers:
+    for guild in bot.guilds:
+        guild_id = str(guild.id)
         try:
-            with open(directory + server.id + '.json', 'r') as server_file:
-                bot.data[server.id] = json.load(server_file)
+            with open(directory + guild_id + '.json', 'r') as guild_file:
+                bot.data[guild_id] = json.load(guild_file)
         except:
-            logging.warn("Data for server {} not found.".format(server.id))
-            bot.data[server.id] = {}
+            logging.warn("Data for guild {} not found.".format(guild_id))
+            bot.data[guild_id] = {}
 
     try:
         with open(directory + 'global_plugins.json', 'r') as plugins_file:
@@ -295,13 +309,14 @@ def load_data(bot):
             bot.data['global_users'] = json.load(users_file)
     except:
         logging.warn("Global data for users not found.")
+    logging.debug("Data loaded.")
 
 
 def clean_location(bot, plugins, channels, users, location):
     """Recursively cleans out the given location.
 
-    Removes users, servers, and plugin data that can no longer be used.
-    The location must be a server or global data dictionary.
+    Removes users, guilds, and plugin data that can no longer be used.
+    The location must be a guild or global data dictionary.
     """
 
     location_items = list(location.items())
@@ -322,19 +337,19 @@ def clean_data(bot):
     """Removes data that is no longer needed removed."""
 
     plugins = list(bot.plugins.keys())
-    servers = list(server.id for server in bot.servers)
+    guilds = list(str(guild.id) for guild in bot.guilds)
 
     data_items = list(bot.data.items())
     for key, value in data_items:
 
         if key[0].isdigit():  # Server
-            if key not in servers:  # Server cannot be found, remove it
-                logging.warn("Removing server {}".format(key))
+            if key not in guilds:  # Server cannot be found, remove it
+                logging.warn("Removing guild {}".format(key))
                 del bot.data[key]
             else:  # Recursively clean the data
-                server = bot.get_server(key)
-                channels = [channel.id for channel in server.channels]
-                users = [member.id for member in server.members]
+                guild = bot.get_guild(key)
+                channels = [str(channel.id) for channel in guild.channels]
+                users = [str(member.id) for member in guild.members]
                 clean_location(bot, plugins, channels, users, bot.data[key])
 
         else:  # Global plugins or users
@@ -343,78 +358,87 @@ def clean_data(bot):
     save_data(bot, force=True)
 
 
-def is_mod(bot, server, user_id, strict=False):
-    """Returns true if the given user is a moderator of the given server.
+def is_mod(bot, guild, user_id, strict=False):
+    """Returns true if the given user is a moderator of the given guild.
 
-    The server owner and bot owners count as moderators. If strict is True,
+    The guild owner and bot owners count as moderators. If strict is True,
     this will only look in the moderators list and nothing above that.
     """
-    moderators = get(bot, 'base', 'moderators', server.id, default=[])
+    # moderators = get(bot, 'base', 'moderators', guild.id, default=[])
+    if guild is None:  # Private channel
+        return is_owner(bot, user_id)
+    member = guild.get_member(user_id)
+    if member is None:
+        raise CBException('Member not found.')
+    modrole = get(bot, 'base', 'modrole', guild_id=guild.id, volatile=True)
+    mod_check = bool(modrole in member.roles or member.guild_permissions.administrator)
     if strict:  # Only look for the user in the moderators list
-        return user_id in moderators
+        return mod_check
     else:  # Check higher privileges too
-        return user_id in moderators or is_admin(bot, server, user_id)
+        return mod_check or is_admin(bot, guild, user_id)
 
 
-def is_admin(bot, server, user_id, strict=False):
+def is_admin(bot, guild, user_id, strict=False):
     """Checks that the user is an admin or higher."""
     if strict:
-        return user_id == server.owner.id
+        return user_id == guild.owner.id
     else:
-        return user_id == server.owner.id or is_owner(bot, user_id)
+        return user_id == guild.owner.id or is_owner(bot, user_id)
 
 
 def is_owner(bot, user_id):
-    """Returns true if the given user is one of the bot owners."""
-    return user_id in bot.configurations['core']['owners']
+    """Checks that the user is one of the bot owners."""
+    return user_id in bot.owners
 
 
-def is_blocked(bot, server, user_id, strict=False):
-    """Checks that the user is blocked in the given server."""
-    blocked_list = get(bot, 'base', 'blocked', server_id=server.id, default=[])
+def is_blocked(bot, guild, user_id, strict=False):
+    """Checks that the user is blocked in the given guild."""
+    blocked_list = get(bot, 'base', 'blocked', guild_id=guild.id, default=[])
     if strict:
         return user_id in blocked_list
     else:
-        return user_id in blocked_list and not is_mod(bot, server, user_id)
+        return user_id in blocked_list and not is_mod(bot, guild, user_id)
 
 
-def get_member(
-        bot, identity, server=None, attribute=None, safe=False, strict=False):
+def get_member(bot, identity, guild=None, attribute=None, safe=False, strict=False):
     """Gets a member given the identity.
 
     Keyword arguments:
-    server -- if specified, will look here for identity first.
+    guild -- if specified, will look here for identity first.
     attribute -- gets the member's attribute instead of the member itself.
     safe -- returns None if not found instead of raising an exception.
-    strict -- will look only in the specified server.
+    strict -- will look only in the specified guild.
     """
-    if identity.startswith('<@') and identity.endswith('>'):
-        identity = identity.strip('<@!>')
-        use_id = True
+    if strict and guild is None:
+        raise CBException("No guild specified for strict member search.")
+
+    identity_string = str(identity)
+    if identity_string.startswith('<@') and identity_string.endswith('>'):
+        identity = identity_string.strip('<@!>')
+        used_id = True
     else:
-        use_id = False
+        used_id = False
 
-    if strict and server is None:
-        raise BotException(
-            EXCEPTION, "No server specified for strict user search.")
-
-    for test in ({'id': identity}, {'name': identity}, {'nick': identity}):
-        members = server.members if server else bot.get_all_members()
+    tests = []
+    try:  # Double check used_id in case we're given "<@123foo456>"
+        tests.append({'id': int(identity)})
+    except:
+        used_id = False
+    tests += [{'name': identity}, {'nick', identity}]
+    for test in tests:
+        members = guild.members if guild else bot.get_all_members()
         result = discord.utils.get(members, **test)
         if result:  # Check for duplicates
-            if use_id:
+            if used_id:
                 break
             elif type(members) is GeneratorType:
                 duplicate = result
                 while duplicate:
                     duplicate = discord.utils.get(members, **test)
                     if duplicate and duplicate != result:
-                        bot.extra = (duplicate, result)
-                        raise BotException(
-                            EXCEPTION, "Duplicate found; use a mention.")
+                        raise CBException("Duplicate found; use a mention.")
             elif list(members).count(result) > 1:
-                raise BotException(
-                    EXCEPTION, "Duplicate found; use a mention.")
+                raise CBException("Duplicate found; use a mention.")
             break
 
     if result:
@@ -424,33 +448,53 @@ def get_member(
             elif safe:
                 return None
             else:
-                raise BotException(
-                    EXCEPTION, "Invalid attribute, '{}'.".format(attribute))
+                raise CBException("Invalid attribute, '{}'.".format(attribute))
         else:
             return result
     else:
-        if not strict and server:  # Search again using all members
+        if not strict and guild:  # Search again using all members
             return get_member(
-                bot, identity, server=None, attribute=attribute,
-                safe=safe, strict=False)
+                bot, identity, guild=None, attribute=attribute, safe=safe, strict=False)
         elif safe:
             return None
         else:
-            raise BotException(EXCEPTION, "{} not found.".format(identity))
+            raise CBException("User '{}' not found.".format(identity))
 
 
-def get_channel(
-        bot, identity, server=None, attribute=None, safe=False, strict=False):
+def get_channel(bot, identity, guild=None, attribute=None, safe=False, strict=False):
     """Like get_member(), but gets the channel instead."""
-    if identity.startswith('<#') and identity.endswith('>'):
-        identity = identity.strip('<#>')
-    if server is None:
-        channels = bot.get_all_channels()
+    if strict and guild is None:
+        raise CBException("No guild specified for strict channel search.")
+
+    # Convert
+    identity_string = str(identity)
+    if identity_string.startswith('<#') and identity_string.endswith('>'):
+        identity = identity_string.strip('<#>')
+        used_id = True
     else:
-        channels = server.channels
-    result = discord.utils.get(channels, id=identity)
-    if result is None:
-        result = discord.utils.get(channels, name=identity)
+        used_id = False
+
+    tests = []
+    try:  # Double check used_id in case we're given "<#123foo456>"
+        tests.append({'id': int(identity)})
+    except:
+        used_id = False
+    tests += [{'name': identity}]
+    for test in tests:
+        channels = guild.channels if guild else bot.get_all_channels()
+        result = discord.utils.get(channels, **test)
+        if result:  # Check for duplicates
+            if used_id:
+                break
+            elif type(channels) is GeneratorType:
+                duplicate = result
+                while duplicate:
+                    duplicate = discord.utils.get(channels, **test)
+                    if duplicate and duplicate != result:
+                        raise CBException("Duplicate channel found; use a mention.")
+            elif list(channels).count(result) > 1:
+                raise CBException("Duplicate channel found; use a mention.")
+            break
 
     if result:
         if attribute:
@@ -459,15 +503,46 @@ def get_channel(
             elif safe:
                 return None
             else:
-                raise BotException(
-                    EXCEPTION, "Invalid attribute, '{}'.".format(attribute))
+                raise CBException("Invalid attribute, '{}'.".format(attribute))
         else:
             return result
     else:
         if safe:
             return None
         else:
-            raise BotException(EXCEPTION, "{} not found.".format(identity))
+            raise CBException("Channel '{}' not found.".format(identity))
+
+
+def get_role(bot, identity, guild, safe=False):
+    """Gets a role given the identity and guild."""
+    identity_string = str(identity)
+    if identity_string.startswith('<@&') and identity_string.endswith('>'):
+        identity = identity_string.strip('<@&>')
+        used_id = True
+    else:
+        used_id = False
+
+    tests = []
+    try:  # Double check id in case we're given "<@&123foo456>"
+        tests.append({'id': int(identity)})
+    except:
+        used_id = False
+    tests += [{'name': identity}]
+    for test in tests:
+        result = discord.utils.get(guild.roles, **test)
+        if result:  # Check for duplicates
+            if used_id:
+                break
+            elif list(guild.roles).count(result) > 1:
+                raise CBException("Duplicate found; use a mention.")
+            break
+    if result:
+        return result
+    else:
+        if safe:
+            return None
+        else:
+            raise CBException("Role '{}' not found.".format(identity))
 
 
 def get_from_cache(bot, name, url=None):
@@ -501,15 +576,13 @@ async def add_to_cache(bot, url, name=None, file_location=None):
     if file_location:
         cleaned_name = utilities.get_cleaned_filename(file_location)
     else:
-        file_location, cleaned_name = await utilities.download_url(
-            bot, url, include_name=True)
+        file_location, cleaned_name = await utilities.download_url(bot, url, include_name=True)
     if name:
         cleaned_name = utilities.get_cleaned_filename(name)
     try:
         download_stat = os.stat(file_location)
     except FileNotFoundError:
-        raise BotException(
-            EXCEPTION, "The audio could not be saved. Please try again later.")
+        raise CBException("The audio could not be saved. Please try again later.")
     cache_limit = bot.configurations['core']['cache_size_limit'] * 1000 * 1000
     store = cache_limit > 0 and download_stat.st_size < cache_limit / 2
 
@@ -532,17 +605,18 @@ async def add_to_cache(bot, url, name=None, file_location=None):
             total_size += stat.st_size
         cache_entries.sort(reverse=True)
 
-        # TODO: Check complexity of list entry removal
         while total_size > cache_limit:
-            entry = cache_entries.pop()
-            os.remove(entry[2])
-            total_size -= entry[1]
+            _, size, path = cache_entries.pop()
+            os.remove(path)
+            total_size -= size
 
     return cached_location
 
 
-def add_server(bot, server):
-    """Adds the server to the data dictionary."""
-    bot.data[server.id] = {}
-    bot.volatile_data[server.id] = {}
-    bot.data_changed.append(server.id)
+def add_guild(bot, guild):
+    """Adds the guild to the data dictionary."""
+    guild_id = str(guild.id)
+    if guild_id not in bot.data:
+        bot.data[guild_id] = {}
+        bot.volatile_data[guild_id] = {}
+        bot.data_changed.append(guild_id)

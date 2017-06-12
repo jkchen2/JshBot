@@ -8,9 +8,57 @@ import os
 import io
 
 from jshbot import data, configurations, core
-from jshbot.exceptions import BotException
+from jshbot.exceptions import BotException, ConfiguredBotException
 
-EXCEPTION = 'Utilities'
+CBException = ConfiguredBotException('Utilities')
+
+
+class BaseConverter():
+    def __init__(self):
+        self.error_reason = None
+    def get_convert_error(self, *args):
+        return self.error_reason
+
+
+class MemberConverter(BaseConverter):
+    def __init__(self, server_only=True):
+        self.server_only = server_only
+        super().__init__()
+    def __call__(self, bot, message, value, *a):
+        guild = message.guild if self.server_only else None
+        try:
+            return data.get_member(bot, value, guild=guild, strict=self.server_only)
+        except BotException as e:
+            self.set_error_reason(e, 'member')
+    def set_error_reason(self, error, convert_type):
+        if error.error_subject.startswith('Duplicate'):
+            pre_format = "Duplicate {}s found.".format(convert_type)
+        else:
+            pre_format = "{} not found.".format(convert_type.title())
+        self.error_reason = pre_format + ' Please use a mention.'
+        assert False  # To trigger the conversion error
+    def get_convert_error(self, *args):
+        return self.error_reason
+
+
+class ChannelConverter(MemberConverter):
+    def __call__(self, bot, message, value, *a):
+        guild = message.guild if self.server_only else None
+        try:
+            return data.get_channel(bot, value, guild=guild, strict=self.server_only)
+        except BotException as e:
+            self.set_error_reason(e, 'channel')
+
+
+class RoleConverter(MemberConverter):
+    def __init__(self):
+        super().__init__()
+    def __call__(self, bot, message, value, *a):
+        try:
+            bot.extra = (bot, message, value, *a)
+            return data.get_role(bot, value, message.guild)
+        except BotException as e:
+            self.set_error_reason(e, 'role')
 
 
 def add_bot_permissions(bot, plugin_name, **permissions):
@@ -20,8 +68,7 @@ def add_bot_permissions(bot, plugin_name, **permissions):
         try:
             getattr(dummy, permission.lower())
         except:  # Permission not found
-            raise BotException(
-                EXCEPTION, "Permission '{}' does not exist", permission)
+            raise CBException("Permission '{}' does not exist", permission)
     current = data.get(
         bot, plugin_name, 'permissions', create=True, volatile=True)
     if current is None:
@@ -50,8 +97,7 @@ async def download_url(bot, url, include_name=False, extension=None):
         response_code, downloaded_bytes = await get_url(
             bot, url, get_bytes=True, headers={'User-Agent': 'Mozilla/5.0'})
         if response_code != 200:
-            raise BotException(
-                EXCEPTION, "Failed to download file.", response_code)
+            raise CBException("Failed to download file.", response_code)
         with open(file_location, 'wb') as download:
             download.write(downloaded_bytes)
         if include_name:
@@ -59,7 +105,7 @@ async def download_url(bot, url, include_name=False, extension=None):
         else:
             return file_location
     except Exception as e:
-        raise BotException(EXCEPTION, "Failed to download the file.", e=e)
+        raise CBException("Failed to download the file.", e=e)
 
 
 def delete_temporary_file(bot, filename, safe=True):
@@ -68,7 +114,7 @@ def delete_temporary_file(bot, filename, safe=True):
         os.remove('{0}/temp/{1}'.format(bot.path, filename))
     except Exception as e:
         if not safe:
-            raise BotException(EXCEPTION, "File could not be deleted.", e=e)
+            raise CBException("File could not be deleted.", e=e)
 
 
 async def get_url(bot, urls, headers={}, get_bytes=False):
@@ -92,43 +138,42 @@ async def get_url(bot, urls, headers={}, get_bytes=False):
                 result = await fetch(urls, read_method)
             return result
     except Exception as e:
-        raise BotException(EXCEPTION, "Failed to retrieve a URL.", e)
+        raise CBException("Failed to retrieve a URL.", e)
 
 
 async def upload_to_discord(bot, fp, filename=None, rewind=True, close=False):
     """Uploads the given file-like object to the upload channel.
 
     If the upload channel is specified in the configuration files, files
-    will be uploaded there. Otherwise, a new server will be created, and
+    will be uploaded there. Otherwise, a new guild will be created, and
     used as the upload channel."""
     channel_id = configurations.get(bot, 'core', 'upload_channel')
-    if not channel_id:  # Check to see if a server was already created
+    if not channel_id:  # Check to see if a guild was already created
         channel_id = data.get(bot, 'core', 'upload_channel')
     for instance in bot.all_instances:
         channel = instance.get_channel(channel_id)
         if channel:
             break
 
-    if channel is None:  # Create server
-        logging.debug("Creating server for upload channel...")
+    if channel is None:  # Create guild
+        logging.debug("Creating guild for upload channel...")
         try:
-            server = await bot.create_server('uploads')
+            guild = await bot.create_guild('uploads')
         except Exception as e:
-            raise BotException(
-                EXCEPTION,
-                "Failed to create upload server. This bot is not whitelisted "
-                "to create servers.", e=e)
-        data.add(bot, 'core', 'upload_channel', server.id)
-        channel = bot.get_channel(server.id)
+            raise CBException(
+                "Failed to create upload guild. This bot is not whitelisted "
+                "to create guilds.", e=e)
+        data.add(bot, 'core', 'upload_channel', guild.id)
+        channel = bot.get_channel(guild.id)
 
     if channel is None:  # Shouldn't happen
-        raise BotException(EXCEPTION, "Failed to get upload channel.")
+        raise CBException("Failed to get upload channel.")
 
     try:
         message = await bot.send_file(channel, fp, filename=filename)
         upload_url = message.attachments[0]['url']
     except Exception as e:
-        raise BotException(EXCEPTION, "Failed to upload file.", e=e)
+        raise CBException("Failed to upload file.", e=e)
 
     if close:
         try:
@@ -150,7 +195,7 @@ async def parallelize(coroutines, return_exceptions=False):
         return await asyncio.gather(
             *coroutines, return_exceptions=return_exceptions)
     except Exception as e:
-        raise BotException(EXCEPTION, "Failed to await coroutines.", e=e)
+        raise CBException("Failed to await coroutines.", e=e)
 
 
 def future(function, *args, **kwargs):
@@ -180,117 +225,86 @@ def get_cleaned_filename(name, cleaner=False, limit=200, extension=None):
     return ''.join(cleaned_list).lower() + extension
 
 
-def get_player(bot, server_id):
-    """Gets the voice player on the given server. None otherwise."""
+def get_player(bot, guild_id):
+    """Gets the voice player on the given guild. None otherwise."""
     return data.get(
-        bot, 'base', 'voice_player', server_id=server_id, volatile=True)
+        bot, 'base', 'voice_player', guild_id=guild_id, volatile=True)
 
 
-def set_player(bot, server_id, player):
-    """Sets the voice player of the given server."""
+def set_player(bot, guild_id, player):
+    """Sets the voice player of the given guild."""
     data.add(
         bot, 'base', 'voice_player', player,
-        server_id=server_id, volatile=True)
+        guild_id=guild_id, volatile=True)
 
 
-async def join_and_ready(
-        bot, voice_channel, include_player=False,
-        is_mod=False, reconnect=False):
+# TODO: Convert muted channels into ints
+# TODO: Check code for missing 'include_player' parameter
+async def join_and_ready(bot, voice_channel, is_mod=False, reconnect=False):
     """Joins the voice channel and stops any player if it exists.
 
     Returns the voice_client object from bot.join_voice_channel.
     If include_player is True, this will return a tuple of both the voice
     client and the player (None if not found).
     """
-    server = voice_channel.server
+    guild = voice_channel.guild
     muted = voice_channel.id in data.get(
-        bot, 'base', 'muted_channels', server_id=server.id, default=[])
-    if voice_channel == server.afk_channel:
-        raise BotException(EXCEPTION, "This is the AFK channel.")
+        bot, 'base', 'muted_channels', guild_id=guild.id, default=[])
+    if voice_channel == guild.afk_channel:
+        raise CBException("This is the AFK channel.")
     if muted and not is_mod:
-        raise BotException(
-            EXCEPTION, "The bot is muted in this voice channel.")
+        raise CBException("The bot is muted in this voice channel.")
     if reconnect:
-        await leave_and_stop(bot, server)
-    if not bot.is_voice_connected(server):
+        await leave_and_stop(bot, guild)
+
+    voice_client = guild.voice_client
+    if not voice_client:
         try:
-            voice_client = await bot.join_voice_channel(voice_channel)
+            voice_client = await voice_channel.connect()
         except Exception as e:
-            raise BotException(
-                EXCEPTION, "Failed to join the voice channel.", e=e)
+            raise CBException("Failed to join the voice channel.", e=e)
     else:
-        voice_client = bot.voice_client_in(server)
         if voice_client.channel != voice_channel:
             try:
                 await voice_client.move_to(voice_channel)
             except Exception as e:
-                raise BotException(
-                    EXCEPTION, "Failed to move to the voice channel.", e=e)
+                raise CBException("Failed to move to the voice channel.", e=e)
 
-    player = get_player(bot, server.id)
-    if player is not None:
-        if player.is_playing() or not player.is_done():
-            player.stop()
-        '''
-        elif not player.is_done():  # Can this even happen?
-            raise BotException(
-                EXCEPTION, "Audio is pending, please try again later.")
-        '''
-
-    if include_player:
-        return (voice_client, player)
-    else:
-        return voice_client
+    if voice_client.is_playing():
+        voice_client.stop()
+    return voice_client
 
 
-async def leave_and_stop(bot, server, member=None, safe=True):
-    """Leaves any voice channel in the given server and stops any players.
+async def leave_and_stop(bot, guild, member=None, safe=True):
+    """Leaves any voice channel in the given guild and stops any players.
 
     Keyword arguments:
     member -- Checks that the the bot is connected to the member's
         voice channel. The safe option overrides this.
     safe -- Prevents exceptions from being thrown. Can be seen as 'silent'.
     """
-    player = get_player(bot, server.id)
-    if player is not None and player.is_playing():
-        player.stop()
-
-    voice_client = bot.voice_client_in(server)
+    voice_client = guild.voice_client
     if not voice_client:
+        if safe:
+            return
+        else:
+            raise CBException("Bot not connected to a voice channel.")
+    voice_client.stop()
+    member_voice = member.voice.channel if member and member.voice else None
+    if member and voice_client.channel != member_voice:
         if not safe:
-            raise BotException(
-                EXCEPTION, "Bot not connected to a voice channel.")
-    elif member and voice_client.channel != member.voice_channel:
-        if not safe:
-            raise BotException(
-                EXCEPTION, "Bot not connected to your voice channel.")
+            raise CBException("Bot not connected to your voice channel.")
     else:
         await voice_client.disconnect()
 
 
-async def delayed_leave(bot, server_id, player, delay=60):
-    """Leaves the voice channel associated with the given server.
+async def delayed_leave(bot, guild_id, player, delay=60):
+    """Leaves the voice channel associated with the given guild.
 
-    This command does nothing if the current player of the server is not the
+    This command does nothing if the current player of the guild is not the
     same as the one given.
     """
     # TODO: Implement
-
-
-def get_formatted_message(message):
-    """Gets a log-friendly format of the given message."""
-    if message.edited_timestamp:
-        edited = ' (edited {})'.format(message.edited_timestamp)
-    else:
-        edited = ''
-    if message.attachments:
-        urls = [attachment['url'] for attachment in message.attachments]
-        attached = ' (attached {})'.format(urls)
-    else:
-        attached = ''
-    return ("{0.author.name}#{0.author.discriminator} ({0.author.id}) "
-            "at {0.timestamp}{1}{2}:\r\n\t{0.content}").format(
-                message, edited, attached)
 
 
 def get_time_string(total_seconds, text=False, full=False):
@@ -330,47 +344,60 @@ def get_time_string(total_seconds, text=False, full=False):
     return '{}'.format('' if text else ':').join(result)
 
 
+def get_formatted_message(message):
+    """Gets a log-friendly format of the given message."""
+    if message.edited_at:
+        edited = ' (edited {})'.format(message.edited_at)
+    else:
+        edited = ''
+    if message.attachments:
+        urls = [attachment['url'] for attachment in message.attachments]
+        attached = ' (attached {})'.format(urls)
+    else:
+        attached = ''
+    return ("{0.author.name}#{0.author.discriminator} ({0.author.id}) "
+            "at {0.created_at}{1}{2}:\r\n\t{0.content}").format(
+                message, edited, attached)
+
+
 async def get_log_text(bot, channel, **log_arguments):
     """Wrapper function for Carter's time machine."""
     messages = []
-    async for message in bot.logs_from(channel, **log_arguments):
+    async for message in channel.history(**log_arguments):
         messages.append(message)
-    return '\r\n\r\n'.join(
-        get_formatted_message(message) for message in reversed(messages))
+    return '\r\n\r\n'.join(get_formatted_message(message) for message in reversed(messages))
 
 
-async def send_text_as_file(bot, channel, text, filename, extra=None):
+# TODO: Look through experiments and tags for changes
+async def send_text_as_file(channel, text, filename, extra=None):
     """Sends the given text as a text file."""
-    file_location = '{0}/temp/{1}.txt'.format(bot.path, filename)
-    with open(file_location, 'w') as text_file:
-        text_file.write(text)
-    reference = await bot.send_file(channel, file_location, content=extra)
-    asyncio.ensure_future(future(os.remove, file_location))
+    discord_file = discord.File(get_text_as_file(text), filename=filename + '.txt')
+    reference = await channel.send(content=extra, file=discord_file)
     return reference
 
 
-def get_text_as_file(bot, text):
+# TODO: Look through tags and playlist for changes
+def get_text_as_file(text):
     """Converts the text into a bytes object using BytesIO."""
     try:
-        # return io.BytesIO(bytes(str(text)), str.encode)
         return io.BytesIO(bytes(str(text), 'utf-8'))
     except Exception as e:
-        raise BotException(EXCEPTION, "Failed to convert text to a file.", e=e)
+        raise CBException("Failed to convert text to a file.", e=e)
 
 
-def get_invoker(bot, server=None):
+def get_invoker(bot, guild=None):
     """Gets a suitable command invoker for the bot.
 
-    If a server is specified, this will check for a custom invoker and
+    If a guild is specified, this will check for a custom invoker and
     whether or not mention mode is enabled.
     """
-    if server is not None:
-        server_data = data.get(
-            bot, 'base', None, server_id=server.id, default={})
-        if server_data.get('mention_mode', False):
-            invoker = '{} '.format(server.me.display_name)
+    if guild is not None:
+        guild_data = data.get(
+            bot, 'base', None, guild_id=guild.id, default={})
+        if guild_data.get('mention_mode', False):
+            invoker = '{} '.format(guild.me.display_name)
         else:
-            invoker = server_data.get('command_invoker', None)
+            invoker = guild_data.get('command_invoker', None)
     else:
         invoker = None
     if invoker is None:
@@ -397,7 +424,7 @@ async def notify_owners(bot, message, user_id=None):
             if len(message) > 1998:
                 await send_text_as_file(bot, member, message, 'notification')
             else:
-                await bot.send_message(member, message)
+                await member.send(message)
 
 
 def make_backup(bot):
@@ -411,8 +438,7 @@ def make_backup(bot):
         backup_file_to = backup_indices.format(6-it)
         if os.path.isfile(backup_file_from):
             os.rename(backup_file_from, backup_file_to)
-    shutil.make_archive(
-        backup_indices.format(1)[:-4], 'zip', '{}/data'.format(bot.path))
+    shutil.make_archive(backup_indices.format(1)[:-4], 'zip', '{}/data'.format(bot.path))
     logging.debug("Finished making backup.")
 
 
@@ -427,6 +453,5 @@ def restore_backup(bot, backup_file):
             data.check_all(instance)
             data.load_data(instance)
     except Exception as e:
-        raise BotException(
-            EXCEPTION, "Failed to extract backup.", e=e)
+        raise CBException("Failed to extract backup.", e=e)
     logging.debug("Finished data restore.")

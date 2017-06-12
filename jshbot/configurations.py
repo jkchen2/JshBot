@@ -1,40 +1,41 @@
 import json
 
-from jshbot.exceptions import BotException, ErrorTypes
+from jshbot.exceptions import ConfiguredBotException, ErrorTypes
 
-EXCEPTION = 'Configurations'
+CBException = ConfiguredBotException('Configurations')
 
 
+'''
 def add_configurations(bot):
     configurations_list = {}
     directory = bot.path + '/config/'
-    try:
-        with open(directory + 'config.json', 'r') as config_file:
+    try:  # Load core config file
+        with open(bot.path + '/config/config.json', 'r') as config_file:
             configurations_list['core'] = json.load(config_file)
     except Exception as e:
-        raise BotException(
-            EXCEPTION,
-            "Could not open the core configuration file", e=e,
-            error_type=ErrorTypes.STARTUP)
+        raise CBException(
+            "Could not open the core configuration file", e=e, error_type=ErrorTypes.STARTUP)
 
-    for plugin in bot.plugins:
+    for plugin in bot.plugins:  # Load all other config files
+        if plugin == 'base':
+            continue
         try:
             with open(directory + plugin + '.json', 'r') as config_file:
                 configurations_list[plugin] = json.load(config_file)
         except FileNotFoundError:
-            module = bot.plugins[plugin][0]
+            module = bot.plugins[plugin]
             if getattr(module, 'uses_configuration', False):
-                raise BotException(
-                    EXCEPTION, "Plugin {} requires a configuration file, "
-                    "but it was not found.".format(plugin),
-                    error_type=ErrorTypes.STARTUP)
+                raise CBException(
+                    "Plugin {} requires a configuration file, "
+                    "but it was not found.".format(plugin), error_type=ErrorTypes.STARTUP)
         except Exception as e:
-            raise BotException(
-                EXCEPTION, "Could not open the {} configuration file.".format(
-                    plugin), e=e, error_type=ErrorTypes.STARTUP)
+            raise CBException(
+                "Could not open the {} configuration file.".format(plugin),
+                e=e, error_type=ErrorTypes.STARTUP)
 
     bot.configurations = configurations_list
     return configurations_list
+'''
 
 
 def get(bot, plugin_name, key=None, extra=None, extension='json'):
@@ -52,19 +53,15 @@ def get(bot, plugin_name, key=None, extra=None, extension='json'):
         try:
             config = bot.configurations[plugin_name]
         except KeyError:
-            raise BotException(
-                EXCEPTION,
-                "Plugin {} not found in the configurations dictionary.".format(
-                    plugin_name))
+            raise CBException(
+                "Plugin {} not found in the configurations dictionary.".format(plugin_name))
         try:
             if key:
                 return config[key]
             else:
                 return config
         except KeyError:
-            raise BotException(
-                EXCEPTION,
-                "Key {} not found in the configuration file.".format(key))
+            raise CBException("Key {} not found in the configuration file.".format(key))
     try:
         with open(filename, 'r') as config_file:
             if extension.lower() == 'json':
@@ -72,7 +69,6 @@ def get(bot, plugin_name, key=None, extra=None, extension='json'):
             else:
                 return config_file.read()
     except FileNotFoundError:
-        raise BotException(EXCEPTION, "File {} not found.".format(filename))
+        raise CBException("File {} not found.".format(filename))
     except Exception as e:
-        raise BotException(
-            EXCEPTION, "Failed to read {} properly.".format(filename), e=e)
+        raise CBException("Failed to read {} properly.".format(filename), e=e)
