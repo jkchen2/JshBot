@@ -2,11 +2,12 @@ import discord
 import logging
 import os
 import json
+import psycopg2
 
 from types import GeneratorType
 
 from jshbot import core, utilities
-from jshbot.exceptions import ConfiguredBotException
+from jshbot.exceptions import BotException, ConfiguredBotException, ErrorTypes
 
 CBException = ConfiguredBotException('Data')
 
@@ -620,3 +621,175 @@ def add_guild(bot, guild):
         bot.data[guild_id] = {}
         bot.volatile_data[guild_id] = {}
         bot.data_changed.append(guild_id)
+
+
+def db_connect(bot):
+    """Attempts to connect to the database."""
+    try:
+        connection_parameters = bot.configurations['core']['database_credentials']
+        bot.db_connection = psycopg2.connect(connection_parameters)
+    except Exception as e:
+        raise CBException("Failed to connect to the database.", e=e, error_type=ErrorTypes.STARTUP)
+
+
+def db_execute(bot, query, input_args=[], safe=False, cursor_kwargs={}, pass_error=False):
+    """Executes the given query."""
+    print("Executing SQL:", query)
+    print("with the given input_args:", input_args)
+    try:
+        cursor = bot.db_connection.cursor(**cursor_kwargs)
+        cursor.execute(query, input_args)
+    except Exception as e:
+        bot.db_connection.rollback()
+        if pass_error:
+            raise e
+        elif safe:
+            return
+        raise CBException("Failed to execute query.", e=e)
+    bot.db_connection.commit()
+    return cursor
+
+
+# TODO: Implement create
+def db_select(
+        bot, select_arg=['*'], from_arg=[], where_arg='', additional='', limit=None,
+        input_args=[], table_suffix='', safe=True, pass_error=False, cursor_kwargs={}):
+    """Makes a selection query.
+
+    Keyword arguments:
+    select_arg -- List of columns to select. (unsanitized)
+    from_arg -- List of tables to select from. (unsanitized)
+    where_arg -- Conditionals for the selection. (unsanitized)
+    input_args -- Arguments passed into the query via old pyformat. (sanitized)
+    table_suffix -- Suffix appended to each entry in from_arg. (unsanitized)
+    safe -- Will not throw an exception.
+    """
+    if not isinstance(select_arg, (list, tuple)):
+        select_arg = [select_arg]
+    query = "SELECT {} ".format(', '.join(select_arg))
+    if not from_arg:
+        if safe:
+            return
+        raise CBException("No table specified for selection.")
+    elif not isinstance(from_arg, (list, tuple)):
+        from_arg = [from_arg]
+    if table_suffix:
+        table_suffix = '_{}'.format(table_suffix)
+    query += "FROM {}".format(', '.join((it + table_suffix) for it in from_arg))
+    if where_arg:
+        query += ' WHERE {}'.format(where_arg)
+    if additional:
+        query += ' {}'.format(additional)
+    if limit:
+        query += ' LIMIT {}'.format(limit)
+
+    try:
+        return db_execute(bot, query, input_args=input_args, cursor_kwargs=cursor_kwargs)
+    except Exception as e:  # TODO: Check exception type
+        if safe:
+            return
+        elif pass_error:
+            raise e
+        else:
+            raise CBException("Database selection failed.", e=e)
+
+
+def db_insert(
+        bot, table, specifiers=[], input_args=[], table_suffix='',
+        safe=True, create=False):
+    """Inserts the input arguments into the given table."""
+    if not isinstance(specifiers, (list, tuple)):
+        specifiers = [specifiers]
+    if not isinstance(input_args, (list, tuple)):
+        input_args = [input_args]
+    query = "INSERT INTO {} ".format(
+        table + ('_{}'.format(table_suffix) if table_suffix else ''))
+    if specifiers:
+        query += "({}) ".format(', '.join(specifiers))
+    query += "VALUES ({})".format(', '.join('%s' for it in range(len(input_args))))
+    try:
+        db_execute(bot, query, input_args=input_args, pass_error=True)
+    except psycopg2.ProgrammingError as e:
+        stripped = str(e).split('\n')[0]
+        if stripped.startswith('relation') and stripped.endswith('does not exist'):
+            if create:
+                print("Table not found! Creating:", table + '_' + str(table_suffix))
+                db_create_table(bot, table, table_suffix=table_suffix, template=create)
+                db_insert(
+                    bot, table, specifiers=specifiers, input_args=input_args,
+                    table_suffix=table_suffix, safe=safe, create=False)
+                print("Inserted after table creation.")
+                return
+        if safe:
+            return
+        raise CBException("Invalid insert syntax.", e=e)
+    except BotException as e:
+        raise e
+    except Exception as e:
+        raise CBException("Failed to insert into database.", e=e)
+
+
+def db_update(bot, table, table_suffix='', set_arg='', where_arg='', input_args=[]):
+    """Updates the given table, specified by SET and WHERE if given."""
+    if table_suffix:
+        table_suffix = '_{}'.format(table_suffix)
+    query = "UPDATE {} SET {}".format(table + table_suffix, set_arg)
+    if where_arg:
+        query += " WHERE {}".format(where_arg)
+    db_execute(bot, query, input_args=input_args)
+
+
+def db_delete(bot, table, table_suffix='', where_arg='', input_args=[], safe=True):
+    """Deletes an entry from the table """
+    if table_suffix:
+        table_suffix = '_{}'.format(table_suffix)
+    query = "DELETE FROM {} WHERE {}".format(table + table_suffix, where_arg)
+    try:
+        db_execute(bot, query, input_args=input_args, pass_error=True)
+    except Exception as e:
+        if safe:
+            return
+        elif isinstance(e, BotException):
+            raise e
+        else:
+            raise CBException("Invalid delete syntax", e=e)
+
+
+def db_create_table(bot, table, table_suffix='', template=None, specification=''):
+    """Creates the table with the given template."""
+    if specification:
+        table_specification = specification
+    else:
+        table_specification = bot.db_templates.get(template)
+        if not table_specification:
+            raise CBException("No template specified for table creation.")
+    if table_suffix:
+        table_suffix = '_{}'.format(table_suffix)
+    query = "CREATE TABLE IF NOT EXISTS {} ({})".format(
+        table + table_suffix, table_specification)
+    db_execute(bot, query)
+
+
+def db_drop_table(bot, table, table_suffix='', safe=False):
+    """Drops the specified table."""
+    if table_suffix:
+        table_suffix = '_{}'.format(table_suffix)
+    if_exists = 'IF EXISTS ' if safe else ''
+    query = "DROP TABLE {}{}".format(if_exists, table + table_suffix)
+    try:
+        db_execute(bot, query, pass_error=True)
+    except Exception as e:
+        if safe:
+            return
+        raise e
+
+
+def db_exists(bot, entry):
+    """Checks the existence of the given entry (table, index, etc.)"""
+    cursor = db_execute(bot, "SELECT to_regclass(%s)", input_args=[entry])
+    return cursor.fetchone()[0]
+
+
+# TODO: Potentially revise templates so that they are per-plugin
+def db_add_template(bot, name, specification):
+    bot.db_templates[name] = specification

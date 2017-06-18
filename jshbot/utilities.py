@@ -4,6 +4,8 @@ import aiohttp
 import functools
 import shutil
 import logging
+import json
+import time
 import os
 import io
 
@@ -455,3 +457,143 @@ def restore_backup(bot, backup_file):
     except Exception as e:
         raise CBException("Failed to extract backup.", e=e)
     logging.debug("Finished data restore.")
+
+
+#def db_update(bot, table, table_suffix='', set_arg='', where_arg='', input_args=[]):
+async def get_schedule_entries(
+        bot, plugin_name, search=None, destination=None,
+        custom_match=None, custom_args=[]):
+    """Gets the entries given the search or match arguments."""
+    if custom_match:
+        where_arg = custom_match
+        input_args = custom_args
+    else:
+        where_arg = 'plugin = %s'
+        input_args = [plugin_name]
+        if search is not None:
+            where_arg += ' AND search = %s'
+            input_args.append(search)
+        if destination:
+            where_arg += ' AND destination = %s'
+            input_args.append(destination)
+
+    cursor = data.db_select(
+        bot, from_arg='schedule', where_arg=where_arg, input_args=input_args, safe=False)
+    entries = cursor.fetchall()
+    converted = []
+    for entry in entries:
+        if entry[3]:
+            payload = json.loads(entry[3])
+        else:
+            payload = entry[3]
+        converted.append((entry[0], entry[1], entry[2], payload, entry[4]))
+    return converted
+
+
+async def update_schedule_entries(
+        bot, plugin_name, search, function=None, payload=None, new_search=None,
+        time=None, custom_match=None, destination=None, custom_args=[]):
+    """Updates the schedule entry with the given fields.
+
+    If any field is left as None, it will not be changed.
+    If custom_match is given, it must be a proper WHERE SQL clause. Otherwise
+        it will look for a direct match with search.
+
+    Returns the number of entries modified.
+    """
+    if custom_match:
+        where_arg = custom_match
+        input_args = custom_args
+    else:
+        where_arg = "plugin = %s AND search = %s"
+        input_args = [plugin_name, search]
+    set_args = []
+    set_input_args = []
+    if function:
+        set_args.append('function=%s')
+        set_input_args.append(function.__name__)
+    if payload:
+        set_args.append('payload=%s')
+        set_input_args.append(json.dumps(payload))
+    if time:
+        set_args.append('time=%s')
+        set_input_args.append(time)
+    if search:
+        set_args.append('search=%s')
+        set_input_args.append(new_search)
+    if destination:
+        set_args.append('destination=%s')
+        set_input_args.append(destination)
+    set_arg = ', '.join(set_args)
+    input_args = set_input_args + input_args
+    data.db_update(
+        bot, 'schedule', set_arg=set_arg, where_arg=where_arg, input_args=input_args)
+
+
+def schedule(
+        bot, plugin_name, time, function, payload=None, search=None, destination=None):
+    """Adds the entry to the schedule table and starts the timer.
+
+    It should be noted that the function CANNOT be a lambda function. It must
+        be a function residing in the plugin.
+    The payload should be a standard dictionary.
+    The search keyword argument is to assist in later deletion or modification.
+    Time should be a number in seconds from the epoch.
+    """
+    input_args = [
+        int(time),
+        plugin_name,
+        function.__name__,
+        json.dumps(payload) if payload else None,
+        search,
+        destination
+    ]
+    data.db_insert(bot, 'schedule', input_args=input_args, safe=False)
+    asyncio.ensure_future(_start_scheduler(bot))
+
+
+async def _schedule_timer(bot, raw_entry, delay):
+    task_comparison = bot.schedule_timer
+    print("_schedule_timer sleeping for", delay, "seconds...")
+    await asyncio.sleep(delay)
+    if task_comparison is not bot.schedule_timer:
+        print("_schedule_timer was not cancelled! Cancelling this scheduler...")
+        return
+    try:
+        cursor = data.db_select(bot, select_arg='min(time)', from_arg='schedule')
+        minimum_time = cursor.fetchone()[0]
+        data.db_delete(
+            bot, 'schedule', where_arg='time=%s', input_args=[minimum_time], safe=False)
+    except Exception as e:
+        print("_schedule_timer failed to delete schedule entry.", e)
+        raise e
+    try:
+        print("_schedule_timer done sleeping for", delay, "seconds!")
+        scheduled_time, plugin, function, payload, search, destination = raw_entry
+        if payload:
+            payload = json.loads(payload)
+        plugin = bot.plugins[plugin]
+        function = getattr(plugin, function)
+        late = delay < -30
+        asyncio.ensure_future(
+            function(bot, scheduled_time, payload, search, destination, late))
+    except Exception as e:
+        print("Failed to execute scheduled function:", e)
+        raise e
+    asyncio.ensure_future(_start_scheduler(bot))
+
+
+async def _start_scheduler(bot):
+    """Starts the interal scheduler."""
+    if bot.schedule_timer:  # Scheduler already running
+        bot.schedule_timer.cancel()
+        bot.schedule_timer = None
+    cursor = data.db_select(
+        bot, from_arg='schedule', additional='ORDER BY time ASC', limit=1, safe=False)
+    result = cursor.fetchone()
+    if result:
+        delta = result[0] - time.time()
+        print("_start_scheduler is starting a scheduled event.")
+        bot.schedule_timer = asyncio.ensure_future(_schedule_timer(bot, result, delta))
+    else:
+        print("_start_scheduler could not find a pending scheduled event.")

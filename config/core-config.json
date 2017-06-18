@@ -11,5 +11,6 @@
     "command_limit": 20,
     "command_limit_timeout": 60,
     "command_invokers": ["!", "."],
-    "locked_commands": []
+    "locked_commands": [],
+    "database_credentials": "dbname='postgres' user='postgres'"
 }

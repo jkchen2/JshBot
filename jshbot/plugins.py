@@ -11,11 +11,13 @@ import traceback
 
 from collections import OrderedDict
 
-from jshbot import commands, utilities
+from jshbot import commands, utilities, data
 from jshbot.exceptions import ErrorTypes, BotException, ConfiguredBotException
 
 CBException = ConfiguredBotException('Plugins')
 command_spawner_functions = []
+db_template_functions = []
+command_load_functions = []
 
 numeric_words = [
     ':zero:', ':one:', ':two:', ':three:', ':four:',
@@ -24,6 +26,16 @@ numeric_words = [
 
 def command_spawner(function):
     command_spawner_functions.append(function)
+    return function
+
+
+def db_template_spawner(function):
+    db_template_functions.append(function)
+    return function
+
+
+def on_load(function):
+    command_load_functions.append(function)
     return function
 
 
@@ -67,6 +79,14 @@ def load_plugin(bot, plugin_name):
     while command_spawner_functions:
         function = command_spawner_functions.pop()
         add_commands(bot, function(), module)
+    while db_template_functions:
+        function = db_template_functions.pop()
+        template = function()
+        for name, value in template.items():
+            data.db_add_template(bot, name, value)
+    while command_load_functions:
+        function = command_load_functions.pop()
+        function(bot)
     logging.debug("Plugin {} loaded.".format(plugin_name))
 
 
@@ -89,10 +109,19 @@ def add_plugins(bot):
     # Add base plugin
     # Order is always add: plugin, configuration, manual, commands
     from jshbot import base
-    bot.plugins['base'] = base
-    add_configuration(bot, 'core', 'core', base)
+    bot.plugins['core'] = base
     add_manual(bot, 'core', 'core')
-    add_commands(bot, base.get_commands(), base)
+    while command_spawner_functions:
+        function = command_spawner_functions.pop()
+        add_commands(bot, function(), base)
+    while db_template_functions:
+        function = db_template_functions.pop()
+        template = function()
+        for name, value in template.items():
+            data.db_add_template(bot, name, value)
+    while command_load_functions:
+        function = command_load_functions.pop()
+        function(bot)
 
     # Add plugins in plugin folder
     for plugin_name in plugins_list:
@@ -187,7 +216,7 @@ def get_help(
     categories = OrderedDict([('Core', [])])
     for command in bot.commands.values():
         if isinstance(command, commands.Command):
-            if not command.hidden or context.elevation >= 3:
+            if not command.hidden or elevation >= 3:
                 if command.category in categories:
                     categories[command.category].append(command)
                 else:

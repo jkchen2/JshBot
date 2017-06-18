@@ -17,7 +17,7 @@ from concurrent.futures import FIRST_COMPLETED
 from collections import namedtuple, OrderedDict
 from discord.abc import PrivateChannel
 
-from jshbot import configurations, plugins, commands, parser, data, utilities
+from jshbot import configurations, plugins, commands, parser, data, utilities, base
 from jshbot.exceptions import BotException, ConfiguredBotException, ErrorTypes
 from jshbot.commands import Response, MessageTypes
 
@@ -70,7 +70,7 @@ def get_new_bot(client_type, path, debug):
 
         def __init__(self, path, debug):
             self.version = '0.4.0-rewrite'
-            self.date = 'June 12th, 2017'
+            self.date = 'June 17th, 2017'
             self.time = int(time.time())
             self.readable_time = time.strftime('%c')
             self.path = path
@@ -85,23 +85,25 @@ def get_new_bot(client_type, path, debug):
 
             super().__init__()
 
+            self.configurations = {}
+            plugins.add_configuration(self, 'core', 'core', base)
             data.check_folders(self)
 
-            logging.debug("Setting up data...")
+            logging.debug("Connecting to database...")
+            self.db_templates = {}
+            self.db_connection = None
+            data.db_connect(self)
+
+            logging.debug("Loading plugins...")
             self.data = {'global_users': {}, 'global_plugins': {}}
             self.volatile_data = {'global_users': {}, 'global_plugins': {}}
             self.data_changed = []
-
-            logging.debug("Loading plugins...")
             self.plugins = {}
-            self.configurations = {}
             self.manuals = OrderedDict()
             self.commands = {}
             plugins.add_plugins(self)
 
-            # Extras
             config = self.configurations['core']
-            config['token'] = '(redacted)'
             self.edit_dictionary = {}
             self.spam_dictionary = {}
             self.spam_limit = config['command_limit']
@@ -111,11 +113,16 @@ def get_new_bot(client_type, path, debug):
             self.edit_timeout = config['edit_timeout']
             self.selfbot = config['selfbot_mode']
             self.owners = config['owners']
+            self.schedule_timer = None
             self.last_exception = None
             self.last_traceback = None
             self.last_response = None
             self.fresh_boot = None
             self.extra = None
+
+            # Extras
+            config['token'] = '(redacted)'
+            config['database_credentials'] = '(redacted)'
 
         def can_respond(self, message):
             """Determines whether or not the bot can respond.
@@ -261,8 +268,6 @@ def get_new_bot(client_type, path, debug):
                     logging.debug(message.author.name + ': ' + message.content)
                     subcommand, options, arguments = parser.parse(
                         self, command, parameters, message)
-                    # message, base, subcommand, options, arguments, keywords, cleaned_content,
-                    #   subcommand, elevation, guild, channel, author, bot
                     direct = isinstance(message.channel, PrivateChannel)
                     context = self.Context(
                         message, base, subcommand, options, arguments,
@@ -274,9 +279,6 @@ def get_new_bot(client_type, path, debug):
                     logging.debug('\t' + debug_print)
                     print(time.time(), debug_print)  # Temp
                     response = await commands.execute(self, context)
-
-                    # TODO: Revise for rewrite (Response object)
-                    # NORMAL, PERMANENT, TERMINAL, ACTIVE, REPLACE, FILE, WAIT = range(7)
                     if self.selfbot and response.content:
                         response.content = '\u200b' + response.content
             except Exception as e:  # General error
@@ -319,17 +321,22 @@ def get_new_bot(client_type, path, debug):
             # REPLACE - Deletes the issuing command after 'extra' seconds. Defaults
             #   to 0 seconds if 'extra' is not given.
             # ACTIVE - The message reference is passed back to the function defined
-            #   with 'extra'. If 'extra' is not defined, it will call
-            #   plugin.handle_active_message
-            # WAIT - Wait for event. UNFINISHED
+            #   with 'extra_function'. If 'extra_function' is not defined, it will call
+            #   plugin.handle_active_message.
+            # INTERACTIVE - Assembles reaction buttons given by extra['buttons'] and
+            #   calls 'extra_function' whenever one is pressed.
+            # WAIT - Wait for event. Calls 'extra_function' with the result, or None
+            #   if the wait timed out.
             #
             # Only the NORMAL message type can be edited.
 
             response.message = message_reference
-            if isinstance(message_reference.channel, PrivateChannel):
+            if message_reference and isinstance(message_reference.channel, PrivateChannel):
                 permissions = self.user.permissions_in(message_reference.channel)
-            else:
+            elif message_reference:
                 permissions = message_reference.guild.me.permissions_in(message_reference.channel)
+            else:
+                permissions = None
             self.last_response = message_reference
 
             if response.message_type is MessageTypes.NORMAL:
@@ -371,10 +378,7 @@ def get_new_bot(client_type, path, debug):
                 if message_reference is None:  # Forbidden exception
                     return
                 try:
-                    function = response.extra_function
-                    if not function:
-                        function = context.subcommand.command.plugin.handle_active_message
-                    await function(self, context, response, message_reference)
+                    await response.extra_function(self, context, response)
                 except Exception as e:  # General error
                     message_reference = await self.handle_error(
                         e, message, context, response, edit=message_reference)
@@ -437,35 +441,33 @@ def get_new_bot(client_type, path, debug):
                         e, message, context, response, edit=message_reference)
                     self.last_response = message_reference
 
+            elif response.message_type is MessageTypes.WAIT:
+                try:
+                    kwargs = response.extra.get('kwargs', {})
+                    if 'timeout' not in kwargs:
+                        kwargs['timeout'] = 300
+                    process_result = True
+                    while process_result is not False:
+                        try:
+                            result = await self.wait_for(response.extra['event'], **kwargs)
+                        except asyncio.TimeoutError:
+                            await response.extra_function(self, context, response, None)
+                            process_result = False
+                        else:
+                            process_result = await response.extra_function(
+                                self, context, response, result)
+                        if not response.extra.get('loop', False):
+                            process_result = False
+
+                except Exception as e:
+                    message_reference = await self.handle_error(
+                        e, message, context, response, edit=message_reference)
+                    self.last_response = message_reference
+
             else:
                 logging.warn("Unknown message type: {}".format(response.message_type))
 
-
             '''
-            elif response[2] == 5:  # Send file
-                try:
-                    if type(response[3]) is str and response[3]:
-                        filename = response[3]
-                        content = None
-                    elif (type(response[3]) is tuple and
-                            len(response[3]) == 2 and response[3][1]):
-                        filename, content = response[3]
-                    else:
-                        filename, content = None, None
-                    discord_file = discord.File(response[0], filename=filename)
-                    await message.channel.send(file=discord_file, content=content)
-                    try:
-                        response[0].close()
-                    except:  # Ignore closing exceptions
-                        pass
-                    plugins.broadcast_event(
-                        self, 'bot_on_response', response, message_reference, message)
-                except Exception as e:
-                    message_reference = await self.handle_error(
-                        e, message, parsed_input, response,
-                        edit=message_reference, command_editable=False)
-                    self.last_response = message_reference
-
             # TODO: Fix for rewrite
             elif response[2] == 6:  # Wait for response
                 assert False
@@ -581,6 +583,8 @@ def get_new_bot(client_type, path, debug):
                     elif self.owners[0] != self.user.id:
                         raise CBException(
                             "Token does not match the owner.", error_type=ErrorTypes.STARTUP)
+                # Start scheduler
+                asyncio.ensure_future(utilities._start_scheduler(self))
                 # Make sure guild data is ready
                 data.check_all(self)
                 data.load_data(self)

@@ -9,7 +9,7 @@ class ArgTypes(Enum):
     SINGLE, OPTIONAL, SPLIT, SPLIT_OPTIONAL, MERGED, MERGED_OPTIONAL = range(6)
 
 class MessageTypes(Enum):
-    NORMAL, PERMANENT, REPLACE, ACTIVE, INTERACTIVE = range(5)
+    NORMAL, PERMANENT, REPLACE, ACTIVE, INTERACTIVE, WAIT = range(6)
 
 from jshbot import parser, utilities, data
 from jshbot.exceptions import BotException, ConfiguredBotException, ErrorTypes
@@ -131,10 +131,14 @@ class SubCommand():
                 clean_parameter_lines.append(optarg.clean_doc_string)
 
         # TODO: Consider switching help_string and quick_help? Consistency issue
-        self.help_string = '**`{base}`**　{help_string}'.format(
-            base=self.command.base, help_string='　'.join(help_lines))
-        self.clean_help_string = '{base}    {help_string}'.format(
-            base=self.command.base, help_string='    '.join(clean_help_lines))
+        if help_lines:
+            self.help_string = '**`{base}`**`\u200b　\u200b`{help_string}'.format(
+                base=self.command.base, help_string='`\u200b　\u200b`'.join(help_lines))
+            self.clean_help_string = '{base}    {help_string}'.format(
+                base=self.command.base, help_string='    '.join(clean_help_lines))
+        else:
+            self.help_string = '**`{base}`**'.format(base=self.command.base)
+            self.clean_help_string = '{base}'.format(base=self.command.base)
         self.parameter_string = '\n'.join(parameter_lines)
         self.clean_parameter_string = '\n'.join(clean_parameter_lines)
         self.quick_help = self.help_string
@@ -150,12 +154,15 @@ class SubCommand():
             self.help_embed_fields.append(('Description:', self.doc))
 
     def __repr__(self):
-        return "<'{}' SubCommand>".format(self.clean_help_string)
+        if hasattr(self, 'clean_help_string'):
+            return "<'{}' SubCommand>".format(self.clean_help_string)
+        else:
+            return "<Uninitialized SubCommand {}>".format(id(self))
 
 
 class Command():
     def __init__(
-            self, base, subcommands=[SubCommand()], description='', other='',
+            self, base, subcommands=[], description='', other='',
             category='miscellaneous', shortcuts=[], function=None, hidden=False, elevated_level=0,
             allow_direct=True, strict_syntax=False, no_selfbot=False):
         """
@@ -178,7 +185,10 @@ class Command():
         no_selfbot -- Disallows the command to be used in selfbot mode.
         """
         self.base = base.lower().strip()
-        self.subcommands = subcommands
+        if not subcommands:
+            self.subcommands = [SubCommand()]
+        else:
+            self.subcommands = subcommands
         self.description = description if description else '[Description not provided]'
         self.other = other
         self.category = category.strip().title()
@@ -201,7 +211,7 @@ class Command():
         self.help_lines = []
         self.clean_help_lines = []
         self.keywords = []
-        for index, subcommand in enumerate(subcommands):
+        for index, subcommand in enumerate(self.subcommands):
             subcommand.index = index
             subcommand.command = self
             for replacement in replacements:
@@ -307,13 +317,15 @@ class Opt():
         quotes = '"' if self.quotes_recommended else ''
         wrap = '_' if self.optional else '**'
         clean_wrap = ['[', ']'] if self.optional else ['', '']
-        current = '{wrap}`{name}`'.format(wrap=wrap, name=self.name)
+        current = '{wrap}`{name}'.format(wrap=wrap, name=self.name)
         clean_current = '{wrap[0]}{name}'.format(wrap=clean_wrap, name=self.name)
         if self.attached:
-            current += '__`{quotes}{attached}{quotes}`__'.format(
+            current += ' \u200b`__`{quotes}{attached}{quotes}`__'.format(
                 quotes=quotes, attached=self.attached)
-            clean_current += ' <{quotes}{attached}{quotes}>'.format(
+            clean_current += '  <{quotes}{attached}{quotes}>'.format(
                 quotes=quotes, attached=self.attached)
+        else:
+            current += '`'
         current += '{wrap}'.format(wrap=wrap)
         clean_current += '{wrap[1]}'.format(wrap=clean_wrap)
         self.help_string = current
@@ -341,7 +353,8 @@ class Opt():
                 else:
                     convert_error = self.convert_error
                 raise BotException(
-                    'Parser', convert_error, embed_fields=self.subcommand.help_embed_fields)
+                    'Parser', convert_error.format(b=bot, m=message, v=value),
+                    embed_fields=self.subcommand.help_embed_fields)
         if self.check:
             try:
                 if isinstance(value, list):
@@ -355,7 +368,8 @@ class Opt():
                 else:
                     check_error = self.check_error
                 raise BotException(
-                    'Parser', check_error, embed_fields=self.subcommand.help_embed_fields)
+                    'Parser', check_error.format(b=bot, m=message, v=value),
+                    embed_fields=self.subcommand.help_embed_fields)
         return value
 
 
@@ -371,7 +385,7 @@ class Arg(Opt):
             convert_error=convert_error, check_error=check_error, default=default)
 
     def _build_help_string(self):
-        if self.argtype in (ArgTypes.SPLIT, ArgTypes.MERGED):
+        if self.argtype in (ArgTypes.SPLIT, ArgTypes.MERGED, ArgTypes.SINGLE):
             wrap = '**'
             clean_wrap = ['', '']
         else:
@@ -387,7 +401,7 @@ class Arg(Opt):
         clean_current = '{wrap[0]}<{quotes}{name}{quotes}>{wrap[1]}'.format(
             wrap=clean_wrap, quotes=quotes, name=self.name)
         if self.additional:
-            current += '　{wrap}__`{additional}`__{wrap}'.format(
+            current += '`\u200b　\u200b`___`{additional}`___'.format(
                 wrap=wrap, additional=self.additional)
             clean_current += '    {wrap[0]}<{additional}>{wrap[1]}'.format(
                 wrap=clean_wrap, additional=self.additional)

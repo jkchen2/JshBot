@@ -5,39 +5,6 @@ from jshbot.exceptions import ConfiguredBotException, ErrorTypes
 CBException = ConfiguredBotException('Configurations')
 
 
-'''
-def add_configurations(bot):
-    configurations_list = {}
-    directory = bot.path + '/config/'
-    try:  # Load core config file
-        with open(bot.path + '/config/config.json', 'r') as config_file:
-            configurations_list['core'] = json.load(config_file)
-    except Exception as e:
-        raise CBException(
-            "Could not open the core configuration file", e=e, error_type=ErrorTypes.STARTUP)
-
-    for plugin in bot.plugins:  # Load all other config files
-        if plugin == 'base':
-            continue
-        try:
-            with open(directory + plugin + '.json', 'r') as config_file:
-                configurations_list[plugin] = json.load(config_file)
-        except FileNotFoundError:
-            module = bot.plugins[plugin]
-            if getattr(module, 'uses_configuration', False):
-                raise CBException(
-                    "Plugin {} requires a configuration file, "
-                    "but it was not found.".format(plugin), error_type=ErrorTypes.STARTUP)
-        except Exception as e:
-            raise CBException(
-                "Could not open the {} configuration file.".format(plugin),
-                e=e, error_type=ErrorTypes.STARTUP)
-
-    bot.configurations = configurations_list
-    return configurations_list
-'''
-
-
 def get(bot, plugin_name, key=None, extra=None, extension='json'):
     """Gets the configuration file for the given plugin.
 

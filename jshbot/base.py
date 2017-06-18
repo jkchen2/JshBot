@@ -22,6 +22,7 @@ CBException = ConfiguredBotException('Base')
 global_dictionary = {}
 
 
+@plugins.command_spawner
 def get_commands():
     """Sets up new commands and shortcuts in the proper syntax.
 
@@ -101,7 +102,7 @@ def get_commands():
                 Opt('cooldown'),
                 Arg('number of commands', argtype=ArgTypes.MERGED_OPTIONAL,
                     convert=int, check=lambda b, m, v, *a: 0 < v <= b.spam_limit,
-                    check_error='Must be between 1 and {bot.spam_limit} inclusive.'),
+                    check_error='Must be between 1 and {b.spam_limit} inclusive.'),
                 doc='Limits the number of commands per default time interval to the '
                     'value specified. Bot moderators are not subject to this limit. If '
                     'no value is given, the default cooldown is used (maximum value).')],
@@ -201,6 +202,28 @@ def get_commands():
         category='core', function=help_wrapper))
 
     return new_commands
+
+
+@plugins.db_template_spawner
+def get_templates():
+    """Gets the timer database template."""
+    return {
+        'schedule': ("time          bigint NOT NULL,"
+                     "plugin        text NOT NULL,"
+                     "function      text NOT NULL,"
+                     "payload       text,"
+                     "search        text,"
+                     "destination   text")
+    }
+
+#async def schedule(bot, plugin_name, function, payload, time, search=None):
+
+@plugins.on_load
+def setup_schedule_table(bot):
+    if not data.db_exists(bot, 'schedule'):  # Create schedule table
+        data.db_create_table(bot, 'schedule', template='schedule')
+    if not data.db_exists(bot, 'IX_schedule_time'):  # Create time index
+        data.db_execute(bot, 'CREATE INDEX IX_schedule_time ON schedule (time ASC)')
 
 
 async def base_wrapper(bot, context):
@@ -556,10 +579,10 @@ async def botowner_wrapper(bot, context):
     response, tts, message_type, extra = ('', False, 0, None)
 
     if subcommand.index == 0:  # Halt
-        await bot.send_message(message.channel, "Going down...")
+        await message.chanel.send("Going down...")
         bot.shutdown()
     elif subcommand.index == 1:  # Restart
-        await bot.send_message(message.channel, "Restarting...")
+        await message.chanel.send("Restarting...")
         bot.restart()
     elif subcommand.index == 2:  # Reload
         response = "Reloading..."
@@ -661,7 +684,7 @@ async def debug_wrapper(bot, context):
         # Check if the previous result should be sent as a file
         if arguments in ('saf', 'file'):
             await utilities.send_text_as_file(
-                message.channel, str(global_dictionary['result']), 'result')
+                message.channel, str(global_dictionary['_']), 'result')
         else:
             used_exec = False
 
@@ -706,9 +729,10 @@ async def debug_wrapper(bot, context):
 
 async def help_menu(bot, context, response, result, timed_out):
     if timed_out:
+        invoker = utilities.get_invoker(bot, guild=context.guild)
         response.embed.add_field(
             name=":information_source: The menu timed out",
-            value="Type the help command to start again.", inline=False)
+            value="Type `{}help` to start again.".format(invoker), inline=False)
         await response.message.edit(embed=response.embed)
         return
     elif not result:
@@ -721,12 +745,14 @@ async def help_menu(bot, context, response, result, timed_out):
         else:
             previous_entry = [None]*3 + [0]
         response.current_state = previous_entry
-        embed_details = plugins.get_help(bot, *previous_entry)
+        embed_details = plugins.get_help(
+            bot, *previous_entry, guild=context.guild, elevation=context.elevation)
 
     elif selection in (1, 2):  # Page navigation
         new_page = response.current_state[3] + (1 if selection == 2 else -1)
         test_state = response.current_state[:3] + [new_page]
-        embed_details = plugins.get_help(bot, *test_state)
+        embed_details = plugins.get_help(
+            bot, *test_state, guild=context.guild, elevation=context.elevation)
 
     else:  # Entry selection
         if response.current_state[2] is not None:  # Subcommand index given
@@ -740,7 +766,8 @@ async def help_menu(bot, context, response, result, timed_out):
         page_compensation = response.current_state[3] * 5
         test_state = response.current_state[:3] + [0]
         test_state[selection_type_index] = page_compensation + selection - 3
-        embed_details = plugins.get_help(bot, *test_state)
+        embed_details = plugins.get_help(
+            bot, *test_state, guild=context.guild, elevation=context.elevation)
         if embed_details:  # Successful selection
             response.backtrack.append(response.current_state)
             response.current_state = test_state
@@ -758,7 +785,14 @@ async def help_menu(bot, context, response, result, timed_out):
 
 
 async def manual_menu(bot, context, response, result, timed_out):
-    if not result or timed_out:
+    if timed_out:
+        invoker = utilities.get_invoker(bot, guild=context.guild)
+        response.embed.add_field(
+            name=":information_source: The menu timed out",
+            value="Type `{}manual` to start again.".format(invoker), inline=False)
+        await response.message.edit(embed=response.embed)
+        return
+    elif not result:
         return
     selection = ['↩', '⬅', '➡', '1⃣', '2⃣', '3⃣', '4⃣', '5⃣'].index(result[0].emoji)
 
@@ -809,7 +843,7 @@ async def help_wrapper(bot, context):
     response = Response()
     # response, tts, message_type, extra = ('', False, 0, None)
     is_owner = data.is_owner(bot, message.author.id)
-    guild = context.guild if 'here' in options else None
+    help_here = 'here' in options
 
     if subcommand.index == 0:  # Manual
         if arguments[0]:  # Load from given state
@@ -857,7 +891,10 @@ async def help_wrapper(bot, context):
             help_list.append("\r\n# {} #".format(command.base))
             help_list.append(
                 "\t" + command.clean_help_string.replace('\n', '\r\n\t'))
-        response.content = '\r\n'.join(help_list)
+        help_text = '\r\n'.join(help_list)
+        help_file = discord.File(utilities.get_text_as_file(help_text), filename='help.txt')
+        response.content = "Here is all of the help as a file:"
+        response.file = help_file
 
     elif subcommand.index == 2:  # Help
         response.embed = discord.Embed(
@@ -878,10 +915,12 @@ async def help_wrapper(bot, context):
                     bot, text, message, safe=False, substitue_shortcuts=False)
             for name, value in guess.help_embed_fields:
                 response.embed.add_field(name=name, value=value, inline=False)
+            help_here = True
         else:  # Help menu
             state = [None]*3 + [0]
             invoker = utilities.get_invoker(bot, guild=context.guild)
-            embed_fields, page, total_pages = plugins.get_help(bot, *state, guild=message.guild)
+            embed_fields, page, total_pages = plugins.get_help(
+                bot, *state, guild=message.guild, elevation=context.elevation)
             for name, value in embed_fields:
                 response.embed.add_field(name=name, value=value, inline=False)
             response.embed.add_field(
@@ -896,8 +935,11 @@ async def help_wrapper(bot, context):
             response.extra = {'buttons': ['↩', '⬅', '➡', '1⃣', '2⃣', '3⃣', '4⃣', '5⃣']}
 
     # TODO: Fix with response.destination later
-    if not context.direct and guild is None and not bot.selfbot:
-        await message.add_reaction('📨')  # Envelope reaction
+    if not (context.direct or help_here or bot.selfbot):
+        try:
+            await message.add_reaction('📨')  # Envelope reaction
+        except:
+            pass
         response.destination = context.author
 
     return response
