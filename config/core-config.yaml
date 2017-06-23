@@ -1,0 +1,49 @@
+# NOTE: An easy way of obtaining IDs is to enable developer mode in Discord.
+#   Once enabled, you can right click on things (servers, channels, members)
+#   and copy the ID directly to the clipboard.
+
+# If enabled, the owners list must consist of just yourself
+selfbot_mode: off
+
+# All members listed here will be given full access to the bot
+owners:
+    - 000
+
+# For standard bots, obtain the token from the application site
+token: ""
+
+# Used for uploading crash logs (if debug is enabled) and backups
+debug_channel: 000
+
+# Used for user uploads (like W|A queries and playlist files)
+upload_channel: 000
+
+# (minutes) How frequently in-memory data should be written to disk
+save_interval: 1800
+
+# (hours) How frequently backups are made and uploaded to the debug channel
+backup_interval: 6
+
+# (megabytes) How large the audio cache folder can be
+cache_size_limit: 1000
+
+# How many commands a user can issue within the timeout period
+command_limit: 20
+
+# (seconds)
+command_limit_timeout: 60
+
+# (seconds) How long users have to edit a standard message
+edit_timeout: 120
+
+command_invokers:
+    - "!"
+    - "."
+
+# List of command bases that should be disabled for non-botowners
+locked_commands: []
+
+# Connection parameters to connect to the PostgreSQL database
+# NOTE: If using the Dockerized version that bundles a PostgreSQL container,
+#   leave this field empty
+database_credentials: ""
