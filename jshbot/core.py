@@ -710,7 +710,7 @@ def start(start_file=None, debug=False):
         path = os.path.split(os.path.realpath(start_file))[0]
         logging.debug("Setting directory to " + path)
     else:  # Use Docker setup
-        path = '/external/files'
+        path = '/external'
         logging.warn("Using Docker setup path, " + path)
 
     try:
