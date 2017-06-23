@@ -141,17 +141,20 @@ class SubCommand():
             self.clean_help_string = '{base}'.format(base=self.command.base)
         self.parameter_string = '\n'.join(parameter_lines)
         self.clean_parameter_string = '\n'.join(clean_parameter_lines)
-        self.quick_help = self.help_string
-        self.clean_quick_help = self.clean_help_string
+
+        self.quick_help = ''
+        self.clean_quick_help = ''
+        if self.doc:
+            self.quick_help += self.doc + '\n\n'
+            self.clean_quick_help += self.doc + '\n\n'
+            self.help_embed_fields.append(('Description:', self.doc))
+        self.quick_help += self.help_string
+        self.clean_quick_help += self.clean_help_string
         self.help_embed_fields.append(('Usage:', self.help_string))
         if self.parameter_string:
             self.quick_help += '\n' + self.parameter_string
             self.clean_quick_help += '\n' + self.clean_parameter_string
             self.help_embed_fields.append(('Parameter details:', self.parameter_string))
-        if self.doc:
-            self.quick_help += '\n\n' + self.doc
-            self.clean_quick_help += '\n\n' + self.doc
-            self.help_embed_fields.append(('Description:', self.doc))
 
     def __repr__(self):
         if hasattr(self, 'clean_help_string'):
@@ -270,7 +273,8 @@ class Command():
 class Opt():
     def __init__(
             self, name, optional=False, attached=None, doc=None, quotes_recommended=True,
-            convert=None, check=None, convert_error=None, check_error=None, default=''):
+            convert=None, check=None, convert_error=None, check_error=None, default='',
+            always_include=False):
         """
         Keyword arguments:
         optional -- Whether or not this option is optional.
@@ -280,6 +284,8 @@ class Opt():
         check -- Function to check the (converted) value. Passed in: context, value
         convert_error -- Error message upon conversion failure.
         check_error -- Error message upon check failure.
+        always_include -- Always add to options dictionary, even if not given.
+        default -- Default value to use if always_include is used.
         """
         self.name = name.strip()
         self.optional = optional
@@ -288,6 +294,7 @@ class Opt():
         self.doc = doc
         self.quotes_recommended = quotes_recommended
         self.default = default
+        self.always_include = always_include
         self.subcommand = None  # Set by Subcommand in init
 
         # Invalid value type for {name}:
@@ -319,13 +326,18 @@ class Opt():
         clean_wrap = ['[', ']'] if self.optional else ['', '']
         current = '{wrap}`{name}'.format(wrap=wrap, name=self.name)
         clean_current = '{wrap[0]}{name}'.format(wrap=clean_wrap, name=self.name)
+        self.name_string = current + '`{}'.format(wrap)
         if self.attached:
-            current += ' \u200b`__`{quotes}{attached}{quotes}`__'.format(
+            attached_current = '__`{quotes}{attached}{quotes}`__'.format(
                 quotes=quotes, attached=self.attached)
+            current += '\u2009\u200b`{}'.format(attached_current)
             clean_current += '  <{quotes}{attached}{quotes}>'.format(
                 quotes=quotes, attached=self.attached)
+            self.attached_string = '{wrap}{current}{wrap}'.format(
+                wrap=wrap, current=attached_current)
         else:
             current += '`'
+            self.attached_string = ''
         current += '{wrap}'.format(wrap=wrap)
         clean_current += '{wrap[1]}'.format(wrap=clean_wrap)
         self.help_string = current
@@ -401,7 +413,7 @@ class Arg(Opt):
         clean_current = '{wrap[0]}<{quotes}{name}{quotes}>{wrap[1]}'.format(
             wrap=clean_wrap, quotes=quotes, name=self.name)
         if self.additional:
-            current += '`\u200b　\u200b`___`{additional}`___'.format(
+            current += '`\u200b　\u200b`___`{additional} ...`___'.format(
                 wrap=wrap, additional=self.additional)
             clean_current += '    {wrap[0]}<{additional}>{wrap[1]}'.format(
                 wrap=clean_wrap, additional=self.additional)
