@@ -167,7 +167,7 @@ def add_commands(bot, new_commands, plugin):
 def add_configuration(bot, clean_name, plugin_name, plugin):
     directory = '{}/config/'.format(bot.path)
     try:
-        with open(directory + clean_name + '-config.yaml', 'r') as config_file:
+        with open(directory + clean_name + '-config.yaml', 'rb') as config_file:
             bot.configurations[plugin_name] = yaml.load(config_file)
     except FileNotFoundError:
         if getattr(plugin, 'uses_configuration', False):
@@ -184,7 +184,7 @@ def add_manual(bot, clean_name, plugin_name):
     """Reads all manuals in the config folder and adds them to the bot."""
     directory = bot.path + '/config/'
     try:
-        with open(directory + clean_name + '-manual.yaml', 'r') as manual_file:
+        with open(directory + clean_name + '-manual.yaml', 'rb') as manual_file:
             raw_manual = yaml.load(manual_file)
     except FileNotFoundError:
         logging.debug("No manual found for {}.".format(plugin_name))

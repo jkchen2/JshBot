@@ -715,7 +715,7 @@ def start(start_file=None, debug=False):
 
     try:
         config_file_location = path + '/config/core-config.yaml'
-        with open(config_file_location, 'r') as config_file:
+        with open(config_file_location, 'rb') as config_file:
             config = yaml.load(config_file)
             selfbot_mode, token = config['selfbot_mode'], config['token']
     except Exception as e:
