@@ -70,8 +70,6 @@ def match_subcommand(bot, command, parameters, message, match_closest=False):
     stripped_parameters = parameters[::2]
     for subcommand in command.subcommands:
 
-        print("\n===In subcommand:", subcommand.index)
-        print("Subcommand args:", subcommand.args)
         current_index = 0
         matches = 0
         options = {}
@@ -80,87 +78,66 @@ def match_subcommand(bot, command, parameters, message, match_closest=False):
         arg_index = -1
         used_opts = []
         exhausted_opts = False
-        not_found = False
         not_found_error = None
 
         while current_index < len(stripped_parameters):
             current = stripped_parameters[current_index]
-            print("On index:", current_index)
-            print("Checking:", current)
-
-            if current_index * 2 in quoted_indices:  # Quoted elements are always arguments
-                print("Quoted element found. Skipping to args.")
-                exhausted_opts = True
 
             if not exhausted_opts:  # Check opts
-                print("Checking opts.")
-                found_opt = subcommand.opts.get(current.lower(), None)
-                if found_opt:
+                if current_index * 2 in quoted_indices:  # Quoted elements are always arguments
+                    exhausted_opts = True
 
-                    if not exhausted_opts and subcommand.strict_syntax:  # Check strict syntax
+                found_opt = subcommand.opts.get(current.lower(), None)
+                if not exhausted_opts and found_opt:
+
+                    if subcommand.strict_syntax:  # Check strict syntax
                         if found_opt.index < last_opt_index:  # Syntax out of order
-                            print("Syntax out of order detected. Exhausted opts.")
                             exhausted_opts = True
                         else:
                             last_opt_index = found_opt.index
 
                     if not exhausted_opts:
                         if found_opt.name in options:  # Duplicate. Skip to args
-                            print("Duplicate opt found. Skipping to args.")
                             exhausted_opts = True
                         else:  # Check for attached argument
                             if found_opt.attached:  # Required attached argument
                                 if current_index + 1 >= len(stripped_parameters):
-                                    print("Required attachment not found. not_found set to True.")
                                     not_found_error = (
-                                        'Option \'{opt.name}\' requires an attached '
-                                        'parameter, \'{opt.attached}\'.'.format(opt=found_opt))
-                                    not_found = True
+                                        'Option {opt.name_string} requires an attached parameter, '
+                                        '{opt.attached_string}.'.format(opt=found_opt))
                                     matches += 3
                                 else:
-                                    print("Opt with attached parameter found:", found_opt.name)
                                     current_index += 1
                                     options[found_opt.name] = stripped_parameters[current_index]
                                     matches += 6
                             else:  # No attached argument
-                                print("Opt found:", found_opt.name)
                                 options[found_opt.name] = None
                                 matches += 5
                             used_opts.append(found_opt)
 
                 else:  # Option not found. Skip to args
-                    print("Opt not found. Opts exhausted.")
                     exhausted_opts = True
 
                 if exhausted_opts:  # No more matching opts - check for optional opts
-                    print("Opts exhausted.")
                     current_index -= 1  # Search args where we left off
                     remaining_opts = [o for o in subcommand.opts.values() if o not in used_opts]
                     for opt in remaining_opts:
                         if opt.optional:
                             matches += 1
                         else:  # Not optional. Unfit subcommand
-                            print("A mandatory option remains. not_found set to True.", opt.name)
-                            not_found_error = (
-                                'Option \'{}\' is required and must be included'.format(opt.name))
-                            not_found = True
+                            not_found_error = 'Option {} is required.'.format(opt.name_string)
                             break
 
             else:  # Check args
                 arg_index += 1
-                print("Checking args. arg_index:", arg_index)
                 if arg_index >= len(subcommand.args):  # Too many arguments
-                    print("Detecting that there are too many arguments. not_found = True")
                     not_found_error = 'Too many arguments.'
-                    not_found = True
                 else:
                     matches += 1
                     arg = subcommand.args[arg_index]
                     if arg.argtype in (ArgTypes.SINGLE, ArgTypes.OPTIONAL):
-                        print("Matched SINGLE/OPTIONAL arg.")
                         arguments.append(current)
                     else:  # Instant finish grouped arguments
-                        print("Matched GROUPED arg.")
                         if arg.argtype in (ArgTypes.SPLIT, ArgTypes.SPLIT_OPTIONAL):
                             arguments += stripped_parameters[current_index:]
                         else:  # Merged
@@ -168,29 +145,22 @@ def match_subcommand(bot, command, parameters, message, match_closest=False):
                         break
 
             if not_found_error:  # Skip rest of loop and evaluate matches
-                print("Not found: Breaking out of the loop early.")
                 break
 
             current_index += 1
 
         # Finished opt/arg while loop
-        print("Finished opt/arg while loop.")
         if not not_found_error and not exhausted_opts:  # Opts remain
-            print("Checking for remaining mandatory opts.")
             remaining_opts = [o for o in subcommand.opts.values() if o not in used_opts]
-            # for opt in subcommand.opts.values():
             for opt in remaining_opts:
                 if opt.optional:
                     matches += 1
+                    if opt.always_include:
+                        options[opt.name] = opt.default
                 else:  # Not optional. Unfit subcommand
-                    print("A mandatory option was required, but not supplied. not_found = True")
-                    not_found_error = (
-                        'Option \'{}\' is required and must be included.'.format(opt.name))
+                    not_found_error = 'Option {} is required.'.format(opt.name_string)
                     break
-        print("arg_index value:", arg_index)
-        print("subcommand args length:", len(subcommand.args))
         if not not_found_error and arg_index < len(subcommand.args) - 1:  # Optional arguments
-            print("Checking for optional arguments.")
             arg = subcommand.args[arg_index + 1]
             if arg.argtype is ArgTypes.OPTIONAL:
                 matches += 1
@@ -206,13 +176,11 @@ def match_subcommand(bot, command, parameters, message, match_closest=False):
                 matches += 1
                 arguments.append(arg.default)
             elif arg:
-                print("A mandatory argument was required, but not supplied. not_found = True")
-                not_found_error = 'No value given for argment \'{}\'.'.format(arg.name)
+                not_found_error = 'No value given for argument {}.'.format(arg.help_string)
 
         if not not_found_error and subcommand.attaches:  # Check for message attachment
             if not message.attachments and not subcommand.attaches.optional:
-                print("Not found triggered. C")
-                not_found_error = 'Missing attachment \'{name}\''.format(
+                not_found_error = 'Missing attachment **__`{name}`__**'.format(
                     name=subcommand.attaches.name)
             elif message.attachments:  # No attachment argument, but attachment was provided
                 not_found_error = 'No attachment required, but one was given.'
@@ -228,7 +196,6 @@ def match_subcommand(bot, command, parameters, message, match_closest=False):
             else:
 
                 for option_name, value in options.items():  # Check options
-                    print("Converting and checking 1")
                     new_value = subcommand.opts[option_name].convert_and_check(bot, message, value)
                     if new_value is not None:
                         options[option_name] = new_value
@@ -236,16 +203,13 @@ def match_subcommand(bot, command, parameters, message, match_closest=False):
                     arg, value = pair
                     if value:
                         if arg.argtype not in (ArgTypes.SINGLE, ArgTypes.OPTIONAL):
-                            print("Converting and checking 2")
                             new_values = arg.convert_and_check(bot, message, arguments[index:])
                             arguments = arguments[:index] + new_values
                             break
                         else:
-                            print("Converting and checking 3")
                             new_value = arg.convert_and_check(bot, message, value)
                             arguments[index] = new_value
 
-                print("Returning found subcommand:", subcommand)
                 return subcommand, options, arguments
 
     # Looped through all subcommands. Not found
@@ -253,9 +217,7 @@ def match_subcommand(bot, command, parameters, message, match_closest=False):
         guess = command
     else:
         guess = command.subcommands[closest_index]
-    print("No subcommand found. Best guess:", guess)
     if match_closest:
-        print("Returnning closest subcommand:", subcommand)
         return guess
     else:
         if isinstance(guess, commands.SubCommand):
@@ -325,9 +287,7 @@ def parse(bot, command, parameters, message):
         command = command.command  # command is actually a Shortcut. Not confusing at all
         print("Shortcut filled to:", parameters)
 
-    print("Attempting to match for a subcommand")
     subcommand, options, arguments = match_subcommand(bot, command, parameters, message)
-    print("Parser finished.")
 
     return (subcommand, options, arguments)
     #  return (command, subcommand.index, options, arguments, command.keywords)
