@@ -1,7 +1,7 @@
 import asyncio
 import logging
 import copy
-import json
+import yaml
 import importlib.util
 import os.path
 import sys
@@ -46,26 +46,27 @@ def load_plugin(bot, plugin_name):
 
     if plugin_name in bot.plugins:
         logging.debug("Reloading plugin {}...".format(plugin_name))
-        module = bot.plugins[plugin_name]
-        importlib.reload(module)
+        module = bot.plugins.pop(plugin_name)
+        # importlib.reload(module)
         to_remove = []
         for base, command in bot.commands.items():
             if command.plugin is module:
                 to_remove.append(base)
         for base in to_remove:
             del bot.commands[base]
-
+        del module
     else:
         logging.debug("Loading plugin {}...".format(plugin_name))
-        try:
-            spec = importlib.util.spec_from_file_location(
-                plugin_name, '{}/{}'.format(directory, plugin_name))
-            module = importlib.util.module_from_spec(spec)
-            spec.loader.exec_module(module)
-        except Exception as e:
-            raise CBException("Failed to import external plugin.", plugin_name, e=e)
-        else:
-            bot.plugins[plugin_name] = module
+
+    try:
+        spec = importlib.util.spec_from_file_location(
+            plugin_name, '{}/{}'.format(directory, plugin_name))
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)
+    except Exception as e:
+        raise CBException("Failed to import external plugin.", plugin_name, e=e)
+    else:
+        bot.plugins[plugin_name] = module
 
     if plugin_name.lower().endswith('.py'):
         clean_name = plugin_name[:-3]
@@ -166,8 +167,8 @@ def add_commands(bot, new_commands, plugin):
 def add_configuration(bot, clean_name, plugin_name, plugin):
     directory = '{}/config/'.format(bot.path)
     try:
-        with open(directory + clean_name + '-config.json', 'r') as config_file:
-            bot.configurations[plugin_name] = json.load(config_file)
+        with open(directory + clean_name + '-config.yaml', 'r') as config_file:
+            bot.configurations[plugin_name] = yaml.load(config_file)
     except FileNotFoundError:
         if getattr(plugin, 'uses_configuration', False):
             raise CBException(
@@ -183,12 +184,12 @@ def add_manual(bot, clean_name, plugin_name):
     """Reads all manuals in the config folder and adds them to the bot."""
     directory = bot.path + '/config/'
     try:
-        with open(directory + clean_name + '-manual.json', 'r') as manual_file:
-            raw_manual = json.load(manual_file)
+        with open(directory + clean_name + '-manual.yaml', 'r') as manual_file:
+            raw_manual = yaml.load(manual_file)
     except FileNotFoundError:
         logging.debug("No manual found for {}.".format(plugin_name))
         return
-    except json.JSONDecodeError as e:
+    except yaml.YAMLError as e:  # TODO: Change
         raise CBException("Failed to parse the manual for {}.".format(plugin_name), e=e)
     try:
         for subject, topics in raw_manual.items():

@@ -4,7 +4,7 @@ import logging
 import os.path
 import random
 import shutil
-import json
+import yaml
 import time
 import sys
 import os
@@ -70,7 +70,7 @@ def get_new_bot(client_type, path, debug):
 
         def __init__(self, path, debug):
             self.version = '0.4.0-rewrite'
-            self.date = 'June 17th, 2017'
+            self.date = 'June 23rd, 2017'
             self.time = int(time.time())
             self.readable_time = time.strftime('%c')
             self.path = path
@@ -98,7 +98,7 @@ def get_new_bot(client_type, path, debug):
             self.data = {'global_users': {}, 'global_plugins': {}}
             self.volatile_data = {'global_users': {}, 'global_plugins': {}}
             self.data_changed = []
-            self.plugins = {}
+            self.plugins = OrderedDict()
             self.manuals = OrderedDict()
             self.commands = {}
             plugins.add_plugins(self)
@@ -427,15 +427,15 @@ def get_new_bot(client_type, path, debug):
                                         (result[1] == message.author or is_mod))):
                                 continue
                         except (asyncio.futures.TimeoutError, asyncio.TimeoutError):
-                            try:
-                                await message_reference.clear_reactions()
-                            except:
-                                pass
                             await response.extra_function(self, context, response, None, True)
                             process_result = False
                         else:
                             process_result = await response.extra_function(
                                 self, context, response, result, False)
+                    try:
+                        await response.message.clear_reactions()
+                    except:
+                        pass
                 except Exception as e:
                     message_reference = await self.handle_error(
                         e, message, context, response, edit=message_reference)
@@ -483,12 +483,11 @@ def get_new_bot(client_type, path, debug):
             '''
 
         async def handle_error(
-                self, error, message, context, response,
-                edit=None, command_editable=False):
+                self, error, message, context, response, edit=None, command_editable=False):
             """Common error handler for sending responses."""
             send_function = edit.edit if edit else message.channel.send
-            # location = edit if edit else message.channel
             self.last_exception = error
+            await asyncio.sleep(1)
             if response.message:
                 try:
                     await response.message.clear_reactions()
@@ -498,8 +497,6 @@ def get_new_bot(client_type, path, debug):
             if isinstance(error, BotException):
                 self.last_traceback = error.traceback
                 plugins.broadcast_event(self, 'bot_on_error', error, message)
-                # TODO: Test message read but no send permissions
-                # TODO: Potentially add exception checking
                 if error.use_embed:
                     content, embed = '', error.embed
                 else:
@@ -673,7 +670,6 @@ def get_new_bot(client_type, path, debug):
                 logging.warn("Backup interval not configured.")
                 return
             channel_id = self.configurations['core']['debug_channel']
-            await asyncio.sleep(60)  # Wait for shards to connect
             debug_channel = self.get_channel(channel_id)
             if not debug_channel:
                 logging.warn("Debug channel not configured.")
@@ -718,9 +714,9 @@ def initialize(start_file=None, debug=False):
         logging.warn("Using default path, " + path)
 
     try:
-        config_file_location = path + '/config/core-config.json'
+        config_file_location = path + '/config/core-config.yaml'
         with open(config_file_location, 'r') as config_file:
-            config = json.load(config_file)
+            config = yaml.load(config_file)
             selfbot_mode, token = config['selfbot_mode'], config['token']
     except Exception as e:
         logging.error("Could not determine token /or selfbot mode.")
