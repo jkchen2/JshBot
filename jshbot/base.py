@@ -2,12 +2,18 @@ import asyncio
 import discord
 import random
 import socket
+import datetime
 import time
 import logging
 import inspect
 import traceback
+import yaml
+import shutil
+import pip
+import os
 import re
 
+from distutils.dir_util import copy_tree
 from discord.abc import PrivateChannel
 
 from jshbot import parser, data, utilities, commands, plugins, configurations
@@ -16,10 +22,13 @@ from jshbot.commands import (
     Command, SubCommand, Shortcut, ArgTypes, Arg, Opt, Attachment,
     MessageTypes, Response)
 
-__version__ = '0.2.0'
+__version__ = '0.2.1'
 uses_configuration = False
 CBException = ConfiguredBotException('Base')
 global_dictionary = {}
+
+# Debugging
+DEV_BOT_ID = 171672297017573376
 
 
 @plugins.command_spawner
@@ -48,6 +57,11 @@ def get_commands():
                 Opt('details', optional=True,
                     doc='Shows a breakdown of what each permission is used for'),
                 doc='Generates an invite for the bot.'),
+            SubCommand(
+                Opt('notifications'),
+                doc='If this command is used in a server, this will list the pending '
+                    'notifications for the channel you are in. If it is used in a '
+                    'direct message, this will list the pending notifications for you.'),
             SubCommand(
                 Opt('join'), doc='Have the bot join the voice channel you are in.',
                 allow_direct=False),
@@ -105,7 +119,14 @@ def get_commands():
                     check_error='Must be between 1 and {b.spam_limit} inclusive.'),
                 doc='Limits the number of commands per default time interval to the '
                     'value specified. Bot moderators are not subject to this limit. If '
-                    'no value is given, the default cooldown is used (maximum value).')],
+                    'no value is given, the default cooldown is used (maximum value).'),
+            SubCommand(
+                Opt('timezone'),
+                Arg('offset', quotes_recommended=False, argtype=ArgTypes.OPTIONAL,
+                    convert=int, check=lambda b, m, v, *a: -12 <= v <= 12,
+                    check_error='Must be between -12 and +12',
+                    doc='A UTC hours offset (-12 to +12).'),
+                doc='Sets or clears the bot\'s timezone interpretation for the server.')],
         shortcuts=[Shortcut('clear', 'clear')],
         description='Commands for bot moderators.', elevated_level=1,
         no_selfbot=True, category='core', function=mod_wrapper))
@@ -149,8 +170,12 @@ def get_commands():
             SubCommand(Opt('togglefeedback'), doc='Toggles the feedback command.'),
             SubCommand(
                 Opt('announcement'), Arg('text', argtype=ArgTypes.MERGED_OPTIONAL),
-                doc='Sets or clears the announcement text.')],
-        shortcuts=[Shortcut('reload', 'reload')],
+                doc='Sets or clears the announcement text.'),
+            SubCommand(Opt('update'), doc='Opens the bot update menu.')],
+        shortcuts=[
+            Shortcut(
+                'reload', 'reload {arguments}',
+                Arg('arguments', argtype=ArgTypes.MERGED_OPTIONAL))],
         description='Commands for the bot owner(s).',
         elevated_level=3, category='core', function=botowner_wrapper))
 
@@ -187,7 +212,7 @@ def get_commands():
                 doc='Shows all of the commands and related help.'),
             SubCommand(
                 Opt('here', optional=True),
-                Arg('base', argtype=ArgTypes.OPTIONAL),
+                Arg('base', argtype=ArgTypes.OPTIONAL, quotes_recommended=False),
                 Arg('topic', argtype=ArgTypes.MERGED_OPTIONAL,
                     doc='Either the subcommand index, or standard subcommand syntax.'),
                 doc='Gets the specified help entry. If no base is specified, this '
@@ -213,10 +238,9 @@ def get_templates():
                      "function      text NOT NULL,"
                      "payload       text,"
                      "search        text,"
-                     "destination   text")
+                     "destination   text,"
+                     "info          text")
     }
-
-#async def schedule(bot, plugin_name, function, payload, time, search=None):
 
 @plugins.on_load
 def setup_schedule_table(bot):
@@ -228,12 +252,13 @@ def setup_schedule_table(bot):
 
 async def base_wrapper(bot, context):
     message, _, subcommand, options = context[:4]
+    response = Response()
 
     if subcommand.index == 0:  # version
-        response = '`{}`\n{}'.format(bot.version, bot.date)
+        response.content = '`{}`\n{}'.format(bot.version, bot.date)
 
     elif subcommand.index == 1:  # source
-        response = random.choice([
+        response.content = random.choice([
             "It's shit. I'm sorry.",
             "You want to see what the Matrix is like?",
             "Script kiddie level stuff in here.",
@@ -247,27 +272,21 @@ async def base_wrapper(bot, context):
             "Take it easy on me, okay?",
             "You're going to groan. A lot.",
             "You might be better off *not* looking inside."])
-        response += ("\nhttps://github.com/jkchen2/JshBot\n"
+        response.content += ("\nhttps://github.com/jkchen2/JshBot\n"
                      "https://github.com/jkchen2/JshBot-plugins")
 
     elif subcommand.index == 2:  # uptime
-        uptime_total_seconds = int(time.time()) - bot.time
-        uptime_struct = time.gmtime(uptime_total_seconds)
-        days = int(uptime_total_seconds / 86400)
-        hours = uptime_struct.tm_hour
-        minutes = uptime_struct.tm_min
-        seconds = uptime_struct.tm_sec
-        response = (
-            "The bot has been on since **{0}**\n{1} days, {2} hours, "
-            "{3} minutes, and {4} seconds").format(
-                bot.readable_time, days, hours, minutes, seconds)
+        uptime = int(time.time()) - bot.time
+        response.content = "The bot has been on since **{}**\n{}".format(
+            bot.readable_time, utilities.get_time_string(uptime, text=True, full=True))
 
+    # TODO: Revise
     elif subcommand.index == 3:  # Announcement
         announcement = data.get(bot, 'base', 'announcement')
         if not announcement:
-            response = "No announcement right now!"
+            response.content = "No announcement right now!"
         else:
-            response = announcement
+            response.content = announcement
 
     elif subcommand.index == 4:  # Invite
         if bot.selfbot:
@@ -291,29 +310,55 @@ async def base_wrapper(bot, context):
             '&scope=bot&permissions={1}\n**Remember: you must have the '
             '"Administrator" role on the server you are trying to add the '
             'bot to.**'.format(app_id, permissions_number))
-        response = '\n'.join(response_list)
+        response.content = '\n'.join(response_list)
 
-    elif subcommand.index in (5, 6):  # Join/leave voice channel
+    elif subcommand.index == 5:  # Notifications
+        if context.direct:  # List user notifications
+            destination = 'u' + str(context.author.id)
+            specifier = 'you'
+            guild_id = None
+        else:  # List channel notifications:
+            destination = 'c' + str(context.channel.id)
+            specifier = 'this channel'
+            guild_id = context.guild.id
+        notifications = utilities.get_schedule_entries(
+            bot, None, custom_match='destination=%s', custom_args=[destination])
+        if notifications:
+            results = ['Here is a list of pending notifications for {}:\n'.format(specifier)]
+            for entry in notifications:
+                time_seconds, plugin, info = entry[0], entry[1], entry[6]
+                delta = utilities.get_time_string(time_seconds - time.time(), text=True)
+                offset, scheduled = utilities.get_timezone_offset(
+                    bot, guild_id=guild_id, as_string=True,
+                    utc_dt=datetime.datetime.utcfromtimestamp(time_seconds))
+                results.append('{} [{}] ({}) from plugin `{}`: {}'.format(
+                    scheduled, offset, delta, plugin,
+                    info if info else '(No description available)'))
+            response.content = '\n'.join(results)
+        else:
+            response.content = "No pending notifications for {}.".format(specifier)
+
+    elif subcommand.index in (6, 7):  # Join/leave voice channel
         if not message.author.voice:
             raise CBException("You are not in a voice channel.")
         try:
             voice_channel = message.author.voice.channel
-            if subcommand.index == 5:
+            if subcommand.index == 6:
                 await utilities.join_and_ready(
                     bot, voice_channel, reconnect=True, is_mod=data.is_mod(
                         bot, message.guild, message.author.id))
-                response = "Joined {}.".format(voice_channel.name)
+                response.content = "Joined {}.".format(voice_channel.name)
             else:
                 await utilities.leave_and_stop(
                     bot, message.guild, member=message.author, safe=False)
-                response = "Left {}.".format(voice_channel.name)
+                response.content = "Left {}.".format(voice_channel.name)
         except BotException as e:
             raise e  # Pass up
         except Exception as e:
-            action = 'join' if subcommand.index == 5 else 'leave'
+            action = 'join' if subcommand.index == 6 else 'leave'
             raise CBException("Failed to {} the voice channel.".format(action), e=e)
 
-    return Response(content=response)
+    return response
 
 
 async def mod_wrapper(bot, context):
@@ -501,6 +546,21 @@ async def mod_wrapper(bot, context):
             response = "Cooldown reset to the default {}.".format(cooldown_message)
             mod_action = "reset the cooldown to the default {}.".format(cooldown_message)
 
+    elif subcommand.index == 10:  # Set timezone
+        if isinstance(arguments[0], int):  # Set timezone
+            data.add(bot, 'core', 'timezone', arguments[0], guild_id=context.guild.id)
+            response = "Timezone set to UTC{}.".format(
+                ('+' + str(arguments[0])) if arguments[0] >= 0 else arguments[0])
+            mod_action = "set the timezone: {}".format(response)
+        else:  # Clear timezone
+            data.remove(bot, 'core', 'timezone', guild_id=context.guild.id, safe=True)
+            guess = utilities.get_timezone(bot, context.guild.id)
+            response = (
+                "Timezone cleared. Time will be interpreted based off of voice "
+                "server location instead. Current guess: (UTC{})".format(
+                    ('+' + str(guess)) if guess >= 0 else guess))
+            mod_action = "cleared the custom timezone offset."
+
     # Send notification if configured
     send_notifications = data.get(
         bot, 'base', 'notifications', guild_id=message.guild.id, default=True)
@@ -574,26 +634,231 @@ async def owner_wrapper(bot, context):
     return Response(content=response)
 
 
+# Update related
+def _compare_config(bot, plugin, file_path):
+    comparison = bot.configurations[plugin]
+    with open(file_path, 'r') as config_file:
+        test_config = yaml.load(config_file)
+    changes = []
+    for key, value in test_config.items():
+        if key not in comparison:
+            changes.append("Missing entry: " + key)
+        elif type(value) is not type(comparison[key]):
+            changes.append("Type mismatch for entry: " + key)
+    return changes
+
+async def _update_core(bot, progress_function):
+    if bot.user.id == DEV_BOT_ID:
+        raise CBException("Dev bot - cancelled core update")
+    await progress_function('Downloading core package...')
+    core_repo = 'https://github.com/jkchen2/JshBot/archive/master.zip'
+    archive_path = await utilities.download_url(bot, core_repo, filename='core.zip')
+    update_directory = bot.path + '/temp/update/'
+    try:
+        shutil.rmtree(update_directory)
+    except Exception as e:
+        print("Failed to clear the update directory", e)
+    await progress_function('Installing core...')
+    shutil.unpack_archive(archive_path, update_directory)
+    update_directory += 'JshBot-master/config/'
+    config_directory = bot.path + '/config/'
+    shutil.copy2(update_directory + 'core-manual.yaml', config_directory + 'core-manual.yaml')
+    changes = _compare_config(bot, 'core', update_directory + 'core-config.yaml')
+    if changes:
+        return changes
+    pip.main([
+        'install',
+        '--upgrade',
+        '--force-reinstall',
+        '--process-dependency-links',
+        archive_path])
+    await asyncio.sleep(1)
+    await progress_function('Core updated.')
+
+
+async def _download_plugins(bot, progress_function):
+    await progress_function("Downloading plugins...")
+    plugins_repo = 'https://github.com/jkchen2/JshBot-plugins/archive/master.zip'
+    archive_path = await utilities.download_url(bot, plugins_repo, filename='plugins.zip')
+    await progress_function("Unpacking plugins...")
+
+    # Extract and return plugins list
+    update_directory = bot.path + '/temp/update/'
+    try:
+        shutil.rmtree(update_directory)
+    except Exception as e:
+        print("Failed to clear the update directory", e)
+    shutil.unpack_archive(archive_path, update_directory)
+    update_directory += 'JshBot-plugins-master'
+    available_updates = []
+    for entry in os.listdir(update_directory):
+        if os.path.isdir('{}/{}'.format(update_directory, entry)):
+            available_updates.append(entry + '.py')
+    await asyncio.sleep(1)
+    await progress_function("Plugins unpacked.")
+    return sorted(available_updates)
+
+
+async def _update_plugins(bot, plugin_list, progress_function):
+    if bot.user.id == DEV_BOT_ID:
+        raise CBException("Dev bot - cancelled core update")
+    await progress_function('Updating plugins...')
+    config_changed = {}
+    update_directory = bot.path + '/temp/update/JshBot-plugins-master/'
+    plugins_directory = bot.path + '/plugins/'
+    config_directory = bot.path + '/config/'
+    print("Given this plugin list:", plugin_list)
+    for plugin in plugin_list:
+        directory = update_directory + plugin[:-3]
+        for entry in os.listdir(directory):
+            entry_path = directory + '/' + entry
+
+            if entry.lower() == 'requirements.txt':  # Install plugin requirements
+                await progress_function('Installing requirements for {}...'.format(plugin))
+                pip.main(['install', '--upgrade', '-r', entry_path])
+                await asyncio.sleep(1)
+                continue
+
+            if entry in (plugin, 'plugin_data'):  # plugin_data or plugin itself
+                if entry == 'plugin_data':
+                    copy_tree(entry_path, plugins_directory + 'plugin_data')
+                else:
+                    shutil.copy2(entry_path, plugins_directory)
+
+            elif entry == plugin[:-3] + '-config.yaml':
+                if entry in os.listdir(config_directory):  # Check existing config
+                    changes = _compare_config(bot, plugin, entry_path)
+                    if changes:
+                        config_changed[plugin] = changes
+                else:  # Copy config over
+                    shutil.copy2(entry_path, config_directory)
+
+            else:
+                print("Ignoring entry:", entry_path)
+
+        logging.debug('Updated ' + plugin)
+
+    await asyncio.sleep(1)
+    await progress_function('Plugins updated.')
+    return config_changed
+
+
+async def update_menu(bot, context, response, result, timed_out):
+    if timed_out or (result and result[0].emoji == '❌'):
+        response.embed.clear_fields()
+        response.embed.add_field(name='Update cancelled', value='\u200b')
+        response.embed.set_footer(text='---')
+        await response.message.edit(embed=response.embed)
+        return False
+    elif not result:
+        return
+
+    async def _progress_function(status_message):
+        response.embed.set_footer(text=status_message)
+        try:
+            await response.message.edit(embed=response.embed)
+        except Exception as e:
+            print("Failed to update the update embed:", e)
+
+    selection = ['⬆', '⬇', '🇦', '🇧'].index(result[0].emoji)
+    if selection in (0, 1):  # Navigation
+        if response.stage != 1:  # Ignore selection
+            return
+        offset = 1 if selection else -1
+        response.selection_index = max(
+            min(response.selection_index + offset, len(response.updates)), 0)
+
+    else:  # Action
+        if response.stage == 0:  # First choice
+            if selection == 2:  # Update core
+                response.stage = 10
+                changed = await _update_core(bot, _progress_function)
+            else:  # Download plugins
+                response.stage = 1
+                response.updates = await _download_plugins(bot, _progress_function)
+                for index, update in enumerate(response.updates):
+                    if update in response.plugin_list:
+                        response.selected.append(index)
+                await asyncio.sleep(1)
+
+        elif response.stage == 1:  # Plugins selected
+            if selection == 2:  # Toggle selection
+                if response.selection_index in response.selected:
+                    response.selected.remove(response.selection_index)
+                else:
+                    response.selected.append(response.selection_index)
+
+            else:  # Start update
+                response.stage = 2
+                update_list = [response.updates[it] for it in response.selected]
+                changed = await _update_plugins(bot, update_list, _progress_function)
+                await asyncio.sleep(1)
+
+    tooltip = None
+    if response.stage == 10:  # Core finished updating
+        if changed:
+            title = 'Core config file issue(s) detected'
+            result = '\n'.join(changed)
+            response.embed.set_footer(text='Core update interrupted.')
+        else:
+            title = 'Core updated'
+            result = 'No issues detected. Restart to complete update.'
+
+    elif response.stage == 1:  # Select plugins
+        title = 'Select plugins'
+        result_list = []
+        for index, plugin in enumerate(response.updates):
+            arrow = '→ ' if index == response.selection_index else '\u200b\u3000 '
+            wrap, tick = ('**', '> ') if index in response.selected else ('', '')
+            result_list.append('{0}{1}`{2}{3}`{1}'.format(arrow, wrap, tick, plugin))
+        result = '\n'.join(result_list)
+        tooltip = ['Toggle selection', 'Update selected']
+
+    elif response.stage == 2:  # Finished updating plugins
+        if changed:
+            title = 'Config file issue(s) detected'
+            result_list = []
+            for plugin, issues in changed.items():
+                result_list.append('{}:\n\t{}'.format(plugin, '\t\n'.join(issues)))
+            result = '\n'.join(result_list)
+        else:
+            title = 'Plugins updated'
+            result = 'No issues detected. Restart to complete update.'
+
+    if title:
+        response.embed.set_field_at(0, name=title, value=result, inline=False)
+    if tooltip:
+        tooltip = ':regional_indicator_a: : {}\n:regional_indicator_b: : {}'.format(*tooltip)
+    else:
+        tooltip = '\u200b'
+    response.embed.set_field_at(1, name='\u200b', value=tooltip, inline=False)
+
+    await response.message.edit(embed=response.embed)
+    if response.stage in (10, 2):  # Finish update
+        return False
+
+
 async def botowner_wrapper(bot, context):
     message, _, subcommand, _, arguments = context[:5]
-    response, tts, message_type, extra = ('', False, 0, None)
+    response = Response()
 
     if subcommand.index == 0:  # Halt
-        await message.chanel.send("Going down...")
+        await message.channel.send("Going down...")
         bot.shutdown()
     elif subcommand.index == 1:  # Restart
-        await message.chanel.send("Restarting...")
+        await message.channel.send("Restarting...")
         bot.restart()
     elif subcommand.index == 2:  # Reload
-        response = "Reloading..."
-        message_type = MessageTypes.ACTIVE
-        extra = ('reload', arguments)
+        response.content = "Reloading..."
+        response.message_type = MessageTypes.ACTIVE
+        response.extra_function = handle_active_message
+        response.extra = ('reload', arguments)
     elif subcommand.index == 3:  # IP
         s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
         s.connect(('8.8.8.8', 80))  # Thanks Google
         ip = s.getsockname()[0]
         s.close()
-        response = "Local IP: " + ip
+        response.content = "Local IP: " + ip
     elif subcommand.index == 4:  # Backup
         utilities.make_backup(bot)
         await bot.send_file(message.channel, '{}/temp/backup1.zip'.format(bot.path))
@@ -604,35 +869,50 @@ async def botowner_wrapper(bot, context):
         except Exception as e:
             raise CBException("Failed to download the file.", e=e)
         utilities.restore_backup(bot, location)
-        response = "Restored backup file."
+        response.content = "Restored backup file."
 
     elif subcommand.index == 6:  # Blacklist
         blacklist = data.get(bot, 'base', 'blacklist', default=[])
         if not arguments[0]:
-            response = "Blacklisted entries: {}".format(blacklist)
+            response.content = "Blacklisted entries: {}".format(blacklist)
         else:
             user_id = arguments[0]
             if user_id in blacklist:
                 data.list_data_remove(bot, 'base', 'blacklist', user_id)
-                response = "User removed from blacklist."
+                response.content = "User removed from blacklist."
             else:
                 data.list_data_append(bot, 'base', 'blacklist', user_id)
-                response = "User added to blacklist."
+                response.content = "User added to blacklist."
     elif subcommand.index == 7:  # Toggle feedback
         status = data.get(bot, 'base', 'feedbackdisabled', default=False)
         action = "enabled" if status else "disabled"
         data.add(bot, 'base', 'feedbackdisabled', not status)
-        response = "Feedback has been {}.".format(action)
+        response.content = "Feedback has been {}.".format(action)
     elif subcommand.index == 8:  # Announcement
         if arguments[0]:
             text = '{0}:\n{1}'.format(time.strftime('%c'), arguments[0])
             data.add(bot, 'base', 'announcement', text)
-            response = "Announcement set!"
+            response.content = "Announcement set!"
         else:
             data.add(bot, 'base', 'announcement', '')
-            response = "Announcement cleared!"
+            response.content = "Announcement cleared!"
+    elif subcommand.index == 9:  # Update
+        response.embed = discord.Embed(
+            title=':arrow_up: Update', description='', colour=discord.Color(0x3b88c3))
+        tooltip = ':regional_indicator_a: : Update core\n:regional_indicator_b: : Update plugins'
+        response.embed.add_field(name='Update Wizard 95 ready', value='\u200b', inline=False)
+        response.embed.add_field(name='\u200b', value=tooltip, inline=False)
+        response.embed.set_footer(text='---')
+        response.message_type = MessageTypes.INTERACTIVE
+        response.extra_function = update_menu
+        response.extra = {'buttons': ['❌', '⬆', '⬇', '🇦', '🇧']}
+        response.selection_index = 0
+        response.plugin_list = list(bot.plugins)[1:]
+        response.updates = []
+        response.selected = []
+        response.stage = 0
 
-    return Response(content=response, message_type=message_type, extra=extra)
+    return response
 
 
 async def debug_wrapper(bot, context):
@@ -673,7 +953,6 @@ async def debug_wrapper(bot, context):
         global_dictionary['guild'] = message.guild
 
         # Cleaning up input
-        print("DEBUG: REPL cleaned content:", cleaned_content)
         arguments = cleaned_content[6:]
         if arguments.startswith('```py\n') and arguments.endswith('```'):
             arguments = arguments[6:-3]
@@ -724,7 +1003,9 @@ async def debug_wrapper(bot, context):
                 else:  # One line response
                     response = '`{}`'.format(result)
 
-    return Response(content=response, message_type=message_type, extra=extra)
+    return Response(
+        content=response, message_type=message_type,
+        extra=extra, extra_function=handle_active_message)
 
 
 async def help_menu(bot, context, response, result, timed_out):
@@ -837,17 +1118,14 @@ async def manual_menu(bot, context, response, result, timed_out):
     await response.message.edit(embed=response.embed)
 
 
-# TODO: FIX FIX FIX
 async def help_wrapper(bot, context):
     message, _, subcommand, options, arguments = context[:5]
     response = Response()
-    # response, tts, message_type, extra = ('', False, 0, None)
     is_owner = data.is_owner(bot, message.author.id)
     help_here = 'here' in options
 
     if subcommand.index == 0:  # Manual
         if arguments[0]:  # Load from given state
-            # TODO: detect if subject is an int
             try:
                 subject_test = int(arguments[0]) - 1
             except:
@@ -934,7 +1212,6 @@ async def help_wrapper(bot, context):
             response.extra_function = help_menu
             response.extra = {'buttons': ['↩', '⬅', '➡', '1⃣', '2⃣', '3⃣', '4⃣', '5⃣']}
 
-    # TODO: Fix with response.destination later
     if not (context.direct or help_here or bot.selfbot):
         try:
             await message.add_reaction('📨')  # Envelope reaction
@@ -956,21 +1233,21 @@ async def get_response(bot, context):
     return Response(content=response)
 
 
-async def handle_active_message(bot, context, response, message_reference):
+async def handle_active_message(bot, context, response):
     """
     This function is called if the given message was marked as active
     (message_type of 3).
     """
     if response.extra[0] == 'ping':
         latency_time = "Latency time: {:.2f} ms".format((time.time() * 1000) - response.extra[1])
-        await message_reference.edit(content=latency_time)
+        await response.reference.edit(content=latency_time)
 
     elif response.extra[0] == 'reload':
 
         # Preliminary check
         plugins_to_reload = []
-        if extra[1]:
-            for plugin_name in extra[1]:
+        if response.extra[1]:
+            for plugin_name in response.extra[1]:
                 if plugin_name in bot.plugins:
                     plugins_to_reload.append(plugin_name)
                 else:
@@ -1002,7 +1279,7 @@ async def handle_active_message(bot, context, response, message_reference):
                 asyncio.ensure_future(plugin.bot_on_ready_boot(bot))
             if hasattr(plugin, 'on_ready'):
                 asyncio.ensure_future(plugin.on_ready(bot))
-        await message_reference.edit(content='Reloaded {} plugin{}.'.format(
+        await response.message.edit(content='Reloaded {} plugin{}.'.format(
             len(plugins_to_reload), '' if len(plugins_to_reload) == 1 else 's'))
 
 
@@ -1078,9 +1355,9 @@ async def on_guild_join(bot, guild):
         "To read more about the functionality and usage of the bot, type "
         "`{1}manual` to see a list of topics, and `{1}help` to see a list of "
         "commands. **As a server owner, it is highly recommended that you "
-        "read `{1}manual 5` and `{1}manual 4` for moderating and configuring "
-        "the bot.**\n\nThat's all for now. If you have any questions, please "
-        "refer to the manual, or send the bot owners a message using "
+        "read `{1}manual core 5` and `{1}manual core 4` for moderating and "
+        "configuring the bot.**\n\nThat's all for now. If you have any questions, "
+        "please refer to the manual, or send the bot owners a message using "
         "`{1}owner feedback <message>`.\n\nCheck out the Wiki for more: "
         "https://github.com/jkchen2/JshBot/wiki").format(guild, invoker)
     await guild.owner.send(text)
