@@ -1,7 +1,11 @@
 #!/bin/bash
 sleep 5
 
-declare BOTDIR="$HOME/JshBot"
+# For the non-Docker version, replace with the directory of your start.py file
+#declare BOTDIR="$HOME/JshBot"
+#declare BOTSTART="start.py"
+declare BOTDIR="/jb"
+declare BOTSTART="d_start.py"
 
 retryTimer=0
 while :
@@ -9,7 +13,7 @@ do
     startTime=$(date +%s)
 
     echo "Starting bot at $(date)..."
-    python "$BOTDIR/start.py"
+    python3 "$BOTDIR/$BOTSTART"
     deltaTime=$(($(date +%s) - $startTime))
     if [[ $deltaTime -lt 300 ]]; then
         ((retryTimer+=30))
