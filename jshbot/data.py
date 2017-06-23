@@ -627,6 +627,8 @@ def db_connect(bot):
     """Attempts to connect to the database."""
     try:
         connection_parameters = bot.configurations['core']['database_credentials']
+        if not connection_parameters:  # Default for docker-compose setup
+            connection_parameters = "dbname='postgres' user='postgres' host='db'"
         bot.db_connection = psycopg2.connect(connection_parameters)
     except Exception as e:
         raise CBException("Failed to connect to the database.", e=e, error_type=ErrorTypes.STARTUP)
@@ -634,8 +636,6 @@ def db_connect(bot):
 
 def db_execute(bot, query, input_args=[], safe=False, cursor_kwargs={}, pass_error=False):
     """Executes the given query."""
-    print("Executing SQL:", query)
-    print("with the given input_args:", input_args)
     try:
         cursor = bot.db_connection.cursor(**cursor_kwargs)
         cursor.execute(query, input_args)
@@ -713,12 +713,10 @@ def db_insert(
         stripped = str(e).split('\n')[0]
         if stripped.startswith('relation') and stripped.endswith('does not exist'):
             if create:
-                print("Table not found! Creating:", table + '_' + str(table_suffix))
                 db_create_table(bot, table, table_suffix=table_suffix, template=create)
                 db_insert(
                     bot, table, specifiers=specifiers, input_args=input_args,
                     table_suffix=table_suffix, safe=safe, create=False)
-                print("Inserted after table creation.")
                 return
         if safe:
             return
@@ -745,7 +743,7 @@ def db_delete(bot, table, table_suffix='', where_arg='', input_args=[], safe=Tru
         table_suffix = '_{}'.format(table_suffix)
     query = "DELETE FROM {} WHERE {}".format(table + table_suffix, where_arg)
     try:
-        db_execute(bot, query, input_args=input_args, pass_error=True)
+        return db_execute(bot, query, input_args=input_args, pass_error=True)
     except Exception as e:
         if safe:
             return
