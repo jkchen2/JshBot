@@ -705,13 +705,13 @@ def get_new_bot(client_type, path, debug):
     return Bot(path, debug)
 
 
-def initialize(start_file=None, debug=False):
+def start(start_file=None, debug=False):
     if start_file:
         path = os.path.split(os.path.realpath(start_file))[0]
         logging.debug("Setting directory to " + path)
-    else:
-        path = os.path.split(os.path.realpath(__file__))[0][:-7]
-        logging.warn("Using default path, " + path)
+    else:  # Use Docker setup
+        path = '/external/files'
+        logging.warn("Using Docker setup path, " + path)
 
     try:
         config_file_location = path + '/config/core-config.yaml'
