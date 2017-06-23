@@ -4,6 +4,8 @@ import aiohttp
 import functools
 import shutil
 import logging
+import socket
+import datetime
 import json
 import time
 import os
@@ -13,6 +15,26 @@ from jshbot import data, configurations, core
 from jshbot.exceptions import BotException, ConfiguredBotException
 
 CBException = ConfiguredBotException('Utilities')
+
+
+# Voice region time offsets (no DST)
+voice_regions = {
+    'us-west': -8,
+    'us-east': -5,
+    'us-south': -6,
+    'us-central': -6,
+    'eu-west': 1,  # West European Summer Time
+    'eu-central': 2,  # Central European Summer Time
+    'singapore': 8,
+    'london': 0,
+    'sydney': 10,
+    'amsterdam': 2,  # CEST
+    'frankfurt': 2,  # CEST
+    'brazil': -3,
+    'vip-us-east': -5,
+    'vip-us-west': -8,
+    'vip-amsterdam': 2  # CEST
+}
 
 
 class BaseConverter():
@@ -87,14 +109,15 @@ def get_permission_bits(bot):
     return dummy.value
 
 
-async def download_url(bot, url, include_name=False, extension=None):
+async def download_url(bot, url, include_name=False, extension=None, filename=None):
     """Asynchronously downloads the given file to the temp folder.
 
     Returns the path of the downloaded file. If include_name is True, returns
     a tuple of the file location and the file name.
     """
-    cleaned_name = get_cleaned_filename(url, extension=extension)
-    file_location = '{0}/temp/{1}'.format(bot.path, cleaned_name)
+    if not filename:
+        filename = get_cleaned_filename(url, extension=extension)
+    file_location = '{0}/temp/{1}'.format(bot.path, filename)
     try:
         response_code, downloaded_bytes = await get_url(
             bot, url, get_bytes=True, headers={'User-Agent': 'Mozilla/5.0'})
@@ -103,7 +126,7 @@ async def download_url(bot, url, include_name=False, extension=None):
         with open(file_location, 'wb') as download:
             download.write(downloaded_bytes)
         if include_name:
-            return (file_location, cleaned_name)
+            return (file_location, filename)
         else:
             return file_location
     except Exception as e:
@@ -140,7 +163,7 @@ async def get_url(bot, urls, headers={}, get_bytes=False):
                 result = await fetch(urls, read_method)
             return result
     except Exception as e:
-        raise CBException("Failed to retrieve a URL.", e)
+        raise CBException("Failed to retrieve a URL.", e=e)
 
 
 async def upload_to_discord(bot, fp, filename=None, rewind=True, close=False):
@@ -326,8 +349,10 @@ def get_time_string(total_seconds, text=False, full=False):
             if value > 0:
                 result.append('{} {}{}'.format(
                     value, scale[:-1], '' if value == 1 else 's'))
-                if not full:
+                if not full and len(result) > 1:
                     break
+            elif not full and len(result) == 1:
+                break
         for it in range(len(result) - 2):
             result.insert((it * 2) + 1, ', ')
         if len(result) > 1:
@@ -429,9 +454,31 @@ async def notify_owners(bot, message, user_id=None):
                 await member.send(message)
 
 
+def db_backup(bot, safe=True):
+    """Use the Docker setup to backup the database."""
+    try:
+        print("Attemping to connect to the database container...")
+        command = 'pg_dump -U postgres postgres > /external/db_dump.txt'
+        host = 'db'
+        port = 2345
+        s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        s.settimeout(1)
+        s.connect((host, port))
+        s.send(bytes(command, 'ascii'))
+        s.close()
+        time.sleep(1)
+        print("Told database container to backup")
+    except Exception as e:
+        print("Failed to communicate with the database container:", e)
+        if safe:
+            return
+        raise CBException("Failed to communicate with the database container.", e=e)
+
+
 def make_backup(bot):
     """Makes a backup of the data directory."""
     logging.debug("Making backup...")
+    db_backup(bot)
     backup_indices = '{0}/temp/backup{{}}.zip'.format(bot.path)
     if os.path.isfile(backup_indices.format(5)):
         os.remove(backup_indices.format(5))
@@ -459,10 +506,33 @@ def restore_backup(bot, backup_file):
     logging.debug("Finished data restore.")
 
 
-#def db_update(bot, table, table_suffix='', set_arg='', where_arg='', input_args=[]):
-async def get_schedule_entries(
-        bot, plugin_name, search=None, destination=None,
-        custom_match=None, custom_args=[]):
+def get_timezone_offset(bot, guild_id=None, utc_dt=None, as_string=False):
+    if guild_id is None:
+        offset = 0
+    else:
+        offset = data.get(bot, 'core', 'timezone', guild_id=guild_id)
+    if offset is None:
+        guild = bot.get_guild(guild_id)
+        offset = voice_regions.get(str(guild.region), 0)
+        if 'us-' in str(guild.region):  # Apply DST offset
+            if utc_dt and utc_dt.dst():
+                in_dst = utc_dt.timetuple().tm_isdst > 0
+            else:
+                in_dst = time.localtime(time.time()).tm_isdst > 0
+            if in_dst:
+                offset += 1
+    if as_string:
+        result = 'UTC{}'.format(('+' + str(offset)) if offset >= 0 else offset)
+    else:
+        result = offset
+    if utc_dt:  # Convert UTC datetime object to "local" time
+        return (result, utc_dt + datetime.timedelta(hours=offset))
+    else:
+        return result
+
+
+def get_schedule_entries(
+        bot, plugin_name, search=None, destination=None, custom_match=None, custom_args=[]):
     """Gets the entries given the search or match arguments."""
     if custom_match:
         where_arg = custom_match
@@ -473,12 +543,13 @@ async def get_schedule_entries(
         if search is not None:
             where_arg += ' AND search = %s'
             input_args.append(search)
-        if destination:
+        if destination is not None:
             where_arg += ' AND destination = %s'
             input_args.append(destination)
 
     cursor = data.db_select(
-        bot, from_arg='schedule', where_arg=where_arg, input_args=input_args, safe=False)
+        bot, from_arg='schedule', where_arg=where_arg,
+        additional='ORDER BY time ASC', input_args=input_args, safe=False)
     entries = cursor.fetchall()
     converted = []
     for entry in entries:
@@ -486,13 +557,32 @@ async def get_schedule_entries(
             payload = json.loads(entry[3])
         else:
             payload = entry[3]
-        converted.append((entry[0], entry[1], entry[2], payload, entry[4]))
+        converted.append(entry[:3] + (payload,) + entry[4:])
     return converted
 
 
-async def update_schedule_entries(
-        bot, plugin_name, search, function=None, payload=None, new_search=None,
-        time=None, custom_match=None, destination=None, custom_args=[]):
+def remove_schedule_entries(
+        bot, plugin_name, search=None, destination=None, custom_match=None, custom_args=[]):
+    """Removes the entries given the search or match arguments."""
+    if custom_match:
+        where_arg = custom_match
+        input_args = custom_args
+    else:
+        where_arg = 'plugin = %s'
+        input_args = [plugin_name]
+        if search is not None:
+            where_arg += ' AND search = %s'
+            input_args.append(search)
+        if destination is not None:
+            where_arg += ' AND destination = %s'
+            input_args.append(destination)
+    data.db_delete(bot, 'schedule', where_arg=where_arg, input_args=input_args)
+
+
+def update_schedule_entries(
+        bot, plugin_name, search=None, destination=None, function=None,
+        payload=None, new_search=None, time=None, new_destination=None,
+        info=None, custom_match=None, custom_args=[]):
     """Updates the schedule entry with the given fields.
 
     If any field is left as None, it will not be changed.
@@ -505,8 +595,15 @@ async def update_schedule_entries(
         where_arg = custom_match
         input_args = custom_args
     else:
-        where_arg = "plugin = %s AND search = %s"
-        input_args = [plugin_name, search]
+        where_arg = 'plugin = %s'
+        input_args = [plugin_name]
+        if search is not None:
+            where_arg += ' AND search = %s'
+            input_args.append(search)
+        if destination is not None:
+            where_arg += ' AND destination = %s'
+            input_args.append(destination)
+
     set_args = []
     set_input_args = []
     if function:
@@ -517,21 +614,25 @@ async def update_schedule_entries(
         set_input_args.append(json.dumps(payload))
     if time:
         set_args.append('time=%s')
-        set_input_args.append(time)
-    if search:
+        set_input_args.append(int(time))
+    if new_search:
         set_args.append('search=%s')
         set_input_args.append(new_search)
-    if destination:
+    if new_destination:
         set_args.append('destination=%s')
-        set_input_args.append(destination)
+        set_input_args.append(new_destination)
+    if info:
+        set_args.append('info=%s')
+        set_input_args.append(info)
     set_arg = ', '.join(set_args)
     input_args = set_input_args + input_args
-    data.db_update(
-        bot, 'schedule', set_arg=set_arg, where_arg=where_arg, input_args=input_args)
+    data.db_update(bot, 'schedule', set_arg=set_arg, where_arg=where_arg, input_args=input_args)
+    asyncio.ensure_future(_start_scheduler(bot))
 
 
 def schedule(
-        bot, plugin_name, time, function, payload=None, search=None, destination=None):
+        bot, plugin_name, time, function, payload=None,
+        search=None, destination=None, info=None):
     """Adds the entry to the schedule table and starts the timer.
 
     It should be noted that the function CANNOT be a lambda function. It must
@@ -546,14 +647,30 @@ def schedule(
         function.__name__,
         json.dumps(payload) if payload else None,
         search,
-        destination
+        destination,
+        info
     ]
     data.db_insert(bot, 'schedule', input_args=input_args, safe=False)
     asyncio.ensure_future(_start_scheduler(bot))
 
 
+def get_messageable(bot, destination):
+    """Takes a destination in the schedule table format and returns a messageable."""
+    try:
+        if destination[0] == 'u':  # User
+            get = bot.get_user
+        elif destination[0] == 'c':  # Channel
+            get = bot.get_channel
+        else:
+            assert False
+        return get(int(destination[1:]))
+    except Exception as e:
+        raise CBException("Invalid destination format.", e=e)
+
+
 async def _schedule_timer(bot, raw_entry, delay):
     task_comparison = bot.schedule_timer
+    await asyncio.sleep(0.5)
     print("_schedule_timer sleeping for", delay, "seconds...")
     await asyncio.sleep(delay)
     if task_comparison is not bot.schedule_timer:
@@ -569,14 +686,13 @@ async def _schedule_timer(bot, raw_entry, delay):
         raise e
     try:
         print("_schedule_timer done sleeping for", delay, "seconds!")
-        scheduled_time, plugin, function, payload, search, destination = raw_entry
+        scheduled_time, plugin, function, payload, search, destination, info = raw_entry
         if payload:
             payload = json.loads(payload)
         plugin = bot.plugins[plugin]
         function = getattr(plugin, function)
-        late = delay < -30
-        asyncio.ensure_future(
-            function(bot, scheduled_time, payload, search, destination, late))
+        late = delay < -60
+        asyncio.ensure_future(function(bot, scheduled_time, payload, search, destination, late))
     except Exception as e:
         print("Failed to execute scheduled function:", e)
         raise e
