@@ -1,0 +1,16 @@
+version: '3'
+
+services:
+    bot:
+        image: jkchen2/jshbot
+        volumes:
+            - ./external:/external
+        depends_on:
+            - db
+        links:
+            - db
+
+    db:
+        image: jkchen2/jbdb
+        volumes:
+            - ./external:/external
