@@ -3,7 +3,6 @@ import asyncio
 import aiohttp
 import functools
 import shutil
-import logging
 import socket
 import datetime
 import json
@@ -11,7 +10,7 @@ import time
 import os
 import io
 
-from jshbot import data, configurations, core
+from jshbot import data, configurations, core, logger
 from jshbot.exceptions import BotException, ConfiguredBotException
 
 CBException = ConfiguredBotException('Utilities')
@@ -181,7 +180,7 @@ async def upload_to_discord(bot, fp, filename=None, rewind=True, close=False):
             break
 
     if channel is None:  # Create guild
-        logging.debug("Creating guild for upload channel...")
+        logger.debug("Creating guild for upload channel...")
         try:
             guild = await bot.create_guild('uploads')
         except Exception as e:
@@ -439,7 +438,7 @@ async def notify_owners(bot, message, user_id=None):
     blacklist.
     """
     if bot.selfbot:
-        print("Notification:\n{}".format(message))
+        logger.info("Notification:\n{}".format(message))
     else:
         if user_id:
             blacklist = data.get(bot, 'base', 'blacklist', default=[])
@@ -457,8 +456,8 @@ async def notify_owners(bot, message, user_id=None):
 def db_backup(bot, safe=True):
     """Use the Docker setup to backup the database."""
     try:
-        print("Attemping to connect to the database container...")
-        command = 'pg_dump -U postgres postgres > /external/db_dump.txt'
+        logger.debug("Attemping to connect to the database container...")
+        command = 'pg_dump -U postgres postgres > /external/data/db_dump.txt'
         host = 'db'
         port = 2345
         s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
@@ -467,9 +466,9 @@ def db_backup(bot, safe=True):
         s.send(bytes(command, 'ascii'))
         s.close()
         time.sleep(1)
-        print("Told database container to backup")
+        logger.debug("Told database container to backup")
     except Exception as e:
-        print("Failed to communicate with the database container:", e)
+        logger.warn("Failed to communicate with the database container: %s", e)
         if safe:
             return
         raise CBException("Failed to communicate with the database container.", e=e)
@@ -477,7 +476,7 @@ def db_backup(bot, safe=True):
 
 def make_backup(bot):
     """Makes a backup of the data directory."""
-    logging.debug("Making backup...")
+    logger.info("Making backup...")
     db_backup(bot)
     backup_indices = '{0}/temp/backup{{}}.zip'.format(bot.path)
     if os.path.isfile(backup_indices.format(5)):
@@ -488,12 +487,12 @@ def make_backup(bot):
         if os.path.isfile(backup_file_from):
             os.rename(backup_file_from, backup_file_to)
     shutil.make_archive(backup_indices.format(1)[:-4], 'zip', '{}/data'.format(bot.path))
-    logging.debug("Finished making backup.")
+    logger.info("Finished making backup.")
 
 
 def restore_backup(bot, backup_file):
     """Restores a backup file given the backup filename."""
-    logging.debug("Restoring from a backup file...")
+    logger.info("Restoring from a backup file...")
     try:
         core.bot_data = {'global_users': {}, 'global_plugins': {}}
         core.volatile_data = {'global_users': {}, 'global_plugins': {}}
@@ -503,7 +502,7 @@ def restore_backup(bot, backup_file):
             data.load_data(instance)
     except Exception as e:
         raise CBException("Failed to extract backup.", e=e)
-    logging.debug("Finished data restore.")
+    logger.info("Finished data restore.")
 
 
 def get_timezone_offset(bot, guild_id=None, utc_dt=None, as_string=False):
@@ -671,10 +670,10 @@ def get_messageable(bot, destination):
 async def _schedule_timer(bot, raw_entry, delay):
     task_comparison = bot.schedule_timer
     await asyncio.sleep(0.5)
-    print("_schedule_timer sleeping for", delay, "seconds...")
+    logger.debug("_schedule_timer sleeping for %s seconds...", delay)
     await asyncio.sleep(delay)
     if task_comparison is not bot.schedule_timer:
-        print("_schedule_timer was not cancelled! Cancelling this scheduler...")
+        logger.debug("_schedule_timer was not cancelled! Cancelling this scheduler...")
         return
     try:
         cursor = data.db_select(bot, select_arg='min(time)', from_arg='schedule')
@@ -682,10 +681,10 @@ async def _schedule_timer(bot, raw_entry, delay):
         data.db_delete(
             bot, 'schedule', where_arg='time=%s', input_args=[minimum_time], safe=False)
     except Exception as e:
-        print("_schedule_timer failed to delete schedule entry.", e)
+        logger.warn("_schedule_timer failed to delete schedule entry. %s", e)
         raise e
     try:
-        print("_schedule_timer done sleeping for", delay, "seconds!")
+        logger.debug("_schedule_timer done sleeping for %s seconds!", delay)
         scheduled_time, plugin, function, payload, search, destination, info = raw_entry
         if payload:
             payload = json.loads(payload)
@@ -694,7 +693,7 @@ async def _schedule_timer(bot, raw_entry, delay):
         late = delay < -60
         asyncio.ensure_future(function(bot, scheduled_time, payload, search, destination, late))
     except Exception as e:
-        print("Failed to execute scheduled function:", e)
+        logger.warn("Failed to execute scheduled function: %s", e)
         raise e
     asyncio.ensure_future(_start_scheduler(bot))
 
@@ -709,7 +708,7 @@ async def _start_scheduler(bot):
     result = cursor.fetchone()
     if result:
         delta = result[0] - time.time()
-        print("_start_scheduler is starting a scheduled event.")
+        logger.debug("_start_scheduler is starting a scheduled event.")
         bot.schedule_timer = asyncio.ensure_future(_schedule_timer(bot, result, delta))
     else:
-        print("_start_scheduler could not find a pending scheduled event.")
+        logger.debug("_start_scheduler could not find a pending scheduled event.")

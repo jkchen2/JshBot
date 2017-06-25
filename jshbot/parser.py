@@ -1,7 +1,6 @@
-import logging
 import re
 
-from jshbot import commands
+from jshbot import commands, logger
 from jshbot.commands import ArgTypes
 from jshbot.exceptions import ConfiguredBotException
 
@@ -47,7 +46,7 @@ def split_parameters(parameters, include_quotes=False, quote_list=False):
             add_end = -1
 
     if add_start != -1:  # Unclosed quote
-        logging.warn("Detected an unclosed quote: " + split[add_start])
+        logger.warn("Detected an unclosed quote: " + split[add_start])
         joined_split.append(''.join(split[add_start:index + 1]))
     if quote_list:
         return (joined_split, quoted_indices)
@@ -247,7 +246,7 @@ def fill_shortcut(bot, shortcut, parameters, message):
                     arguments_dictionary[arg.name] = ''.join(parameters[current_index * 2:])
                 break
     # TODO: TEST THIS!
-    print("Finished shortcut loop.", arguments_dictionary)
+    logger.debug("Finished shortcut loop. %s", arguments_dictionary)
     if current_index < len(shortcut.args) - 1:  # Check for optional arguments
         arg = shortcut.args[current_index + 1]
         if arg.argtype is ArgTypes.OPTIONAL:
@@ -263,11 +262,11 @@ def fill_shortcut(bot, shortcut, parameters, message):
             arguments_dictionary[arg.name] = arg.default
         elif arg:
             raise CBException('Not enough arguments.', embed_fields=shortcut.help_embed_fields)
-    print("Finished checking for optional arguments.", arguments_dictionary)
+    logger.debug("Finished checking for optional arguments. %s", arguments_dictionary)
     for arg in shortcut.args:
         value = arguments_dictionary[arg.name]
         if value:
-            print("Converting and checking 4")
+            logger.debug("Converting and checking 4")
             new_value = arg.convert_and_check(bot, message, value)
             arguments_dictionary[arg.name] = new_value
     return shortcut.replacement.format(**arguments_dictionary)
@@ -282,10 +281,10 @@ def parse(bot, command, parameters, message):
     parameters = parameters.strip()  # Safety strip
 
     if isinstance(command, commands.Shortcut):  # Fill replacement string
-        print("Filling shortcut...")
+        logger.debug("Filling shortcut...")
         parameters = fill_shortcut(bot, command, parameters, message)
         command = command.command  # command is actually a Shortcut. Not confusing at all
-        print("Shortcut filled to:", parameters)
+        logger.debug("Shortcut filled to: %s", parameters)
 
     subcommand, options, arguments = match_subcommand(bot, command, parameters, message)
 

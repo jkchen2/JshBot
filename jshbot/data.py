@@ -1,12 +1,11 @@
 import discord
-import logging
 import os
 import json
 import psycopg2
 
 from types import GeneratorType
 
-from jshbot import core, utilities
+from jshbot import core, utilities, logger
 from jshbot.exceptions import BotException, ConfiguredBotException, ErrorTypes
 
 CBException = ConfiguredBotException('Data')
@@ -18,7 +17,7 @@ def check_folders(bot):
     for directory in directories:
         full_path = '{0}/{1}/'.format(bot.path, directory)
         if not os.path.exists(full_path):
-            logging.warn("Directory {} does not exist. Creating...".format(directory))
+            logger.warn("Directory {} does not exist. Creating...".format(directory))
             os.makedirs(full_path)
 
 
@@ -274,14 +273,14 @@ def save_data(bot, force=False):
             for check_file in files:
                 if (check_file.endswith('.json') and
                         check_file[:-5] not in keys):
-                    logging.debug("Removing file {}".format(check_file))
+                    logger.debug("Removing file {}".format(check_file))
                     os.remove(directory + check_file)
 
         else:  # Save data that has changed
             for key in bot.data_changed:
                 with open(directory + key + '.json', 'w') as current_file:
                     json.dump(bot.data[key], current_file, indent=4)
-                logging.debug("Saved {}".format(directory + key + '.json'))
+                logger.debug("Saved {}".format(directory + key + '.json'))
 
         bot.data_changed = []
 
@@ -289,7 +288,7 @@ def save_data(bot, force=False):
 def load_data(bot):
     """Loads the data from the data directory."""
 
-    logging.debug("Loading data...")
+    logger.debug("Loading data...")
     directory = bot.path + '/data/'
     for guild in bot.guilds:
         guild_id = str(guild.id)
@@ -297,20 +296,20 @@ def load_data(bot):
             with open(directory + guild_id + '.json', 'r') as guild_file:
                 bot.data[guild_id] = json.load(guild_file)
         except:
-            logging.warn("Data for guild {} not found.".format(guild_id))
+            logger.warn("Data for guild {} not found.".format(guild_id))
             bot.data[guild_id] = {}
 
     try:
         with open(directory + 'global_plugins.json', 'r') as plugins_file:
             bot.data['global_plugins'] = json.load(plugins_file)
     except:
-        logging.warn("Global data for plugins not found.")
+        logger.warn("Global data for plugins not found.")
     try:
         with open(directory + 'global_users.json', 'r') as users_file:
             bot.data['global_users'] = json.load(users_file)
     except:
-        logging.warn("Global data for users not found.")
-    logging.debug("Data loaded.")
+        logger.warn("Global data for users not found.")
+    logger.debug("Data loaded.")
 
 
 def clean_location(bot, plugins, channels, users, location):
@@ -345,7 +344,7 @@ def clean_data(bot):
 
         if key[0].isdigit():  # Server
             if key not in guilds:  # Server cannot be found, remove it
-                logging.warn("Removing guild {}".format(key))
+                logger.warn("Removing guild {}".format(key))
                 del bot.data[key]
             else:  # Recursively clean the data
                 guild = bot.get_guild(key)

@@ -1,11 +1,12 @@
 import asyncio
-import logging
 import sys
 import traceback
 
 from random import random
 from discord import Embed, Colour
 from enum import Enum
+
+from jshbot import logger
 
 
 # Rudimentary enumerated error types
@@ -50,7 +51,7 @@ class BotException(Exception):
         for name, value in embed_fields:
             self.embed.add_field(name=name, value=value, inline=False)
 
-        logging.error(self.error_message)
+        logger.error(self.error_message)
 
         # If non-recoverable, quit
         if error_type in (ErrorTypes.STARTUP, ErrorTypes.FATAL, ErrorTypes.INTERNAL):

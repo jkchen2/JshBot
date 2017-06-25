@@ -1,5 +1,6 @@
 import asyncio
 import discord
+import traceback
 import logging
 import os.path
 import random
@@ -9,15 +10,12 @@ import time
 import sys
 import os
 
-# Debug
-import traceback
-import logging.handlers
-
+from logging.handlers import RotatingFileHandler
 from concurrent.futures import FIRST_COMPLETED
 from collections import namedtuple, OrderedDict
 from discord.abc import PrivateChannel
 
-from jshbot import configurations, plugins, commands, parser, data, utilities, base
+from jshbot import configurations, plugins, commands, parser, data, utilities, base, logger
 from jshbot.exceptions import BotException, ConfiguredBotException, ErrorTypes
 from jshbot.commands import Response, MessageTypes
 
@@ -70,18 +68,15 @@ def get_new_bot(client_type, path, debug):
 
         def __init__(self, path, debug):
             self.version = '0.4.0-rewrite'
-            self.date = 'June 24th, 2017'
+            self.date = 'June 25th, 2017'
             self.time = int(time.time())
             self.readable_time = time.strftime('%c')
             self.path = path
             self.debug = debug
 
-            if self.debug:
-                logging.debug("=== {0: ^40} ===".format("Starting up JshBot " + self.version))
-                logging.debug("=== {0: ^40} ===".format(self.readable_time))
-            else:
-                print("=== {0: ^40} ===".format("Starting up JshBot " + self.version))
-                print("=== {0: ^40} ===".format(self.readable_time))
+            logger.info("=== {0: ^40} ===".format("Starting up JshBot " + self.version))
+            logger.info("=== {0: ^40} ===".format(self.readable_time))
+            logger.info("=== {0: ^40} ===".format(self.readable_time))
 
             super().__init__()
 
@@ -89,12 +84,12 @@ def get_new_bot(client_type, path, debug):
             plugins.add_configuration(self, 'core', 'core', base)
             data.check_folders(self)
 
-            logging.debug("Connecting to database...")
+            logger.debug("Connecting to database...")
             self.db_templates = {}
             self.db_connection = None
             data.db_connect(self)
 
-            logging.debug("Loading plugins...")
+            logger.debug("Loading plugins...")
             self.data = {'global_users': {}, 'global_plugins': {}}
             self.volatile_data = {'global_users': {}, 'global_plugins': {}}
             self.data_changed = []
@@ -220,8 +215,8 @@ def get_new_bot(client_type, path, debug):
             try:
                 initial_data = self.can_respond(message)
             except Exception as e:  # General error
-                logging.error(e)
-                traceback.print_exc()
+                logger.error(e)
+                logger.error(traceback.format_exc())
                 self.last_exception = e
                 return
             if not initial_data:
@@ -238,7 +233,7 @@ def get_new_bot(client_type, path, debug):
             try:
                 command = self.commands[base]
             except KeyError:
-                logging.debug("Suitable command not found: " + base)
+                logger.debug("Suitable command not found: " + base)
                 return
 
             # Check that user is not spamming
@@ -266,7 +261,7 @@ def get_new_bot(client_type, path, debug):
             try:
                 context = None
                 with message.channel.typing():
-                    logging.debug(message.author.name + ': ' + message.content)
+                    logger.debug(message.author.name + ': ' + message.content)
                     subcommand, options, arguments = parser.parse(
                         self, command, parameters, message)
                     context = self.Context(
@@ -275,9 +270,7 @@ def get_new_bot(client_type, path, debug):
                         message.guild, message.channel, message.author, direct,
                         subcommand.index, subcommand.id, self)
                     plugins.broadcast_event(self, 'bot_on_command', context)
-                    debug_print = '[{}, {}, {}]'.format(subcommand, options, arguments)
-                    logging.debug('\t' + debug_print)
-                    print(time.time(), debug_print)  # Temp
+                    logger.info([subcommand, options, arguments])
                     response = await commands.execute(self, context)
                     if self.selfbot and response.content:
                         response.content = '\u200b' + response.content
@@ -396,7 +389,7 @@ def get_new_bot(client_type, path, debug):
                     for button in buttons:
                         await message_reference.add_reaction(button)
                     reaction_check = await destination.get_message(message_reference.id)
-                    for reaction in reaction_check.reactions:  # TODO: Check?
+                    for reaction in reaction_check.reactions:
                         if not reaction.me or reaction.count > 1:
                             async for user in reaction.users():
                                 if user != self.user and permissions.manage_messages:
@@ -465,7 +458,7 @@ def get_new_bot(client_type, path, debug):
                     self.last_response = message_reference
 
             else:
-                logging.warn("Unknown message type: {}".format(response.message_type))
+                logger.error("Unknown message type: {}".format(response.message_type))
 
             '''
             # TODO: Fix for rewrite
@@ -553,8 +546,8 @@ def get_new_bot(client_type, path, debug):
             else:
                 self.last_traceback = traceback.format_exc()
                 plugins.broadcast_event(self, 'bot_on_general_error', error, message)
-                logging.error(self.last_traceback)
-                logging.error(self.last_exception)
+                logger.error(self.last_traceback)
+                logger.error(self.last_exception)
                 parsed_input = '[{0.subcommand}, {0.options}, {0.arguments}]'.format(context)
                 await utilities.notify_owners(
                     self, '```\n{0}\n{1}\n{2}\n{3}```'.format(
@@ -610,10 +603,7 @@ def get_new_bot(client_type, path, debug):
                 elif debug_channel is not None:
                     await debug_channel.send("Reconnected.")
 
-            if self.debug:
-                logging.debug("=== {0: ^40} ===".format(self.user.name + ' online'))
-            else:
-                print("=== {0: ^40} ===".format(self.user.name + ' online'))
+            logger.info("=== {0: ^40} ===".format(self.user.name + ' online'))
 
             if self.fresh_boot:
                 asyncio.ensure_future(self.spam_clear_loop())
@@ -642,7 +632,7 @@ def get_new_bot(client_type, path, debug):
                 interval = self.configurations['core']['command_limit_timeout']
                 interval = 0 if interval <= 0 else int(interval)
             except:
-                logging.warn("Command limit timeout not configured.")
+                logger.warn("Command limit timeout not configured.")
                 interval = 0
             while interval:
                 await asyncio.sleep(interval)
@@ -655,10 +645,10 @@ def get_new_bot(client_type, path, debug):
                 interval = int(self.configurations['core']['save_interval'])
                 interval = 0 if interval <= 0 else interval
             except:
-                logging.warn("Saving interval not configured.")
+                logger.warn("Saving interval not configured.")
                 interval = 0
             while interval:
-                await asyncio.sleep(interval)
+                await asyncio.sleep(interval * 60)
                 self.save_data()
 
         async def backup_loop(self):
@@ -667,13 +657,14 @@ def get_new_bot(client_type, path, debug):
                 interval = int(self.configurations['core']['backup_interval'])
                 interval = 0 if interval <= 0 else interval * 3600
             except:
-                logging.warn("Backup interval not configured.")
+                logger.warn("Backup interval not configured - backup loop stopped.")
                 return
             channel_id = self.configurations['core']['debug_channel']
             debug_channel = self.get_channel(channel_id)
-            if not debug_channel:
-                logging.warn("Debug channel not configured.")
-                return
+            while not debug_channel:
+                logger.warn("Debug channel not found. Trying again in 60 seconds...")
+                await asyncio.sleep(60)
+                debug_channel = self.get_channel(channel_id)
             while interval:
                 utilities.make_backup(self)
                 discord_file = discord.File('{}/temp/backup1.zip'.format(self.path))
@@ -681,21 +672,24 @@ def get_new_bot(client_type, path, debug):
                 await asyncio.sleep(interval)
 
         def save_data(self, force=False):
-            logging.debug("Saving data...")
+            if force:
+                logger.info("Forcing data save...")
+            else:
+                logger.info("Saving data...")
             data.save_data(self, force=force)
-            logging.debug("Saving data complete.")
+            logger.info("Save complete.")
 
         def restart(self):
-            logging.debug("Attempting to restart the bot...")
+            logger.info("Attempting to restart the bot...")
             self.save_data(force=True)
             asyncio.ensure_future(self.logout())
             os.system('python3.5 ' + self.path + '/start.py')
 
         def shutdown(self):
-            logging.debug("Writing data on shutdown...")
+            logger.debug("Writing data on shutdown...")
             if self.fresh_boot is not None:  # Don't write blank data
                 self.save_data(force=True)
-            logging.debug("Closing down!")
+            logger.info("Closing down!")
             try:
                 self.loop.close()
             except:
@@ -708,10 +702,11 @@ def get_new_bot(client_type, path, debug):
 def start(start_file=None, debug=False):
     if start_file:
         path = os.path.split(os.path.realpath(start_file))[0]
-        logging.debug("Setting directory to " + path)
+        logger.debug("Setting directory to " + path)
     else:  # Use Docker setup
         path = '/external'
-        logging.debug("Using Docker setup path, " + path)
+        logger.info("Bot running in Docker mode.")
+        logger.debug("Using Docker setup path, " + path)
 
     try:
         config_file_location = path + '/config/core-config.yaml'
@@ -719,24 +714,27 @@ def start(start_file=None, debug=False):
             config = yaml.load(config_file)
             selfbot_mode, token = config['selfbot_mode'], config['token']
     except Exception as e:
-        logging.error("Could not determine token /or selfbot mode.")
+        logger.error("Could not determine token /or selfbot mode.")
         raise e
 
     if selfbot_mode:
         client_type = discord.Client
-        logging.debug("Using standard client (selfbot enabled).")
+        logger.debug("Using standard client (selfbot enabled).")
     else:
         client_type = discord.AutoShardedClient
-        logging.debug("Using autosharded client (selfbot disabled).")
+        logger.debug("Using autosharded client (selfbot disabled).")
 
     if debug:
         log_file = '{}/temp/logs.txt'.format(path)
         if os.path.isfile(log_file):
             shutil.copy2(log_file, '{}/temp/last_logs.txt'.format(path))
         logging.basicConfig(
-                level=logging.DEBUG,
-                handlers=[logging.handlers.RotatingFileHandler(
-                    log_file, maxBytes=1000000, backupCount=3)])
+            level=logging.DEBUG,
+            handlers=[
+                RotatingFileHandler(log_file, maxBytes=1000000, backupCount=3),
+                logging.StreamHandler()
+            ]
+        )
 
     def safe_exit():
         loop = asyncio.get_event_loop()
@@ -744,15 +742,15 @@ def start(start_file=None, debug=False):
             loop.run_until_complete(bot.logout())
             pending = asyncio.Task.all_tasks()
             gathered = asyncio.gather(*pending)
-        except:
-            logging.error("Failed to log out of bot instances.")
+        except Exception as e:
+            logger.error("Failed to log out. %s", e)
         try:
             gathered.cancel()
             loop.run_until_complete(gathered)
             gathered.exception()
         except:
             pass
-        logging.warn("Bot disconnected. Shutting down...")
+        logger.warn("Bot disconnected. Shutting down...")
         bot.shutdown()  # Calls sys.exit
 
     def exception_handler(loop, context):
@@ -764,10 +762,10 @@ def start(start_file=None, debug=False):
             if not traceback_text:
                 traceback_text = '(No traceback available)'
         error_message = '{}\n{}'.format(e, traceback_text)
-        logging.error("An uncaught exception occurred.\n" + error_message)
+        logger.error("An uncaught exception occurred.\n" + error_message)
         with open(path + '/temp/error.txt', 'w') as error_file:
             error_file.write(error_message)
-        logging.error("Error file written.")
+        logger.error("Error file written.")
         if bot.is_closed():
             safe_exit()
 
@@ -778,5 +776,5 @@ def start(start_file=None, debug=False):
     try:
         loop.run_until_complete(start_task)
     except KeyboardInterrupt:
-        print("Interrupted")
+        logger.warn("Interrupted!")
         safe_exit()

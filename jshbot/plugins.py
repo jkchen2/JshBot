@@ -1,5 +1,4 @@
 import asyncio
-import logging
 import copy
 import yaml
 import importlib.util
@@ -11,7 +10,7 @@ import traceback
 
 from collections import OrderedDict
 
-from jshbot import commands, utilities, data
+from jshbot import commands, utilities, data, logger
 from jshbot.exceptions import ErrorTypes, BotException, ConfiguredBotException
 
 CBException = ConfiguredBotException('Plugins')
@@ -45,7 +44,7 @@ def load_plugin(bot, plugin_name):
         raise CBException("Cannot (re)load base plugin.")
 
     if plugin_name in bot.plugins:
-        logging.debug("Reloading plugin {}...".format(plugin_name))
+        logger.debug("Reloading plugin {}...".format(plugin_name))
         module = bot.plugins.pop(plugin_name)
         # importlib.reload(module)
         to_remove = []
@@ -56,7 +55,7 @@ def load_plugin(bot, plugin_name):
             del bot.commands[base]
         del module
     else:
-        logging.debug("Loading plugin {}...".format(plugin_name))
+        logger.debug("Loading plugin {}...".format(plugin_name))
 
     try:
         spec = importlib.util.spec_from_file_location(
@@ -88,7 +87,7 @@ def load_plugin(bot, plugin_name):
     while command_load_functions:
         function = command_load_functions.pop()
         function(bot)
-    logging.debug("Plugin {} loaded.".format(plugin_name))
+    logger.debug("Plugin {} loaded.".format(plugin_name))
 
 
 def add_plugins(bot):
@@ -100,7 +99,7 @@ def add_plugins(bot):
     directory = '{}/plugins'.format(bot.path)
     data_directory = '{}/plugins/plugin_data'.format(bot.path)
     if os.path.isdir(data_directory):
-        logging.debug("Setting plugin_data as plugin import path.")
+        logger.debug("Setting plugin_data as plugin import path.")
         sys.path.append(data_directory)
     try:
         plugins_list = os.listdir(directory)
@@ -137,7 +136,7 @@ def add_plugins(bot):
                 "Failed to import external plugin on startup.", e=e, error_type=ErrorTypes.STARTUP)
 
     if len(bot.plugins) - 1:
-        logging.debug("Loaded {} plugin(s)".format(len(bot.plugins) - 1))
+        logger.debug("Loaded {} plugin(s)".format(len(bot.plugins) - 1))
 
 
 def add_commands(bot, new_commands, plugin):
@@ -187,7 +186,7 @@ def add_manual(bot, clean_name, plugin_name):
         with open(directory + clean_name + '-manual.yaml', 'rb') as manual_file:
             raw_manual = yaml.load(manual_file)
     except FileNotFoundError:
-        logging.debug("No manual found for {}.".format(plugin_name))
+        logger.debug("No manual found for {}.".format(plugin_name))
         return
     except yaml.YAMLError as e:  # TODO: Change
         raise CBException("Failed to parse the manual for {}.".format(plugin_name), e=e)
@@ -431,5 +430,5 @@ def broadcast_event(bot, event, *args, **kwargs):
             try:
                 asyncio.ensure_future(function(bot, *args, **kwargs))
             except TypeError as e:
-                logging.error(traceback.format_exc())
-                logging.error("Bypassing event error: " + e)
+                logger.error("Bypassing event error: %s", e)
+                logger.error(traceback.format_exc())

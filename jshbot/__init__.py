@@ -1,6 +1,13 @@
-# Import all modules necessary for JshBot
+# Create logger
+import logging
+logger = logging.getLogger(__name__)
+logger.setLevel(logging.INFO)
+handler = logging.StreamHandler()
+handler.setFormatter(logging.Formatter('[Bot] %(asctime)s %(levelname)s: %(message)s'))
+handler.setLevel(logging.DEBUG)
+logger.addHandler(handler)
+logger.propagate = False
 
-# Core components
 import jshbot.core as core
 import jshbot.exceptions as exceptions
 import jshbot.parser as parser

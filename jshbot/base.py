@@ -4,7 +4,6 @@ import random
 import socket
 import datetime
 import time
-import logging
 import inspect
 import traceback
 import yaml
@@ -16,7 +15,7 @@ import re
 from distutils.dir_util import copy_tree
 from discord.abc import PrivateChannel
 
-from jshbot import parser, data, utilities, commands, plugins, configurations
+from jshbot import parser, data, utilities, commands, plugins, configurations, logger
 from jshbot.exceptions import BotException, ConfiguredBotException
 from jshbot.commands import (
     Command, SubCommand, Shortcut, ArgTypes, Arg, Opt, Attachment,
@@ -70,7 +69,7 @@ def get_commands():
                 allow_direct=False)],
         shortcuts = [
             Shortcut('announcement', 'announcement'),
-            Shortcut('invite', 'invite details'),
+            Shortcut('invite', 'invite'),
             Shortcut('join', 'join'),
             Shortcut('leave', 'leave'),
             Shortcut('stfu', 'leave')],
@@ -657,7 +656,7 @@ async def _update_core(bot, progress_function):
     try:
         shutil.rmtree(update_directory)
     except Exception as e:
-        print("Failed to clear the update directory", e)
+        logger.warn("Failed to clear the update directory: %s", e)
     await progress_function('Installing core...')
     shutil.unpack_archive(archive_path, update_directory)
     update_directory += 'JshBot-master/config/'
@@ -687,7 +686,7 @@ async def _download_plugins(bot, progress_function):
     try:
         shutil.rmtree(update_directory)
     except Exception as e:
-        print("Failed to clear the update directory", e)
+        logger.warn("Failed to clear the update directory: %s", e)
     shutil.unpack_archive(archive_path, update_directory)
     update_directory += 'JshBot-plugins-master'
     available_updates = []
@@ -707,7 +706,6 @@ async def _update_plugins(bot, plugin_list, progress_function):
     update_directory = bot.path + '/temp/update/JshBot-plugins-master/'
     plugins_directory = bot.path + '/plugins/'
     config_directory = bot.path + '/config/'
-    print("Given this plugin list:", plugin_list)
     for plugin in plugin_list:
         directory = update_directory + plugin[:-3]
         for entry in os.listdir(directory):
@@ -734,9 +732,9 @@ async def _update_plugins(bot, plugin_list, progress_function):
                     shutil.copy2(entry_path, config_directory)
 
             else:
-                print("Ignoring entry:", entry_path)
+                logger.debug("Ignoring entry: %s", entry_path)
 
-        logging.debug('Updated ' + plugin)
+        logger.debug('Updated ' + plugin)
 
     await asyncio.sleep(1)
     await progress_function('Plugins updated.')
@@ -758,7 +756,7 @@ async def update_menu(bot, context, response, result, timed_out):
         try:
             await response.message.edit(embed=response.embed)
         except Exception as e:
-            print("Failed to update the update embed:", e)
+            logger.warn("Failed to update the update embed: %s", e)
 
     selection = ['⬆', '⬇', '🇦', '🇧'].index(result[0].emoji)
     if selection in (0, 1):  # Navigation
@@ -1256,7 +1254,7 @@ async def handle_active_message(bot, context, response):
             plugins_to_reload = bot.plugins.keys()
 
         data.save_data(bot)  # Safety save
-        logging.debug("Reloading plugins and commands...")
+        logger.info("Reloading plugins and commands...")
 
         # Cancel running tasks associated with plugins
         tasks = asyncio.Task.all_tasks()
@@ -1266,7 +1264,7 @@ async def handle_active_message(bot, context, response):
                 callback_info = task._repr_info()[1]
                 plugin_name_test = pattern.search(callback_info).group(0)
                 if plugin_name_test == plugin_name:
-                    logging.debug("Canceling task: {}".format(task))
+                    logger.debug("Canceling task: {}".format(task))
                     task.cancel()
             plugins.load_plugin(bot, plugin_name)
 
@@ -1327,18 +1325,19 @@ async def bot_on_ready_boot(bot):
     permissions = {
         'read_messages': "Standard.",
         'send_messages': "Standard.",
-        'manage_messages': "Deletes messages of certain commands (like `help`).",
+        'manage_messages': "Deletes messages and reactions of certain commands. (Framework)",
         'attach_files': "Uploads responses longer than 2000 characters long as a text file.",
         'read_message_history': "Gets chat context when bot moderators change settings.",
         'connect': "Allows the bot to connect to voice channels. (Framework)",
-        'speak': "Allows the bot to speak. (Framework)"
+        'speak': "Allows the bot to speak. (Framework)",
+        'add_reactions': "Allows for interactive menus. (Framework)"
     }
-    utilities.add_bot_permissions(bot, 'base', **permissions)
+    utilities.add_bot_permissions(bot, 'core', **permissions)
 
 
 async def on_guild_join(bot, guild):
     # Add guild to the list
-    logging.debug("Joining guild")
+    logger.info("Joining guild")
     data.add_guild(bot, guild)
     if bot.selfbot:  # Don't send DMs if in selfbot mode
         return
@@ -1372,7 +1371,7 @@ async def on_message_edit(bot, before, after):
 
 async def on_error(bot, event, *args, **kwargs):
     """Gets uncaught exceptions."""
-    logging.error(
+    logger.error(
         "An exception was thrown that wasn't handled by the core. \n"
         "Event: {0}\nargs: {1}\nkwargs: {2}".format(event, args, kwargs))
-    traceback.print_exc()
+    logger.error(traceback.format_exc())
