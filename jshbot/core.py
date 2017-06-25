@@ -76,7 +76,6 @@ def get_new_bot(client_type, path, debug):
 
             logger.info("=== {0: ^40} ===".format("Starting up JshBot " + self.version))
             logger.info("=== {0: ^40} ===".format(self.readable_time))
-            logger.info("=== {0: ^40} ===".format(self.readable_time))
 
             super().__init__()
 
@@ -565,7 +564,7 @@ def get_new_bot(client_type, path, debug):
 
         async def on_ready(self):
             if self.fresh_boot is None:
-                app_info = await bot.application_info()
+                app_info = await self.application_info()
                 if app_info.owner.id not in self.owners:
                     self.owners.append(app_info.owner.id)
                 if self.selfbot:  # Selfbot safety checks
@@ -622,7 +621,10 @@ def get_new_bot(client_type, path, debug):
                     first_start_note = (
                         "It appears that this is the first time you are starting up the bot. "
                         "In order to have it function properly, you must add the bot to the "
-                        "server with the specified debug channel. Invite link:\n{}").format(link)
+                        "server with the specified debug channel. Invite link:\n{}\n\nIt is "
+                        "highly recommended that you update the core using [{}botowner update] "
+                        "to not only update the bot, but also add the core manual.").format(
+                            link, self.command_invokers[0])
                     logger.info(first_start_note)
                     await utilities.notify_owners(self, first_start_note)
 
