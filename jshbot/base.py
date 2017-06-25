@@ -635,8 +635,13 @@ async def owner_wrapper(bot, context):
 
 # Update related
 def _compare_config(bot, plugin, file_path):
-    comparison = bot.configurations[plugin]
-    with open(file_path, 'r') as config_file:
+    try:
+        comparison = bot.configurations[plugin]
+    except:
+        logger.warn("Configuration file for plugin %s exists, but is not loaded.", plugin)
+        with open('{}/config/{}-config.yaml'.format(bot.path, plugin[:-3]), 'rb') as config_file:
+            comparison = yaml.load(config_file)
+    with open(file_path, 'rb') as config_file:
         test_config = yaml.load(config_file)
     changes = []
     for key, value in test_config.items():
