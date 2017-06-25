@@ -5,7 +5,7 @@ sleep 5
 #declare BOTDIR="$HOME/JshBot"
 #declare BOTSTART="start.py"
 declare BOTDIR="/jb"
-declare BOTSTART="d_start.py"
+declare BOTSTART="scripts/d_start.py"
 
 retryTimer=0
 while :
