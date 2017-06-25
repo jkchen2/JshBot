@@ -424,7 +424,7 @@ def get_member(bot, identity, guild=None, attribute=None, safe=False, strict=Fal
         tests.append({'id': int(identity)})
     except:
         used_id = False
-    tests += [{'name': identity}, {'nick', identity}]
+    tests += [{'name': identity}, {'nick': identity}]
     for test in tests:
         members = guild.members if guild else bot.get_all_members()
         result = discord.utils.get(members, **test)

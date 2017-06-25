@@ -626,7 +626,6 @@ def get_new_bot(client_type, path, debug):
                         "to not only update the bot, but also add the core manual.").format(
                             link, self.command_invokers[0])
                     logger.info(first_start_note)
-                    await utilities.notify_owners(self, first_start_note)
 
         # Take advantage of dispatch to intercept all events
         def dispatch(self, event, *args, **kwargs):
