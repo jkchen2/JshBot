@@ -70,7 +70,7 @@ def get_new_bot(client_type, path, debug):
 
         def __init__(self, path, debug):
             self.version = '0.4.0-rewrite'
-            self.date = 'June 23rd, 2017'
+            self.date = 'June 24th, 2017'
             self.time = int(time.time())
             self.readable_time = time.strftime('%c')
             self.path = path
@@ -243,8 +243,9 @@ def get_new_bot(client_type, path, debug):
 
             # Check that user is not spamming
             author_id = str(message.author.id)
+            direct = isinstance(message.channel, PrivateChannel)
             spam_value = self.spam_dictionary.get(author_id, 0)
-            if elevation > 0:  # Moderators ignore custom limit
+            if elevation > 0 or direct:  # Moderators ignore custom limit
                 spam_limit = self.spam_limit
             else:
                 spam_limit = min(
@@ -268,7 +269,6 @@ def get_new_bot(client_type, path, debug):
                     logging.debug(message.author.name + ': ' + message.content)
                     subcommand, options, arguments = parser.parse(
                         self, command, parameters, message)
-                    direct = isinstance(message.channel, PrivateChannel)
                     context = self.Context(
                         message, base, subcommand, options, arguments,
                         subcommand.command.keywords, initial_data[0], elevation,
@@ -711,7 +711,7 @@ def start(start_file=None, debug=False):
         logging.debug("Setting directory to " + path)
     else:  # Use Docker setup
         path = '/external'
-        logging.warn("Using Docker setup path, " + path)
+        logging.debug("Using Docker setup path, " + path)
 
     try:
         config_file_location = path + '/config/core-config.yaml'
