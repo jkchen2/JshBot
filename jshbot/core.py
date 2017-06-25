@@ -565,6 +565,9 @@ def get_new_bot(client_type, path, debug):
 
         async def on_ready(self):
             if self.fresh_boot is None:
+                app_info = await bot.application_info()
+                if app_info.owner.id not in self.owners:
+                    self.owners.append(app_info.owner.id)
                 if self.selfbot:  # Selfbot safety checks
                     if len(self.owners) != 1:
                         raise CBException(
@@ -609,8 +612,19 @@ def get_new_bot(client_type, path, debug):
                 asyncio.ensure_future(self.spam_clear_loop())
                 asyncio.ensure_future(self.save_loop())
                 asyncio.ensure_future(self.backup_loop())
+
                 if self.selfbot:
                     asyncio.ensure_future(self.selfbot_away_loop())
+                elif len(self.guilds) == 0:
+                    link = (
+                        'https://discordapp.com/oauth2/authorize?&client_id={}'
+                        '&scope=bot&permissions=8').format(app_info.id)
+                    first_start_note = (
+                        "It appears that this is the first time you are starting up the bot. "
+                        "In order to have it function properly, you must add the bot to the "
+                        "server with the specified debug channel. Invite link:\n{}").format(link)
+                    logger.info(first_start_note)
+                    await utilities.notify_owners(self, first_start_note)
 
         # Take advantage of dispatch to intercept all events
         def dispatch(self, event, *args, **kwargs):
