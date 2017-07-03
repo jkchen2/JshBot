@@ -5,6 +5,8 @@ from pprint import pformat
 from collections import OrderedDict
 from discord.abc import PrivateChannel
 
+from jshbot import logger
+
 class ArgTypes(Enum):
     SINGLE, OPTIONAL, SPLIT, SPLIT_OPTIONAL, MERGED, MERGED_OPTIONAL = range(6)
 
@@ -21,7 +23,7 @@ class Response():
     def __init__(
             self, content=None, tts=False, message_type=MessageTypes.NORMAL, extra=None,
             embed=None, file=None, files=None, reason=None, delete_after=None, nonce=None,
-            extra_function=None, destination=None):
+            extra_function=None, destination=None, **kwargs):
         '''
         Keyword arguments:
         message_type -- One of the MessageTypes available. See core for more.
@@ -29,6 +31,8 @@ class Response():
         extra_function -- Used depending on the given message_type
         destination -- If set, the bot sends to the destination instead of replying
         '''
+        # The following may be overwritten after the response object is passed
+        #   back to a plugin via a special message type.
         self.content = content
         self.tts = tts
         self.message_type = message_type
@@ -42,6 +46,9 @@ class Response():
         self.extra_function = extra_function
         self.destination = destination
 
+        for key, value in kwargs.items():
+            setattr(self, key, value)
+
         self.message = None  # Set by the core
 
     def __repr__(self):
@@ -49,10 +56,13 @@ class Response():
         if self.content:
             result = self.content
         if self.embed:
-            if result:
+            if self.content:
                 result += '\n\nEmbed:\n'
             result += pformat(self.embed.to_dict())
         return result
+
+    def __bool__(self):
+        return not self.is_empty()
 
     def get_send_kwargs(self, use_edit_kwargs):
         if use_edit_kwargs:
@@ -67,8 +77,10 @@ class Response():
 
 
 class SubCommand():
-    def __init__(self, *optargs, doc=None, function=None, elevated_level=None,
-            allow_direct=None, strict_syntax=None, no_selfbot=None, id=None):
+    def __init__(
+            self, *optargs, doc=None, confidence_threshold=None,
+            function=None, elevated_level=None, allow_direct=None,
+            strict_syntax=None, no_selfbot=None, id=None):
         """
         Arguments:
         optargs -- Composed of a sequence of Opt and Arg objects.
@@ -76,6 +88,10 @@ class SubCommand():
 
         Keyword arguments:
         doc -- The help string used whenever detailed help is requested.
+        confidence_threshold -- Matching threshold for command match.
+            If the best candidate match out of all subcommands has a match value equal
+            to or greater than the confidence threshold, then this subcommand will be
+            skipped, even if this subcommand is a valid match.
 
         Override keyword arguments: (function, elevated_level, ...)
             These arguments will override the behavior of the base command's
@@ -87,12 +103,14 @@ class SubCommand():
         self.optargs = optargs
         self.attaches = None
         self.doc = doc
+        self.confidence_threshold = confidence_threshold
         self.function = function
         self.elevated_level = elevated_level
         self.allow_direct = allow_direct
         self.strict_syntax = strict_syntax
         self.no_selfbot = no_selfbot
         self.help_embed_fields = []
+        self.short_help_embed_fields = []
         self.keywords = []
         self.command = None  # Set by Command in init
         self.index = None  # Set by Command in init
@@ -119,9 +137,11 @@ class SubCommand():
 
     def _build_help_string(self):  # Add base to help lines
         help_lines = []
+        short_help_lines = []
         clean_help_lines = []
         parameter_lines = []
         clean_parameter_lines = []
+        groups = {}
 
         for index, optarg in enumerate(self.optargs):
             help_lines.append(optarg.help_string)
@@ -129,15 +149,29 @@ class SubCommand():
             if optarg.doc_string:
                 parameter_lines.append(optarg.doc_string)
                 clean_parameter_lines.append(optarg.clean_doc_string)
+            if optarg.group is None:
+                short_help_lines.append(optarg.help_string)
+            else:  # Group together options/arguments
+                if optarg.group not in groups:
+                    groups[optarg.group] = [optarg.optional, len(short_help_lines)]
+                    wrap = '_' if optarg.optional else '**'
+                    short_help_lines.append('{0}`[{1}]`{0}'.format(wrap, optarg.group))
+                elif not optarg.optional and groups[optarg.group][0]:
+                    group_data = groups[optarg.group]
+                    group_data[0] = False
+                    short_help_lines[group_data[1]] = '**`[{}]`**'.format(optarg.group)
 
         # TODO: Consider switching help_string and quick_help? Consistency issue
         if help_lines:
             self.help_string = '**`{base}`**`\u200b　\u200b`{help_string}'.format(
                 base=self.command.base, help_string='`\u200b　\u200b`'.join(help_lines))
+            self.short_help_string = '**`{base}`**`\u200b　\u200b`{help_string}'.format(
+                base=self.command.base, help_string='`\u200b　\u200b`'.join(short_help_lines))
             self.clean_help_string = '{base}    {help_string}'.format(
                 base=self.command.base, help_string='    '.join(clean_help_lines))
         else:
             self.help_string = '**`{base}`**'.format(base=self.command.base)
+            self.short_help_string = '**`{base}`**'.format(base=self.command.base)
             self.clean_help_string = '{base}'.format(base=self.command.base)
         self.parameter_string = '\n'.join(parameter_lines)
         self.clean_parameter_string = '\n'.join(clean_parameter_lines)
@@ -148,13 +182,16 @@ class SubCommand():
             self.quick_help += self.doc + '\n\n'
             self.clean_quick_help += self.doc + '\n\n'
             self.help_embed_fields.append(('Description:', self.doc))
+            self.short_help_embed_fields.append(('Description:', self.doc))
         self.quick_help += self.help_string
         self.clean_quick_help += self.clean_help_string
         self.help_embed_fields.append(('Usage:', self.help_string))
+        self.short_help_embed_fields.append(('Usage:', self.short_help_string))
         if self.parameter_string:
             self.quick_help += '\n' + self.parameter_string
             self.clean_quick_help += '\n' + self.clean_parameter_string
             self.help_embed_fields.append(('Parameter details:', self.parameter_string))
+            self.short_help_embed_fields.append(('Parameter details:', self.parameter_string))
 
     def __repr__(self):
         if hasattr(self, 'clean_help_string'):
@@ -221,7 +258,7 @@ class Command():
                 if getattr(subcommand, replacement) is None:
                     setattr(subcommand, replacement, getattr(self, replacement))
             subcommand._build_help_string()
-            self.help_lines.append(subcommand.help_string)
+            self.help_lines.append(subcommand.short_help_string)
             self.clean_help_lines.append(subcommand.clean_help_string)
             for keyword in subcommand.keywords:
                 if keyword not in self.keywords:
@@ -274,7 +311,7 @@ class Opt():
     def __init__(
             self, name, optional=False, attached=None, doc=None, quotes_recommended=True,
             convert=None, check=None, convert_error=None, check_error=None, default='',
-            always_include=False):
+            always_include=False, group=None):
         """
         Keyword arguments:
         optional -- Whether or not this option is optional.
@@ -295,30 +332,28 @@ class Opt():
         self.quotes_recommended = quotes_recommended
         self.default = default
         self.always_include = always_include
+        self.group = group
         self.subcommand = None  # Set by Subcommand in init
 
-        # Invalid value type for {name}:
+        self._build_help_string()
+
         if convert is int:
             convert = lambda b, m, v, *a: int(v)
             if not convert_error:
-                convert_error = 'Value must be an integer number.'
+                convert_error = 'Must be an integer number.'
         elif convert is float:
             convert = lambda b, m, v, *a: float(v)
             if not convert_error:
-                convert_error = 'Value must be a decimal number.'
+                convert_error = 'Must be a decimal number.'
         if not convert_error:
             convert_error = 'Unknown specification.'
         self.convert = convert
-        self.convert_error = 'Invalid value type for \'{name}\': {error}'.format(
-            name=self.name, error=convert_error)
-
-        # Invalid value for {name}:
+        self.convert_error = 'Invalid value type for {name}: {error}'.format(
+            name=self.help_string, error=convert_error)
         if not check_error:
             check_error = 'Unknown specification.'
-        self.check_error = 'Invalid value for \'{name}\': {error}'.format(
-            name=self.attached if self.attached else self.name, error=check_error)
-
-        self._build_help_string()
+        self.check_error = 'Invalid value for {name}: {error}'.format(
+            name=self.attached_string if self.attached else self.help_string, error=check_error)
 
     def _build_help_string(self):
         quotes = '"' if self.quotes_recommended else ''
@@ -359,8 +394,12 @@ class Opt():
                     value = new_values
                 else:
                     value = self.convert(bot, message, value)
-            except:
-                if hasattr(self.convert, 'get_convert_error'):
+            except Exception as e:
+                if hasattr(e, 'error_details'):  # BotException
+                    if getattr(self.convert, 'pass_error', False):
+                        raise e
+                    convert_error = e.error_details
+                elif hasattr(self.convert, 'get_convert_error'):
                     convert_error = self.convert.get_convert_error(bot, message, value)
                 else:
                     convert_error = self.convert_error
@@ -374,8 +413,12 @@ class Opt():
                         assert self.check(bot, message, entry)
                 else:
                     assert self.check(bot, message, value)
-            except:
-                if hasattr(self.check, 'get_check_error'):
+            except Exception as e:
+                if hasattr(e, 'error_details'):  # BotException
+                    if getattr(self.check, 'pass_error', False):
+                        raise e
+                    check_error = e.error_details
+                elif hasattr(self.check, 'get_check_error'):
                     check_error = self.check.get_check_error(bot, message, value)
                 else:
                     check_error = self.check_error
@@ -389,12 +432,12 @@ class Arg(Opt):
     def __init__(
             self, name, argtype=ArgTypes.SINGLE, additional=None, doc=None,
             convert=None, check=None, convert_error=None, check_error=None,
-            quotes_recommended=True, default=''):
+            quotes_recommended=True, default='', group=None):
         self.argtype = argtype
         self.additional = additional
         super().__init__(
             name, convert=convert, check=check, doc=doc, quotes_recommended=quotes_recommended,
-            convert_error=convert_error, check_error=check_error, default=default)
+            convert_error=convert_error, check_error=check_error, default=default, group=group)
 
     def _build_help_string(self):
         if self.argtype in (ArgTypes.SPLIT, ArgTypes.MERGED, ArgTypes.SINGLE):
@@ -413,8 +456,8 @@ class Arg(Opt):
         clean_current = '{wrap[0]}<{quotes}{name}{quotes}>{wrap[1]}'.format(
             wrap=clean_wrap, quotes=quotes, name=self.name)
         if self.additional:
-            current += '`\u200b　\u200b`___`{additional} ...`___'.format(
-                wrap=wrap, additional=self.additional)
+            current += '`\u200b　\u200b`___`{quotes}{additional}{quotes} ...`___'.format(
+                quotes=quotes, wrap=wrap, additional=self.additional)
             clean_current += '    {wrap[0]}<{additional}>{wrap[1]}'.format(
                 wrap=clean_wrap, additional=self.additional)
         self.help_string = current
@@ -432,6 +475,7 @@ class Attachment():
         self.name = name.strip()
         self.optional = optional
         self.doc = doc
+        self.group = None
         wrap = '_' if optional else '**'
         clean_wrap = ['[', ']'] if optional else ['', '']
         current = '{wrap}`[Attachment: `__`{name}`__`]`{wrap}'.format(wrap=wrap, name=name)
