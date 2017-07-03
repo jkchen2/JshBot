@@ -1,11 +1,12 @@
 import json
+import yaml
 
 from jshbot.exceptions import ConfiguredBotException, ErrorTypes
 
 CBException = ConfiguredBotException('Configurations')
 
 
-def get(bot, plugin_name, key=None, extra=None, extension='json'):
+def get(bot, plugin_name, key=None, extra=None, extension='yaml'):
     """Gets the configuration file for the given plugin.
 
     Keyword arguments:
@@ -14,8 +15,7 @@ def get(bot, plugin_name, key=None, extra=None, extension='json'):
     extension -- If 'json', reads the file as json, otherwise reads it as text.
     """
     if extra:  # Open from external configuration file
-        filename = '{0}/config/{1}-{2}.{3}'.format(
-            bot.path, plugin_name, extra, extension)
+        filename = '{0}/config/{1}-{2}.{3}'.format(bot.path, plugin_name[:-3], extra, extension)
     else:  # Open from configuration dictionary
         try:
             config = bot.configurations[plugin_name]
@@ -33,6 +33,8 @@ def get(bot, plugin_name, key=None, extra=None, extension='json'):
         with open(filename, 'r') as config_file:
             if extension.lower() == 'json':
                 return json.load(config_file)
+            elif extension.lower() == 'yaml':
+                return yaml.load(config_file)
             else:
                 return config_file.read()
     except FileNotFoundError:
