@@ -2,6 +2,7 @@ import asyncio
 import discord
 import random
 import socket
+import logging
 import datetime
 import time
 import inspect
@@ -31,7 +32,7 @@ DEV_BOT_ID = 171672297017573376
 
 
 @plugins.command_spawner
-def get_commands():
+def get_commands(bot):
     """Sets up new commands and shortcuts in the proper syntax.
 
     See dummy.py for a complete sample reference.
@@ -50,7 +51,8 @@ def get_commands():
             SubCommand(Opt('version'), doc='Gets the version of the bot.'),
             SubCommand(Opt('source'), doc='Gets the source of the bot.'),
             SubCommand(Opt('uptime'), doc='Gets the uptime of the bot.'),
-            SubCommand(Opt('announcement'), doc='Gets the current announceent.'),
+            SubCommand(
+                Opt('announcement'), doc='Gets the current announceent set by the bot owners.'),
             SubCommand(
                 Opt('invite'),
                 Opt('details', optional=True,
@@ -229,7 +231,7 @@ def get_commands():
 
 
 @plugins.db_template_spawner
-def get_templates():
+def get_templates(bot):
     """Gets the timer database template."""
     return {
         'schedule': ("time          bigint NOT NULL,"
@@ -243,8 +245,7 @@ def get_templates():
 
 @plugins.on_load
 def setup_schedule_table(bot):
-    if not data.db_exists(bot, 'schedule'):  # Create schedule table
-        data.db_create_table(bot, 'schedule', template='schedule')
+    data.db_create_table(bot, 'schedule', template='schedule')
     if not data.db_exists(bot, 'IX_schedule_time'):  # Create time index
         data.db_execute(bot, 'CREATE INDEX IX_schedule_time ON schedule (time ASC)')
 
@@ -281,7 +282,7 @@ async def base_wrapper(bot, context):
 
     # TODO: Revise
     elif subcommand.index == 3:  # Announcement
-        announcement = data.get(bot, 'base', 'announcement')
+        announcement = data.get(bot, 'core', 'announcement')
         if not announcement:
             response.content = "No announcement right now!"
         else:
@@ -367,9 +368,9 @@ async def mod_wrapper(bot, context):
 
     if subcommand.index == 0:  # info
         guild_data = data.get(
-            bot, 'base', None, guild_id=message.guild.id, default={})
+            bot, 'core', None, guild_id=message.guild.id, default={})
         guild_volatile_data = data.get(
-            bot, 'base', None, guild_id=message.guild.id, default={}, volatile=True)
+            bot, 'core', None, guild_id=message.guild.id, default={}, volatile=True)
         disabled_commands = guild_data.get('disabled', [])
         display_list = []
         for disabled_command in disabled_commands:
@@ -418,7 +419,7 @@ async def mod_wrapper(bot, context):
         command = bot.commands[guess[0]]
         if command.category == 'core':
             raise CBException("The core commands cannot be disabled.")
-        pass_in = (bot, 'base', 'disabled', guess)
+        pass_in = (bot, 'core', 'disabled', guess)
         pass_in_keywords = {'guild_id': message.guild.id}
         disabled_commands = data.get(
             *pass_in[:-1], **pass_in_keywords, default=[])
@@ -434,12 +435,11 @@ async def mod_wrapper(bot, context):
         mod_action = response
 
     elif subcommand.index in (2, 3):  # Block or unblock
-        user = data.get_member(bot, arguments[0], message.guild)
+        user = arguments[0]
         block = subcommand.index == 2
         mod_action = 'Blocked {}' if block else 'Unblocked {}'
         mod_action = mod_action.format('{0} ({0.id})'.format(user))
-        blocked = data.is_blocked(
-            bot, message.guild, user.id, strict=True)
+        blocked = data.is_blocked(bot, message.guild, user.id, strict=True)
         mod = data.is_mod(bot, message.guild, user.id)
         if mod:
             raise CBException("Cannot block or unblock a moderator.")
@@ -447,22 +447,17 @@ async def mod_wrapper(bot, context):
             if blocked:
                 raise CBException("User is already blocked.")
             else:
-                data.list_data_append(
-                    bot, 'base', 'blocked', user.id,
-                    guild_id=message.guild.id)
+                data.list_data_append(bot, 'core', 'blocked', user.id, guild_id=message.guild.id)
                 response = "User is now blocked."
         else:
             if not blocked:
                 raise CBException("User is already unblocked.")
             else:
-                data.list_data_remove(
-                    bot, 'base', 'blocked', user.id,
-                    guild_id=message.guild.id)
+                data.list_data_remove(bot, 'core', 'blocked', user.id, guild_id=message.guild.id)
                 response = "User is now unblocked."
 
     elif subcommand.index == 4:  # Clear
-        response = (
-            '\u200b' + '\n'*80 + "The chat was pushed up by a bot moderator.")
+        response = '\u200b' + '\n'*80 + "The chat was pushed up by a bot moderator."
 
     elif subcommand.index in (5, 6):  # Mute or unmute
         guild_id = message.guild.id
@@ -472,14 +467,14 @@ async def mod_wrapper(bot, context):
         if arguments[0]:
             channel = arguments[0]
             muted = channel.id in data.get(
-                bot, 'base', 'muted_channels', guild_id=guild_id, default=[])
+                bot, 'core', 'muted_channels', guild_id=guild_id, default=[])
             mod_action = mod_action.format(channel.name)
             if mute:
                 if muted:
                     raise CBException("Channel is already muted.")
                 else:
                     data.list_data_append(
-                        bot, 'base', 'muted_channels', channel.id, guild_id=guild_id)
+                        bot, 'core', 'muted_channels', channel.id, guild_id=guild_id)
                     if isinstance(channel, discord.VoiceChannel):  # disconnect
                         await utilities.leave_and_stop(bot, message.guild)
                     response = "Channel muted."
@@ -488,24 +483,24 @@ async def mod_wrapper(bot, context):
                     raise CBException("Channel is already unmuted.")
                 else:
                     data.list_data_remove(
-                        bot, 'base', 'muted_channels', channel.id, guild_id=guild_id)
+                        bot, 'core', 'muted_channels', channel.id, guild_id=guild_id)
                     response = "Channel unmuted."
 
         else:  # guild
             mod_action = mod_action.format('the server')
-            muted = data.get(bot, 'base', 'muted', guild_id=guild_id, default=False)
+            muted = data.get(bot, 'core', 'muted', guild_id=guild_id, default=False)
             if not (muted ^ mute):
                 response = "Server is already {}muted.".format('' if muted else 'un')
                 raise CBException(response)
             else:
-                data.add(bot, 'base', 'muted', mute, guild_id=guild_id)
+                data.add(bot, 'core', 'muted', mute, guild_id=guild_id)
                 response = "Server {}muted.".format('' if mute else 'un')
 
     elif subcommand.index == 7:  # Invoker
         if len(arguments[0]) > 10:
             raise CBException("The invoker can be a maximum of 10 characters long.")
         data.add(
-            bot, 'base', 'command_invoker',
+            bot, 'core', 'command_invoker',
             arguments[0] if arguments[0] else None,
             guild_id=message.guild.id)
         response = "Custom command invoker {}.".format('set' if arguments[0] else 'cleared')
@@ -518,8 +513,8 @@ async def mod_wrapper(bot, context):
 
     elif subcommand.index == 8:  # Mention
         current_mode = data.get(
-            bot, 'base', 'mention_mode', guild_id=message.guild.id, default=False)
-        data.add(bot, 'base', 'mention_mode', not current_mode, guild_id=message.guild.id)
+            bot, 'core', 'mention_mode', guild_id=message.guild.id, default=False)
+        data.add(bot, 'core', 'mention_mode', not current_mode, guild_id=message.guild.id)
         response = "Mention mode {}activated.".format('de' if current_mode else '')
         mod_action = "{}activated mention mode.".format('de' if current_mode else '').capitalize()
 
@@ -532,14 +527,14 @@ async def mod_wrapper(bot, context):
             except ValueError:
                 raise CBException(
                     "Cooldown value must be between 1 and {} inclusive.".format(bot.spam_limit))
-            data.add(bot, 'base', 'spam_limit', cooldown, guild_id=message.guild.id)
+            data.add(bot, 'core', 'spam_limit', cooldown, guild_id=message.guild.id)
             cooldown_message = (
                 "{} command(s) per {} seconds(s)".format(cooldown, bot.spam_timeout))
             response = "Cooldown set to {}.".format(cooldown_message)
             mod_action = "set the cooldown to {}.".format(cooldown_message)
         else:
             data.remove(
-                bot, 'base', 'spam_limit', guild_id=message.guild.id)
+                bot, 'core', 'spam_limit', guild_id=message.guild.id)
             cooldown_message = (
                 "{} command(s) per {} seconds(s)".format(bot.spam_limit, bot.spam_timeout))
             response = "Cooldown reset to the default {}.".format(cooldown_message)
@@ -562,7 +557,7 @@ async def mod_wrapper(bot, context):
 
     # Send notification if configured
     send_notifications = data.get(
-        bot, 'base', 'notifications', guild_id=message.guild.id, default=True)
+        bot, 'core', 'notifications', guild_id=message.guild.id, default=True)
     if mod_action and send_notifications:
         if message.edited_at:
             timestamp = message.edited_at
@@ -584,22 +579,21 @@ async def owner_wrapper(bot, context):
     mod_action = ''
 
     send_notifications = data.get(
-        bot, 'base', 'notifications',
-        guild_id=message.guild.id, default=True)
+        bot, 'core', 'notifications', guild_id=message.guild.id, default=True)
 
     if subcommand.index == 0:  # Change moderator role
         role = arguments[0]
         if role:
             response = mod_action = 'Set the bot moderator role to {}.'.format(role)
-            data.add(bot, 'base', 'modrole', role.id, guild_id=message.guild.id)
-            data.add(bot, 'base', 'modrole', role, guild_id=message.guild.id, volatile=True)
+            data.add(bot, 'core', 'modrole', role.id, guild_id=message.guild.id)
+            data.add(bot, 'core', 'modrole', role, guild_id=message.guild.id, volatile=True)
         else:
             response = mod_action = 'Removed the bot moderator role.'
-            data.remove(bot, 'base', 'modrole', guild_id=message.guild.id)
-            data.remove(bot, 'base', 'modrole', guild_id=message.guild.id, volatile=True)
+            data.remove(bot, 'core', 'modrole', guild_id=message.guild.id)
+            data.remove(bot, 'core', 'modrole', guild_id=message.guild.id, volatile=True)
 
     elif subcommand.index == 1:  # Send feedback
-        if data.get(bot, 'base', 'feedbackdisabled', default=False):
+        if data.get(bot, 'core', 'feedbackdisabled', default=False):
             response = ("Feedback has been temporarily disabled, probably "
                         "due to some troll spammers.")
         else:
@@ -615,7 +609,7 @@ async def owner_wrapper(bot, context):
         response = ("Bot moderator activity notifications are now turned "
                     "{}").format("OFF." if send_notifications else "ON.")
         data.add(
-            bot, 'base', 'notifications', not send_notifications, guild_id=message.guild.id)
+            bot, 'core', 'notifications', not send_notifications, guild_id=message.guild.id)
 
     # Send notification if configured
     if mod_action and send_notifications:
@@ -792,6 +786,8 @@ async def update_menu(bot, context, response, result, timed_out):
                     response.selected.append(response.selection_index)
 
             else:  # Start update
+                if not response.selected:  # None selected
+                    return
                 response.stage = 2
                 update_list = [response.updates[it] for it in response.selected]
                 changed = await _update_plugins(bot, update_list, _progress_function)
@@ -868,36 +864,36 @@ async def botowner_wrapper(bot, context):
     elif subcommand.index == 5:  # Restore
         try:
             location = await utilities.download_url(
-                bot, message.attachments[0]['url'], extension='zip')
+                bot, message.attachments[0].url, extension='zip')
         except Exception as e:
             raise CBException("Failed to download the file.", e=e)
         utilities.restore_backup(bot, location)
         response.content = "Restored backup file."
 
     elif subcommand.index == 6:  # Blacklist
-        blacklist = data.get(bot, 'base', 'blacklist', default=[])
+        blacklist = data.get(bot, 'core', 'blacklist', default=[])
         if not arguments[0]:
             response.content = "Blacklisted entries: {}".format(blacklist)
         else:
             user_id = arguments[0]
             if user_id in blacklist:
-                data.list_data_remove(bot, 'base', 'blacklist', user_id)
+                data.list_data_remove(bot, 'core', 'blacklist', user_id)
                 response.content = "User removed from blacklist."
             else:
-                data.list_data_append(bot, 'base', 'blacklist', user_id)
+                data.list_data_append(bot, 'core', 'blacklist', user_id)
                 response.content = "User added to blacklist."
     elif subcommand.index == 7:  # Toggle feedback
-        status = data.get(bot, 'base', 'feedbackdisabled', default=False)
+        status = data.get(bot, 'core', 'feedbackdisabled', default=False)
         action = "enabled" if status else "disabled"
-        data.add(bot, 'base', 'feedbackdisabled', not status)
+        data.add(bot, 'core', 'feedbackdisabled', not status)
         response.content = "Feedback has been {}.".format(action)
     elif subcommand.index == 8:  # Announcement
         if arguments[0]:
             text = '{0}:\n{1}'.format(time.strftime('%c'), arguments[0])
-            data.add(bot, 'base', 'announcement', text)
+            data.add(bot, 'core', 'announcement', text)
             response.content = "Announcement set!"
         else:
-            data.add(bot, 'base', 'announcement', '')
+            data.add(bot, 'core', 'announcement', '')
             response.content = "Announcement cleared!"
     elif subcommand.index == 9:  # Update
         response.embed = discord.Embed(
@@ -1327,6 +1323,8 @@ def _setup_debug_environment(bot):
 async def bot_on_ready_boot(bot):
     """Sets up permissions and the debug environment."""
     _setup_debug_environment(bot)
+    if bot.user.id == DEV_BOT_ID:  # Set debugging mode only for the dev bot
+        logger.setLevel(logging.DEBUG)
     permissions = {
         'read_messages': "Standard.",
         'send_messages': "Standard.",
