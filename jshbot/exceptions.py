@@ -40,14 +40,19 @@ class BotException(Exception):
             colour=Colour(0xffcc4d))
 
         if e:
-            given_error = '`{}: {}`'.format(type(e).__name__, e)
+            if isinstance(e, BotException):
+                given_error = '{}'.format(e.error_details)
+                embed_fields = e.embed_fields
+            else:
+                given_error = '`{}: {}`'.format(type(e).__name__, e)
             self.error_message += '\nGiven error:\n{}'.format(given_error)
-            embed_fields.insert(0, ('Given error:', given_error))
+            embed_fields = [('Given error:', given_error)] + embed_fields
             if e.__traceback__:
                 self.traceback = traceback.format_tb(e.__traceback__)
             else:
                 self.traceback = traceback.format_exc()
 
+        self.embed_fields = embed_fields
         for name, value in embed_fields:
             self.embed.add_field(name=name, value=value, inline=False)
 
