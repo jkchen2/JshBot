@@ -68,7 +68,7 @@ def get_new_bot(client_type, path, debug):
 
         def __init__(self, path, debug):
             self.version = '0.4.0-rewrite'
-            self.date = 'June 25th, 2017'
+            self.date = 'July 3rd, 2017'
             self.time = int(time.time())
             self.readable_time = time.strftime('%c')
             self.path = path
@@ -138,8 +138,7 @@ def get_new_bot(client_type, path, debug):
                 guild_data = {}
                 invokers = self.command_invokers
             else:
-                guild_data = data.get(
-                    self, 'base', None, message.guild.id, default={})
+                guild_data = data.get(self, 'core', None, message.guild.id, default={})
                 invokers = [guild_data.get('command_invoker', None)]
                 if not invokers[0]:
                     invokers = self.command_invokers
@@ -185,15 +184,14 @@ def get_new_bot(client_type, path, debug):
                     return False
 
             # Respond to direct messages
-            author_id = message.author.id
-            is_owner = author_id in self.owners
+            author = message.author
+            is_owner = author.id in self.owners
             if isinstance(message.channel, PrivateChannel):
                 return [content, False, False, is_owner]
 
-            modrole = data.get(self, 'base', 'modrole', guild_id=message.guild.id, volatile=True)
-            is_mod = modrole in message.author.roles
-            is_mod = author_id in guild_data.get('moderators', [])
-            is_admin = author_id == message.guild.owner.id
+            modrole = data.get(self, 'core', 'modrole', guild_id=message.guild.id, volatile=True)
+            is_mod = modrole in author.roles or author.guild_permissions.administrator
+            is_admin = author == message.guild.owner
             result = [content, is_mod, is_admin, is_owner]
 
             # Owners/moderators override everything
@@ -204,7 +202,7 @@ def get_new_bot(client_type, path, debug):
             # Server/channel muted, or user is blocked
             if (guild_data.get('muted', False) or
                     (channel_id in guild_data.get('muted_channels', [])) or
-                    (author_id in guild_data.get('blocked', []))):
+                    (author.id in guild_data.get('blocked', []))):
                 return False
             else:
                 return result  # Clear to respond
@@ -236,7 +234,7 @@ def get_new_bot(client_type, path, debug):
                 return
 
             # Check that user is not spamming
-            author_id = str(message.author.id)
+            author_id = message.author.id
             direct = isinstance(message.channel, PrivateChannel)
             spam_value = self.spam_dictionary.get(author_id, 0)
             if elevation > 0 or direct:  # Moderators ignore custom limit
@@ -244,7 +242,7 @@ def get_new_bot(client_type, path, debug):
             else:
                 spam_limit = min(
                     self.spam_limit, data.get(
-                        self, 'base', 'spam_limit',
+                        self, 'core', 'spam_limit',
                         guild_id=message.guild.id, default=self.spam_limit))
             if spam_value >= spam_limit:
                 if spam_value == spam_limit:
@@ -271,6 +269,8 @@ def get_new_bot(client_type, path, debug):
                     plugins.broadcast_event(self, 'bot_on_command', context)
                     logger.info([subcommand, options, arguments])
                     response = await commands.execute(self, context)
+                    if response is None:
+                        response = Response()
                     if self.selfbot and response.content:
                         response.content = '\u200b' + response.content
             except Exception as e:  # General error
@@ -408,7 +408,7 @@ def get_new_bot(client_type, path, debug):
                                     future.cancel()
                             else:  # Can remove reactions
                                 result = await self.wait_for('reaction_add', **kwargs)
-                                if result[1].id != self.user.id:
+                                if result[1] != self.user:
                                     asyncio.ensure_future(
                                         message_reference.remove_reaction(*result))
                                 else:
@@ -479,7 +479,6 @@ def get_new_bot(client_type, path, debug):
             """Common error handler for sending responses."""
             send_function = edit.edit if edit else message.channel.send
             self.last_exception = error
-            await asyncio.sleep(1)
             if response.message:
                 try:
                     await response.message.clear_reactions()
@@ -511,20 +510,7 @@ def get_new_bot(client_type, path, debug):
                         pass
                     return
 
-            elif type(error) is discord.HTTPException and message and response:
-                plugins.broadcast_event(self, 'bot_on_discord_error', error, message)
-                self.last_exception = error
-                response_text = str(response)
-                if len(response_text) > 1998:
-                    message_reference = await utilities.send_text_as_file(
-                        message.channel, response_text, 'response',
-                        extra="The response is too long. Here is a text file of the contents.")
-                else:
-                    message_reference = await send_function(
-                        content="Huh, I couldn't deliver the message "
-                        "for some reason.\n{}".format(error), embed=None)
-
-            elif type(error) is discord.Forbidden:
+            elif isinstance(error, discord.Forbidden):
                 plugins.broadcast_event(self, 'bot_on_discord_error', error, message)
                 message_reference = None
                 try:
@@ -543,6 +529,20 @@ def get_new_bot(client_type, path, debug):
                     pass
 
             else:
+                if isinstance(error, discord.HTTPException) and len(str(response)) > 1998:
+                    plugins.broadcast_event(self, 'bot_on_discord_error', error, message)
+                    message_reference = await utilities.send_text_as_file(
+                        message.channel, str(response), 'response',
+                        extra="The response is too long. Here is a text file of the contents.")
+                else:
+                    insult = random.choice(exception_insults)
+                    error = '**`{0}:`**`{1}`'.format(type(error).__name__, error)
+                    embed = discord.Embed(
+                        title=':x: Internal error',
+                        description=insult, colour=discord.Colour(0xdd2e44))
+                    embed.add_field(name='Details:', value=error)
+                    embed.set_footer(text="The bot owners have been notified of this error.")
+                    message_reference = await send_function(content='', embed=embed)
                 self.last_traceback = traceback.format_exc()
                 plugins.broadcast_event(self, 'bot_on_general_error', error, message)
                 logger.error(self.last_traceback)
@@ -551,14 +551,6 @@ def get_new_bot(client_type, path, debug):
                 await utilities.notify_owners(
                     self, '```\n{0}\n{1}\n{2}\n{3}```'.format(
                         message.content, parsed_input, self.last_exception, self.last_traceback))
-                insult = random.choice(exception_insults)
-                error = '**`{0}:`**`{1}`'.format(type(error).__name__, error)
-                embed = discord.Embed(
-                    title=':x: Internal error',
-                    description=insult, colour=discord.Colour(0xdd2e44))
-                embed.add_field(name='Details:', value=error)
-                embed.set_footer(text="The bot owners have been notified of this error.")
-                message_reference = await send_function(content='', embed=embed)
 
             return edit if edit else message_reference
 
@@ -651,8 +643,7 @@ def get_new_bot(client_type, path, debug):
                 interval = 0
             while interval:
                 await asyncio.sleep(interval)
-                if self.spam_dictionary:
-                    self.spam_dictionary = {}
+                self.spam_dictionary.clear()
 
         async def save_loop(self):
             """Runs the loop that periodically saves data (minutes)."""
