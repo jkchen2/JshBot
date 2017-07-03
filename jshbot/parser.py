@@ -177,10 +177,12 @@ def match_subcommand(bot, command, parameters, message, match_closest=False):
             elif arg:
                 not_found_error = 'No value given for argument {}.'.format(arg.help_string)
 
-        if not not_found_error and subcommand.attaches:  # Check for message attachment
-            if not message.attachments and not subcommand.attaches.optional:
-                not_found_error = 'Missing attachment **__`{name}`__**'.format(
-                    name=subcommand.attaches.name)
+        if not not_found_error:  # Check for message attachment
+            if subcommand.attaches:
+                if not message.attachments and not subcommand.attaches.optional:
+                    not_found_error = 'Missing attachment **__`{name}`__**'.format(
+                        name=subcommand.attaches.name)
+                matches += 6
             elif message.attachments:  # No attachment argument, but attachment was provided
                 not_found_error = 'No attachment required, but one was given.'
 
@@ -190,8 +192,14 @@ def match_subcommand(bot, command, parameters, message, match_closest=False):
                 closest_index_matches = matches
                 closest_index_error = not_found_error
         else:  # Subcommand found. Convert and check
+            if subcommand.confidence_threshold is not None:  # Confidence threshold
+                if closest_index_matches >= subcommand.confidence_threshold:
+                    continue  # Skip valid match due to low confidence
             if match_closest:  # No additional processing
-                return subcommand
+                if matches <= 1 and matches < closest_index_matches:  # No confidence
+                    continue
+                else:
+                    return subcommand
             else:
 
                 for option_name, value in options.items():  # Check options
@@ -200,7 +208,7 @@ def match_subcommand(bot, command, parameters, message, match_closest=False):
                         options[option_name] = new_value
                 for index, pair in enumerate(zip(subcommand.args, arguments)):  # Check arguments
                     arg, value = pair
-                    if value:
+                    if value or arg.argtype in (ArgTypes.SINGLE, ArgTypes.SPLIT, ArgTypes.MERGED):
                         if arg.argtype not in (ArgTypes.SINGLE, ArgTypes.OPTIONAL):
                             new_values = arg.convert_and_check(bot, message, arguments[index:])
                             arguments = arguments[:index] + new_values
