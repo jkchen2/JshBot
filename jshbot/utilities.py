@@ -44,10 +44,13 @@ class BaseConverter():
 
 
 class MemberConverter(BaseConverter):
-    def __init__(self, server_only=True):
+    def __init__(self, server_only=True, live_check=None):
         self.server_only = server_only
+        self.live_check = live_check
         super().__init__()
     def __call__(self, bot, message, value, *a):
+        if self.live_check:
+            self.server_only = live_check(bot, message, value, *a)
         guild = message.guild if self.server_only else None
         try:
             return data.get_member(bot, value, guild=guild, strict=self.server_only)
@@ -60,15 +63,22 @@ class MemberConverter(BaseConverter):
             pre_format = "{} not found.".format(convert_type.title())
         self.error_reason = pre_format + ' Please use a mention.'
         assert False  # To trigger the conversion error
-    def get_convert_error(self, *args):
-        return self.error_reason
 
 
 class ChannelConverter(MemberConverter):
+    def __init__(self, server_only=True, live_check=None, constraint=None):
+        self.server_only = server_only
+        self.live_check = live_check
+        self.constraint = constraint
+        super().__init__()
     def __call__(self, bot, message, value, *a):
-        guild = message.guild if self.server_only else None
+        if self.live_check:
+            guild = live_check(bot, message, value, *a)
+        else:
+            guild = message.guild if self.server_only else None
         try:
-            return data.get_channel(bot, value, guild=guild, strict=self.server_only)
+            return data.get_channel(
+                bot, value, guild=guild, strict=self.server_only, constraint=self.constraint)
         except BotException as e:
             self.set_error_reason(e, 'channel')
 
@@ -82,6 +92,22 @@ class RoleConverter(MemberConverter):
             return data.get_role(bot, value, message.guild)
         except BotException as e:
             self.set_error_reason(e, 'role')
+
+
+class PercentageConverter(BaseConverter):
+    def __init__(self, accuracy=3):
+        self.accuracy = int(accuracy)
+        super().__init__()
+    def __call__(self, bot, message, value, *a):
+        cleaned = value.strip('%')
+        try:
+            converted = float(cleaned)
+        except:
+            self.error_reason = "Must be a percentage."
+        else:
+            if self.accuracy is not None:
+                converted = round(converted, self.accuracy)
+            return converted/100
 
 
 def add_bot_permissions(bot, plugin_name, **permissions):
@@ -108,26 +134,36 @@ def get_permission_bits(bot):
     return dummy.value
 
 
-async def download_url(bot, url, include_name=False, extension=None, filename=None):
+async def download_url(bot, url, include_name=False, extension=None, filename=None, use_fp=False):
     """Asynchronously downloads the given file to the temp folder.
 
     Returns the path of the downloaded file. If include_name is True, returns
     a tuple of the file location and the file name.
+
+    If use_fp, this will use a BytesIO object instead of downloading to a file.
     """
-    if not filename:
-        filename = get_cleaned_filename(url, extension=extension)
-    file_location = '{0}/temp/{1}'.format(bot.path, filename)
+    if use_fp:
+        fp = io.BytesIO()
+    else:
+        if not filename:
+            filename = get_cleaned_filename(url, extension=extension)
+        file_location = '{0}/temp/{1}'.format(bot.path, filename)
     try:
         response_code, downloaded_bytes = await get_url(
             bot, url, get_bytes=True, headers={'User-Agent': 'Mozilla/5.0'})
         if response_code != 200:
             raise CBException("Failed to download file.", response_code)
-        with open(file_location, 'wb') as download:
-            download.write(downloaded_bytes)
-        if include_name:
-            return (file_location, filename)
+        if use_fp:
+            fp.write(downloaded_bytes)
+            fp.seek(0)
+            return fp
         else:
-            return file_location
+            with open(file_location, 'wb') as download:
+                download.write(downloaded_bytes)
+            if include_name:
+                return (file_location, filename)
+            else:
+                return file_location
     except Exception as e:
         raise CBException("Failed to download the file.", e=e)
 
@@ -174,10 +210,7 @@ async def upload_to_discord(bot, fp, filename=None, rewind=True, close=False):
     channel_id = configurations.get(bot, 'core', 'upload_channel')
     if not channel_id:  # Check to see if a guild was already created
         channel_id = data.get(bot, 'core', 'upload_channel')
-    for instance in bot.all_instances:
-        channel = instance.get_channel(channel_id)
-        if channel:
-            break
+    channel = data.get_channel(bot, channel_id, safe=True)
 
     if channel is None:  # Create guild
         logger.debug("Creating guild for upload channel...")
@@ -194,21 +227,19 @@ async def upload_to_discord(bot, fp, filename=None, rewind=True, close=False):
         raise CBException("Failed to get upload channel.")
 
     try:
-        message = await bot.send_file(channel, fp, filename=filename)
-        upload_url = message.attachments[0]['url']
+        discord_file = discord.File(fp, filename=filename)
+        message = await channel.send(file=discord_file)
+        upload_url = message.attachments[0].url
     except Exception as e:
         raise CBException("Failed to upload file.", e=e)
 
-    if close:
-        try:
+    try:
+        if close:
             fp.close()
-        except:
-            pass
-    elif rewind:
-        try:
+        elif rewind:
             fp.seek(0)
-        except:
-            pass
+    except:
+        pass
 
     return upload_url
 
@@ -251,15 +282,12 @@ def get_cleaned_filename(name, cleaner=False, limit=200, extension=None):
 
 def get_player(bot, guild_id):
     """Gets the voice player on the given guild. None otherwise."""
-    return data.get(
-        bot, 'base', 'voice_player', guild_id=guild_id, volatile=True)
+    return data.get(bot, 'core', 'voice_player', guild_id=guild_id, volatile=True)
 
 
 def set_player(bot, guild_id, player):
     """Sets the voice player of the given guild."""
-    data.add(
-        bot, 'base', 'voice_player', player,
-        guild_id=guild_id, volatile=True)
+    data.add(bot, 'core', 'voice_player', player, guild_id=guild_id, volatile=True)
 
 
 # TODO: Convert muted channels into ints
@@ -273,7 +301,7 @@ async def join_and_ready(bot, voice_channel, is_mod=False, reconnect=False):
     """
     guild = voice_channel.guild
     muted = voice_channel.id in data.get(
-        bot, 'base', 'muted_channels', guild_id=guild.id, default=[])
+        bot, 'core', 'muted_channels', guild_id=guild.id, default=[])
     if voice_channel == guild.afk_channel:
         raise CBException("This is the AFK channel.")
     if muted and not is_mod:
@@ -419,7 +447,7 @@ def get_invoker(bot, guild=None):
     """
     if guild is not None:
         guild_data = data.get(
-            bot, 'base', None, guild_id=guild.id, default={})
+            bot, 'core', None, guild_id=guild.id, default={})
         if guild_data.get('mention_mode', False):
             invoker = '{} '.format(guild.me.display_name)
         else:
@@ -441,14 +469,14 @@ async def notify_owners(bot, message, user_id=None):
         logger.info("Notification:\n{}".format(message))
     else:
         if user_id:
-            blacklist = data.get(bot, 'base', 'blacklist', default=[])
+            blacklist = data.get(bot, 'core', 'blacklist', default=[])
             if user_id in blacklist:
                 await asyncio.sleep(0.5)
                 return
         for owner in bot.owners:
             member = data.get_member(bot, owner)
             if len(message) > 1998:
-                await send_text_as_file(bot, member, message, 'notification')
+                await send_text_as_file(member, message, 'notification')
             else:
                 await member.send(message)
 
@@ -461,7 +489,7 @@ def db_backup(bot, safe=True):
         host = 'db'
         port = 2345
         s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        s.settimeout(1)
+        s.settimeout(0.1)
         s.connect((host, port))
         s.send(bytes(command, 'ascii'))
         s.close()
@@ -497,15 +525,14 @@ def restore_backup(bot, backup_file):
         core.bot_data = {'global_users': {}, 'global_plugins': {}}
         core.volatile_data = {'global_users': {}, 'global_plugins': {}}
         shutil.unpack_archive(backup_file, '{}/data'.format(bot.path))
-        for instance in bot.all_instances:
-            data.check_all(instance)
-            data.load_data(instance)
+        data.check_all(bot)
+        data.load_data(bot)
     except Exception as e:
         raise CBException("Failed to extract backup.", e=e)
     logger.info("Finished data restore.")
 
 
-def get_timezone_offset(bot, guild_id=None, utc_dt=None, as_string=False):
+def get_timezone_offset(bot, guild_id=None, utc_dt=None, utc_seconds=None, as_string=False):
     if guild_id is None:
         offset = 0
     else:
@@ -526,6 +553,8 @@ def get_timezone_offset(bot, guild_id=None, utc_dt=None, as_string=False):
         result = offset
     if utc_dt:  # Convert UTC datetime object to "local" time
         return (result, utc_dt + datetime.timedelta(hours=offset))
+    if utc_seconds is not None:  # Convert UTC seconds to offset
+        return (result, utc_seconds + (3600 * offset))
     else:
         return result
 
