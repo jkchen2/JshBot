@@ -76,17 +76,20 @@ def load_plugin(bot, plugin_name):
     add_manual(bot, clean_name, plugin_name)
     # TODO: Add manuals
 
-    while command_spawner_functions:
-        function = command_spawner_functions.pop()
-        add_commands(bot, function(), module)
-    while db_template_functions:
-        function = db_template_functions.pop()
-        template = function()
-        for name, value in template.items():
-            data.db_add_template(bot, name, value)
-    while command_load_functions:
-        function = command_load_functions.pop()
-        function(bot)
+    try:
+        while command_spawner_functions:
+            function = command_spawner_functions.pop()
+            add_commands(bot, function(bot), module)
+        while db_template_functions:
+            function = db_template_functions.pop()
+            template = function(bot)
+            for name, value in template.items():
+                data.db_add_template(bot, name, value)
+        while command_load_functions:
+            function = command_load_functions.pop()
+            function(bot)
+    except Exception as e:
+        raise CBException("Failed to initialize external plugin.", plugin_name, e=e)
     logger.debug("Plugin {} loaded.".format(plugin_name))
 
 
@@ -113,10 +116,10 @@ def add_plugins(bot):
     add_manual(bot, 'core', 'core')
     while command_spawner_functions:
         function = command_spawner_functions.pop()
-        add_commands(bot, function(), base)
+        add_commands(bot, function(bot), base)
     while db_template_functions:
         function = db_template_functions.pop()
-        template = function()
+        template = function(bot)
         for name, value in template.items():
             data.db_add_template(bot, name, value)
     while command_load_functions:
@@ -131,7 +134,7 @@ def add_plugins(bot):
             continue
         try:
             load_plugin(bot, plugin_name)
-        except BotException as e:
+        except Exception as e:
             raise CBException(
                 "Failed to import external plugin on startup.", e=e, error_type=ErrorTypes.STARTUP)
 
