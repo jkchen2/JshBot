@@ -1,7 +1,9 @@
 import discord
 import os
+import io
 import json
 import psycopg2
+import psycopg2.extras
 
 from types import GeneratorType
 
@@ -167,7 +169,7 @@ def remove(bot, plugin_name, key, guild_id=None, channel_id=None,
         bot, guild_id, channel_id, user_id, volatile)
     if (not current or
             plugin_name not in current or
-            key not in current[plugin_name]):
+            (key and key not in current[plugin_name])):
         if safe:
             return default
         else:
@@ -255,24 +257,18 @@ def save_data(bot, force=False):
 
     Does not save volatile_data, though. Backups data if forced.
     """
-    if force:
-        utilities.make_backup(bot)
-
     if bot.data_changed or force:  # Only save if something changed or forced
         # Loop through keys
-        keys = []
         directory = bot.path + '/data/'
 
         if force:  # Save all data
             for key, value in bot.data.items():
-                keys.append(key)
                 with open(directory + key + '.json', 'w') as current_file:
                     json.dump(value, current_file, indent=4)
             # Check to see if any guild was removed
             files = os.listdir(directory)
             for check_file in files:
-                if (check_file.endswith('.json') and
-                        check_file[:-5] not in keys):
+                if check_file.endswith('.json') and check_file[:-5] not in bot.data:
                     logger.debug("Removing file {}".format(check_file))
                     os.remove(directory + check_file)
 
@@ -283,6 +279,9 @@ def save_data(bot, force=False):
                 logger.debug("Saved {}".format(directory + key + '.json'))
 
         bot.data_changed = []
+
+    if force:
+        utilities.make_backup(bot)
 
 
 def load_data(bot):
@@ -364,13 +363,12 @@ def is_mod(bot, guild, user_id, strict=False):
     The guild owner and bot owners count as moderators. If strict is True,
     this will only look in the moderators list and nothing above that.
     """
-    # moderators = get(bot, 'base', 'moderators', guild.id, default=[])
     if guild is None:  # Private channel
         return is_owner(bot, user_id)
     member = guild.get_member(user_id)
     if member is None:
         raise CBException('Member not found.')
-    modrole = get(bot, 'base', 'modrole', guild_id=guild.id, volatile=True)
+    modrole = get(bot, 'core', 'modrole', guild_id=guild.id, volatile=True)
     mod_check = bool(modrole in member.roles or member.guild_permissions.administrator)
     if strict:  # Only look for the user in the moderators list
         return mod_check
@@ -393,7 +391,7 @@ def is_owner(bot, user_id):
 
 def is_blocked(bot, guild, user_id, strict=False):
     """Checks that the user is blocked in the given guild."""
-    blocked_list = get(bot, 'base', 'blocked', guild_id=guild.id, default=[])
+    blocked_list = get(bot, 'core', 'blocked', guild_id=guild.id, default=[])
     if strict:
         return user_id in blocked_list
     else:
@@ -412,6 +410,8 @@ def get_member(bot, identity, guild=None, attribute=None, safe=False, strict=Fal
     if strict and guild is None:
         raise CBException("No guild specified for strict member search.")
 
+    if isinstance(identity, int):
+        used_id = True
     identity_string = str(identity)
     if identity_string.startswith('<@') and identity_string.endswith('>'):
         identity = identity_string.strip('<@!>')
@@ -461,12 +461,18 @@ def get_member(bot, identity, guild=None, attribute=None, safe=False, strict=Fal
             raise CBException("User '{}' not found.".format(identity))
 
 
-def get_channel(bot, identity, guild=None, attribute=None, safe=False, strict=False):
-    """Like get_member(), but gets the channel instead."""
+def get_channel(
+        bot, identity, guild=None, attribute=None, safe=False, strict=False, constraint=None):
+    """Like get_member(), but gets the channel instead.
+
+    If a constraint is given, this will filter the channel by the constraint using isinstance.
+    """
     if strict and guild is None:
         raise CBException("No guild specified for strict channel search.")
 
     # Convert
+    if isinstance(identity, int):
+        used_id = True
     identity_string = str(identity)
     if identity_string.startswith('<#') and identity_string.endswith('>'):
         identity = identity_string.strip('<#>')
@@ -483,7 +489,9 @@ def get_channel(bot, identity, guild=None, attribute=None, safe=False, strict=Fa
     for test in tests:
         channels = guild.channels if guild else bot.get_all_channels()
         result = discord.utils.get(channels, **test)
-        if result:  # Check for duplicates
+        if constraint and not isinstance(result, constraint):
+            continue
+        elif result:  # Check for duplicates
             if used_id:
                 break
             elif type(channels) is GeneratorType:
@@ -515,6 +523,8 @@ def get_channel(bot, identity, guild=None, attribute=None, safe=False, strict=Fa
 
 def get_role(bot, identity, guild, safe=False):
     """Gets a role given the identity and guild."""
+    if isinstance(identity, int):
+        used_id = True
     identity_string = str(identity)
     if identity_string.startswith('<@&') and identity_string.endswith('>'):
         identity = identity_string.strip('<@&>')
@@ -633,6 +643,35 @@ def db_connect(bot):
         raise CBException("Failed to connect to the database.", e=e, error_type=ErrorTypes.STARTUP)
 
 
+def db_copy(
+        bot, table='', table_suffix='', query='', input_args=[],
+        include_headers=True, safe=False, cursor_kwargs={}, pass_error=False):
+    string_file = io.StringIO()
+    if query:
+        sql = cursor.mogrify("COPY ({}) TO STDOUT WITH CSV".format(query), input_args)
+    else:
+        if table_suffix:
+            table_suffix = '_{}'.format(table_suffix)
+        sql = "COPY {} TO STDOUT WITH CSV".format(table + table_suffix)
+    if include_headers:
+        sql += " HEADER"
+
+    try:
+        cursor = bot.db_connection.cursor(**cursor_kwargs)
+        cursor.copy_expert(sql, string_file)
+    except Exception as e:
+        bot.extra = e
+        bot.db_connection.rollback()
+        if pass_error:
+            raise e
+        elif safe:
+            return
+        raise CBException("Failed to execute copy.", e=e)
+    bot.db_connection.commit()
+    string_file.seek(0)
+    return string_file
+
+
 def db_execute(bot, query, input_args=[], safe=False, cursor_kwargs={}, pass_error=False):
     """Executes the given query."""
     try:
@@ -649,11 +688,11 @@ def db_execute(bot, query, input_args=[], safe=False, cursor_kwargs={}, pass_err
     return cursor
 
 
-# TODO: Implement create
 def db_select(
         bot, select_arg=['*'], from_arg=[], where_arg='', additional='', limit=None,
-        input_args=[], table_suffix='', safe=True, pass_error=False, cursor_kwargs={}):
-    """Makes a selection query.
+        input_args=[], table_suffix='', safe=True, pass_error=False, cursor_kwargs={},
+        use_tuple_cursor=True):
+    """Makes a selection query. Returns a cursor.
 
     Keyword arguments:
     select_arg -- List of columns to select. (unsanitized)
@@ -662,7 +701,10 @@ def db_select(
     input_args -- Arguments passed into the query via old pyformat. (sanitized)
     table_suffix -- Suffix appended to each entry in from_arg. (unsanitized)
     safe -- Will not throw an exception.
+    use_tuple_cursor -- Changes the cursor factory to the namedtuple variant
     """
+    if use_tuple_cursor:
+        cursor_kwargs.update({'cursor_factory': psycopg2.extras.NamedTupleCursor})
     if not isinstance(select_arg, (list, tuple)):
         select_arg = [select_arg]
     query = "SELECT {} ".format(', '.join(select_arg))
@@ -683,19 +725,18 @@ def db_select(
         query += ' LIMIT {}'.format(limit)
 
     try:
-        return db_execute(bot, query, input_args=input_args, cursor_kwargs=cursor_kwargs)
-    except Exception as e:  # TODO: Check exception type
+        return db_execute(
+            bot, query, input_args=input_args, cursor_kwargs=cursor_kwargs, pass_error=pass_error)
+    except Exception as e:
         if safe:
             return
-        elif pass_error:
+        elif pass_error or isinstance(e, BotException):
             raise e
         else:
             raise CBException("Database selection failed.", e=e)
 
 
-def db_insert(
-        bot, table, specifiers=[], input_args=[], table_suffix='',
-        safe=True, create=False):
+def db_insert(bot, table, specifiers=[], input_args=[], table_suffix='', safe=True, create=False):
     """Inserts the input arguments into the given table."""
     if not isinstance(specifiers, (list, tuple)):
         specifiers = [specifiers]
