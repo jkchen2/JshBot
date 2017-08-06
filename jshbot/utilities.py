@@ -177,6 +177,34 @@ def delete_temporary_file(bot, filename, safe=True):
             raise CBException("File could not be deleted.", e=e)
 
 
+def get_temporary_file(bot, filename, safe=True):
+    """Gets the filename from the temp folder."""
+    test_path = '{0}/temp/{1}'.format(bot.path, filename)
+    if os.path.isfile(test_path):
+        return test_path
+    elif safe:
+        return None
+    else:
+        raise CBException("Temporary file not found.")
+
+
+def add_temporary_file(bot, bytes_io, filename, seek=True, overwrite=True, safe=False):
+    """Dumps the binary file into the temp folder."""
+    test_path = '{0}/temp/{1}'.format(bot.path, filename)
+    if os.path.isfile(test_path) and not overwrite and not safe:
+        raise CBException("Temporary file already exists.")
+    else:
+        try:
+            if seek and bytes_io.seekable():
+                bytes_io.seek(0)
+            write_type = 'w' if isinstance(bytes_io, io.StringIO) else 'wb'
+            with open(test_path, write_type) as temp_file:
+                temp_file.write(bytes_io.read())
+        except Exception as e:
+            if not safe:
+                raise CBException("Failed to write temporary file.", e=e)
+
+
 async def get_url(bot, urls, headers={}, get_bytes=False):
     """Uses aiohttp to asynchronously get a url response, or multiple."""
     read_method = 'read' if get_bytes else 'text'
@@ -191,7 +219,7 @@ async def get_url(bot, urls, headers={}, get_bytes=False):
                         response.status,
                         await getattr(response, read_method)())
 
-            if isinstance(urls, list) or isinstance(urls, tuple):
+            if isinstance(urls, (list, tuple)):
                 coroutines = [fetch(url, read_method) for url in urls]
                 result = await parallelize(coroutines)
             else:
@@ -247,8 +275,7 @@ async def upload_to_discord(bot, fp, filename=None, rewind=True, close=False):
 async def parallelize(coroutines, return_exceptions=False):
     """Uses asyncio.gather to "parallelize" the coroutines (not really)."""
     try:
-        return await asyncio.gather(
-            *coroutines, return_exceptions=return_exceptions)
+        return await asyncio.gather(*coroutines, return_exceptions=return_exceptions)
     except Exception as e:
         raise CBException("Failed to await coroutines.", e=e)
 
@@ -260,6 +287,7 @@ def future(function, *args, **kwargs):
     return loop.run_in_executor(None, function)
 
 
+# TODO: Deprecate in favor of clean_text
 def get_cleaned_filename(name, cleaner=False, limit=200, extension=None):
     """Cleans up the filename to a limited set of ASCII characters."""
     if extension:
@@ -278,6 +306,29 @@ def get_cleaned_filename(name, cleaner=False, limit=200, extension=None):
     if len(cleaned_list) > limit:  # Because Windows file limitations
         cleaned_list = cleaned_list[:limit]
     return ''.join(cleaned_list).lower() + extension
+
+
+def clean_text(text, level=2, limit=200, custom=None, lowercase=True):
+    """Cleans up the text to a limited set of ASCII characters.
+
+    level 0: Standard ASCII characters or alphanumeric unicode
+    level 1: Alphanumeric (unicode) or dash, underscore, space
+    level 2: Alphanumeric (unicode) or dash, underscore (default)
+    level 3: Alphanumeric (unicode) only
+    level 4: Alphanumeric (ASCII) only
+    """
+    if custom:
+        sifter = custom
+    else:
+        sifter = (
+            lambda x: x if (x.isalnum() or 32 <= ord(x) <= 126) else '',
+            lambda x: x if (x.isalnum() or ord(x) in (95, 45, 32)) else '',
+            lambda x: x if (x.isalnum() or ord(x) in (95, 45)) else '',
+            lambda x: x if x.isalnum() else '',
+            lambda x: x if (x.isalnum() and ord(x) < 127) else ''
+        )[level]
+    cleaned = ''.join(sifter(char) for char in text[:limit])
+    return cleaned.lower() if lowercase else cleaned
 
 
 def get_player(bot, guild_id):
@@ -405,7 +456,7 @@ def get_formatted_message(message):
     else:
         edited = ''
     if message.attachments:
-        urls = [attachment['url'] for attachment in message.attachments]
+        urls = [attachment.url for attachment in message.attachments]
         attached = ' (attached {})'.format(urls)
     else:
         attached = ''
@@ -481,11 +532,20 @@ async def notify_owners(bot, message, user_id=None):
                 await member.send(message)
 
 
+# TODO: Add specific table dumping
 def db_backup(bot, safe=True):
     """Use the Docker setup to backup the database."""
+    if not bot.docker_mode:
+        return
     try:
         logger.debug("Attemping to connect to the database container...")
-        command = 'pg_dump -U postgres postgres > /external/data/db_dump.txt'
+        if bot.dump_exclusions:
+            exclusions = '-T "' + '" -T "'.join(bot.dump_exclusions) + '"'
+        else:
+            exclusions = ''
+        command = (
+            'pg_dump -U postgres -F t {} postgres > '
+            '/external/data/db_dump.tar'.format(exclusions))
         host = 'db'
         port = 2345
         s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
