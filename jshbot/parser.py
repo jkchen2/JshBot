@@ -54,7 +54,7 @@ def split_parameters(parameters, include_quotes=False, quote_list=False):
         return joined_split
 
 
-def match_subcommand(bot, command, parameters, message, match_closest=False):
+async def match_subcommand(bot, command, parameters, message, match_closest=False):
     """Matches the given parameters to a valid subcommand from the command.
     Returns a tuple of the subcommand, options, and arguments.
 
@@ -203,18 +203,20 @@ def match_subcommand(bot, command, parameters, message, match_closest=False):
             else:
 
                 for option_name, value in options.items():  # Check options
-                    new_value = subcommand.opts[option_name].convert_and_check(bot, message, value)
+                    current_opt = subcommand.opts[option_name]
+                    new_value = await current_opt.convert_and_check(bot, message, value)
                     if new_value is not None:
                         options[option_name] = new_value
                 for index, pair in enumerate(zip(subcommand.args, arguments)):  # Check arguments
                     arg, value = pair
                     if value or arg.argtype in (ArgTypes.SINGLE, ArgTypes.SPLIT, ArgTypes.MERGED):
                         if arg.argtype not in (ArgTypes.SINGLE, ArgTypes.OPTIONAL):
-                            new_values = arg.convert_and_check(bot, message, arguments[index:])
+                            new_values = await arg.convert_and_check(
+                                bot, message, arguments[index:])
                             arguments = arguments[:index] + new_values
                             break
                         else:
-                            new_value = arg.convert_and_check(bot, message, value)
+                            new_value = await arg.convert_and_check(bot, message, value)
                             arguments[index] = new_value
 
                 return subcommand, options, arguments
@@ -235,7 +237,7 @@ def match_subcommand(bot, command, parameters, message, match_closest=False):
         raise CBException(syntax_error, embed_fields=guess.help_embed_fields)
 
 
-def fill_shortcut(bot, shortcut, parameters, message):
+async def fill_shortcut(bot, shortcut, parameters, message):
     parameters = split_parameters(parameters, include_quotes=True)
     stripped_parameters = parameters[::2]
     arguments_dictionary = {}
@@ -275,12 +277,12 @@ def fill_shortcut(bot, shortcut, parameters, message):
         value = arguments_dictionary[arg.name]
         if value:
             logger.debug("Converting and checking 4")
-            new_value = arg.convert_and_check(bot, message, value)
+            new_value = await arg.convert_and_check(bot, message, value)
             arguments_dictionary[arg.name] = new_value
     return shortcut.replacement.format(**arguments_dictionary)
 
 
-def parse(bot, command, parameters, message):
+async def parse(bot, command, parameters, message):
     """Parses the parameters and returns a tuple.
 
     This matches the parameters to a subcommand.
@@ -290,17 +292,17 @@ def parse(bot, command, parameters, message):
 
     if isinstance(command, commands.Shortcut):  # Fill replacement string
         logger.debug("Filling shortcut...")
-        parameters = fill_shortcut(bot, command, parameters, message)
+        parameters = await fill_shortcut(bot, command, parameters, message)
         command = command.command  # command is actually a Shortcut. Not confusing at all
         logger.debug("Shortcut filled to: %s", parameters)
 
-    subcommand, options, arguments = match_subcommand(bot, command, parameters, message)
+    subcommand, options, arguments = await match_subcommand(bot, command, parameters, message)
 
     return (subcommand, options, arguments)
     #  return (command, subcommand.index, options, arguments, command.keywords)
 
 
-def guess_command(bot, text, message, safe=True, substitue_shortcuts=True):
+async def guess_command(bot, text, message, safe=True, substitue_shortcuts=True):
     """Guesses the closest command or subcommand."""
     if not text:
         if safe:
@@ -322,11 +324,11 @@ def guess_command(bot, text, message, safe=True, substitue_shortcuts=True):
             raise CBException("Invalid base.")
     if isinstance(command, commands.Shortcut) and substitue_shortcuts:
         try:
-            parameters = fill_shortcut(bot, command, parameters, message)
+            parameters = await fill_shortcut(bot, command, parameters, message)
             command = command.command
         except BotException:
             return command.command
     if not parameters or isinstance(command, commands.Shortcut):
         return command
     else:
-        return match_subcommand(bot, command, parameters, message, match_closest=True)
+        return await match_subcommand(bot, command, parameters, message, match_closest=True)
