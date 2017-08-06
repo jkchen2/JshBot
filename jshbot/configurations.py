@@ -41,3 +41,13 @@ def get(bot, plugin_name, key=None, extra=None, extension='yaml'):
         raise CBException("File {} not found.".format(filename))
     except Exception as e:
         raise CBException("Failed to read {} properly.".format(filename), e=e)
+
+
+def redact(bot, plugin_name, key):
+    """Overwrites the configuration entry to avoid accidentally leaking sensitive data."""
+    try:
+        config = bot.configurations[plugin_name]
+    except KeyError:
+        raise CBException(
+            "Plugin {} not found in the configurations dictionary.".format(plugin_name))
+    config[key] = '(redacted)'
