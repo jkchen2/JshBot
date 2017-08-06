@@ -52,7 +52,7 @@ exception_insults = [
 ]
 
 
-def get_new_bot(client_type, path, debug):
+def get_new_bot(client_type, path, debug, docker_mode):
 
     class Bot(client_type):
 
@@ -66,13 +66,14 @@ def get_new_bot(client_type, path, debug):
             ]
         )
 
-        def __init__(self, path, debug):
+        def __init__(self, path, debug, docker_mode):
             self.version = '0.4.0-rewrite'
-            self.date = 'July 3rd, 2017'
+            self.date = 'August 6th, 2017'
             self.time = int(time.time())
             self.readable_time = time.strftime('%c')
             self.path = path
             self.debug = debug
+            self.docker_mode = docker_mode
 
             logger.info("=== {0: ^40} ===".format("Starting up JshBot " + self.version))
             logger.info("=== {0: ^40} ===".format(self.readable_time))
@@ -92,6 +93,8 @@ def get_new_bot(client_type, path, debug):
             self.data = {'global_users': {}, 'global_plugins': {}}
             self.volatile_data = {'global_users': {}, 'global_plugins': {}}
             self.data_changed = []
+            self.tables_changed = []
+            self.dump_exclusions = []
             self.plugins = OrderedDict()
             self.manuals = OrderedDict()
             self.commands = {}
@@ -259,7 +262,7 @@ def get_new_bot(client_type, path, debug):
                 context = None
                 with message.channel.typing():
                     logger.debug(message.author.name + ': ' + message.content)
-                    subcommand, options, arguments = parser.parse(
+                    subcommand, options, arguments = await parser.parse(
                         self, command, parameters, message)
                     context = self.Context(
                         message, base, subcommand, options, arguments,
@@ -702,17 +705,19 @@ def get_new_bot(client_type, path, debug):
                 pass
             sys.exit()
 
-    return Bot(path, debug)
+    return Bot(path, debug, docker_mode)
 
 
 def start(start_file=None, debug=False):
     if start_file:
         path = os.path.split(os.path.realpath(start_file))[0]
         logger.debug("Setting directory to " + path)
+        docker_mode = False
     else:  # Use Docker setup
         path = '/external'
         logger.info("Bot running in Docker mode.")
         logger.debug("Using Docker setup path, " + path)
+        docker_mode = True
 
     try:
         config_file_location = path + '/config/core-config.yaml'
@@ -776,7 +781,7 @@ def start(start_file=None, debug=False):
             safe_exit()
 
     loop = asyncio.get_event_loop()
-    bot = get_new_bot(client_type, path, debug)
+    bot = get_new_bot(client_type, path, debug, docker_mode)
     start_task = bot.start(token, bot=not selfbot_mode)
     loop.set_exception_handler(exception_handler)
     try:

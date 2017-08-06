@@ -436,9 +436,9 @@ def get_member(bot, identity, guild=None, attribute=None, safe=False, strict=Fal
                 while duplicate:
                     duplicate = discord.utils.get(members, **test)
                     if duplicate and duplicate != result:
-                        raise CBException("Duplicate found; use a mention.")
+                        raise CBException("Duplicate user found; use a mention.")
             elif list(members).count(result) > 1:
-                raise CBException("Duplicate found; use a mention.")
+                raise CBException("Duplicate user found; use a mention.")
             break
 
     if result:
@@ -544,7 +544,7 @@ def get_role(bot, identity, guild, safe=False):
             if used_id:
                 break
             elif list(guild.roles).count(result) > 1:
-                raise CBException("Duplicate found; use a mention.")
+                raise CBException("Duplicate role found; use a mention.")
             break
     if result:
         return result
@@ -672,7 +672,8 @@ def db_copy(
     return string_file
 
 
-def db_execute(bot, query, input_args=[], safe=False, cursor_kwargs={}, pass_error=False):
+def db_execute(
+        bot, query, input_args=[], safe=False, cursor_kwargs={}, pass_error=False, mark=None):
     """Executes the given query."""
     try:
         cursor = bot.db_connection.cursor(**cursor_kwargs)
@@ -685,6 +686,8 @@ def db_execute(bot, query, input_args=[], safe=False, cursor_kwargs={}, pass_err
             return
         raise CBException("Failed to execute query.", e=e)
     bot.db_connection.commit()
+    if mark and mark not in bot.tables_changed:
+        bot.tables_changed.append(mark)
     return cursor
 
 
@@ -736,14 +739,16 @@ def db_select(
             raise CBException("Database selection failed.", e=e)
 
 
-def db_insert(bot, table, specifiers=[], input_args=[], table_suffix='', safe=True, create=False):
+def db_insert(
+        bot, table, specifiers=[], input_args=[], table_suffix='',
+        safe=True, create=False, mark=True):
     """Inserts the input arguments into the given table."""
     if not isinstance(specifiers, (list, tuple)):
         specifiers = [specifiers]
     if not isinstance(input_args, (list, tuple)):
         input_args = [input_args]
-    query = "INSERT INTO {} ".format(
-        table + ('_{}'.format(table_suffix) if table_suffix else ''))
+    full_table = table + ('_{}'.format(table_suffix) if table_suffix else '')
+    query = "INSERT INTO {} ".format(full_table)
     if specifiers:
         query += "({}) ".format(', '.join(specifiers))
     query += "VALUES ({})".format(', '.join('%s' for it in range(len(input_args))))
@@ -753,10 +758,11 @@ def db_insert(bot, table, specifiers=[], input_args=[], table_suffix='', safe=Tr
         stripped = str(e).split('\n')[0]
         if stripped.startswith('relation') and stripped.endswith('does not exist'):
             if create:
-                db_create_table(bot, table, table_suffix=table_suffix, template=create)
+                db_create_table(
+                    bot, table, table_suffix=table_suffix, template=create, mark=mark)
                 db_insert(
                     bot, table, specifiers=specifiers, input_args=input_args,
-                    table_suffix=table_suffix, safe=safe, create=False)
+                    table_suffix=table_suffix, safe=safe, create=False, mark=mark)
                 return
         if safe:
             return
@@ -767,23 +773,23 @@ def db_insert(bot, table, specifiers=[], input_args=[], table_suffix='', safe=Tr
         raise CBException("Failed to insert into database.", e=e)
 
 
-def db_update(bot, table, table_suffix='', set_arg='', where_arg='', input_args=[]):
+def db_update(bot, table, table_suffix='', set_arg='', where_arg='', input_args=[], mark=True):
     """Updates the given table, specified by SET and WHERE if given."""
-    if table_suffix:
-        table_suffix = '_{}'.format(table_suffix)
-    query = "UPDATE {} SET {}".format(table + table_suffix, set_arg)
+    full_table = table + ('_{}'.format(table_suffix) if table_suffix else '')
+    query = "UPDATE {} SET {}".format(full_table, set_arg)
     if where_arg:
         query += " WHERE {}".format(where_arg)
-    db_execute(bot, query, input_args=input_args)
+    db_execute(bot, query, input_args=input_args, mark=full_table if mark else None)
 
 
-def db_delete(bot, table, table_suffix='', where_arg='', input_args=[], safe=True):
+def db_delete(bot, table, table_suffix='', where_arg='', input_args=[], safe=True, mark=True):
     """Deletes an entry from the table """
-    if table_suffix:
-        table_suffix = '_{}'.format(table_suffix)
-    query = "DELETE FROM {} WHERE {}".format(table + table_suffix, where_arg)
+    full_table = table + ('_{}'.format(table_suffix) if table_suffix else '')
+    query = "DELETE FROM {} WHERE {}".format(full_table, where_arg)
     try:
-        return db_execute(bot, query, input_args=input_args, pass_error=True)
+        return db_execute(
+            bot, query, input_args=input_args, pass_error=True,
+            mark=full_table if mark else None)
     except Exception as e:
         if safe:
             return
@@ -793,7 +799,8 @@ def db_delete(bot, table, table_suffix='', where_arg='', input_args=[], safe=Tru
             raise CBException("Invalid delete syntax", e=e)
 
 
-def db_create_table(bot, table, table_suffix='', template=None, specification=''):
+def db_create_table(
+        bot, table, table_suffix='', template=None, specification='', mark=True):
     """Creates the table with the given template."""
     if specification:
         table_specification = specification
@@ -803,29 +810,39 @@ def db_create_table(bot, table, table_suffix='', template=None, specification=''
             raise CBException("No template specified for table creation.")
     if table_suffix:
         table_suffix = '_{}'.format(table_suffix)
-    query = "CREATE TABLE IF NOT EXISTS {} ({})".format(
-        table + table_suffix, table_specification)
-    db_execute(bot, query)
+    full_table = table + ('_{}'.format(table_suffix) if table_suffix else '')
+    query = "CREATE TABLE IF NOT EXISTS {} ({})".format(full_table, table_specification)
+    db_execute(bot, query, mark=full_table if mark else None)
 
 
-def db_drop_table(bot, table, table_suffix='', safe=False):
+def db_drop_table(bot, table, table_suffix='', safe=False, remove_backup=True):
     """Drops the specified table."""
-    if table_suffix:
-        table_suffix = '_{}'.format(table_suffix)
+    full_table = table + ('_{}'.format(table_suffix) if table_suffix else '')
     if_exists = 'IF EXISTS ' if safe else ''
-    query = "DROP TABLE {}{}".format(if_exists, table + table_suffix)
+    query = "DROP TABLE {}{}".format(if_exists, full_table)
     try:
         db_execute(bot, query, pass_error=True)
     except Exception as e:
-        if safe:
-            return
-        raise e
+        if not safe:
+            raise e
+    if remove_backup:
+        os.remove(bot.path + '/data/db/' + full_table)
 
 
-def db_exists(bot, entry):
+def db_exists(bot, entry, check_type=False):
     """Checks the existence of the given entry (table, index, etc.)"""
-    cursor = db_execute(bot, "SELECT to_regclass(%s)", input_args=[entry])
+    if check_type:
+        query = "SELECT True FROM pg_type WHERE typname=%s"
+    else:
+        query = "SELECT to_regclass(%s)"
+    cursor = db_execute(bot, query, input_args=[entry])
     return cursor.fetchone()[0]
+
+
+def db_dump_exclude(bot, table_name):
+    """Adds the given table name to the dump exclusion list."""
+    if table_name not in bot.dump_exclusions:
+        bot.dump_exclusions.append(table_name)
 
 
 # TODO: Potentially revise templates so that they are per-plugin
