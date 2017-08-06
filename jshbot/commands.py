@@ -1,4 +1,5 @@
 import json
+import inspect
 
 from enum import Enum
 from pprint import pformat
@@ -195,7 +196,7 @@ class SubCommand():
 
     def __repr__(self):
         if hasattr(self, 'clean_help_string'):
-            return "<'{}' SubCommand>".format(self.clean_help_string)
+            return "<SubCommand '{}'>".format(self.clean_help_string)
         else:
             return "<Uninitialized SubCommand {}>".format(id(self))
 
@@ -301,7 +302,7 @@ class Command():
             self.help_embed_fields.append(('Other information:', self.other))
 
     def __repr__(self):
-        return "<'{}' Command>".format(self.base)
+        return "<Command '{}'>".format(self.base)
 
     def __lt__(self, other):
         return self.base < other.base
@@ -384,16 +385,24 @@ class Opt():
         else:
             self.doc_string = self.clean_doc_string = None
 
-    def convert_and_check(self, bot, message, value):
+    async def convert_and_check(self, bot, message, value):
         if self.convert:
+            use_await = inspect.iscoroutinefunction(self.convert.__call__)
             try:
-                if isinstance(value, list):
+                if isinstance(value, list):  # for split arguments
                     new_values = []
-                    for entry in value:
-                        new_values.append(self.convert(bot, message, entry))
+                    if use_await:
+                        for entry in value:
+                            new_values.append(await self.convert(bot, message, entry))
+                    else:
+                        for entry in value:
+                            new_values.append(self.convert(bot, message, entry))
                     value = new_values
                 else:
-                    value = self.convert(bot, message, value)
+                    if use_await:
+                        value = await self.convert(bot, message, value)
+                    else:
+                        value = self.convert(bot, message, value)
             except Exception as e:
                 if hasattr(e, 'error_details'):  # BotException
                     if getattr(self.convert, 'pass_error', False):
@@ -407,12 +416,20 @@ class Opt():
                     'Parser', convert_error.format(b=bot, m=message, v=value),
                     embed_fields=self.subcommand.help_embed_fields)
         if self.check:
+            use_await = inspect.iscoroutinefunction(self.check.__call__)
             try:
                 if isinstance(value, list):
-                    for entry in value:
-                        assert self.check(bot, message, entry)
+                    if use_await:
+                        for entry in value:
+                            assert await self.check(bot, message, entry)
+                    else:
+                        for entry in value:
+                            assert self.check(bot, message, entry)
                 else:
-                    assert self.check(bot, message, value)
+                    if use_await:
+                        assert await self.check(bot, message, value)
+                    else:
+                        assert self.check(bot, message, value)
             except Exception as e:
                 if hasattr(e, 'error_details'):  # BotException
                     if getattr(self.check, 'pass_error', False):
@@ -716,7 +733,7 @@ async def execute(bot, context):
         disabled_commands = []
     else:
         disabled_commands = data.get(
-            bot, 'base', 'disabled', guild_id=context.guild.id, default=[])
+            bot, 'core', 'disabled', guild_id=context.guild.id, default=[])
 
     if subcommand.elevated_level > 0:
         if subcommand.elevated_level == 1 and elevation < 1:
