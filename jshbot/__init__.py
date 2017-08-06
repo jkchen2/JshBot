@@ -3,7 +3,7 @@ import logging
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
 handler = logging.StreamHandler()
-handler.setFormatter(logging.Formatter('[Bot] %(asctime)s %(levelname)s: %(message)s'))
+handler.setFormatter(logging.Formatter('[%(filename)s] %(asctime)s %(levelname)s: %(message)s'))
 handler.setLevel(logging.DEBUG)
 logger.addHandler(handler)
 logger.propagate = False
