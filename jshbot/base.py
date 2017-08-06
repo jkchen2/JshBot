@@ -22,7 +22,7 @@ from jshbot.commands import (
     Command, SubCommand, Shortcut, ArgTypes, Arg, Opt, Attachment,
     MessageTypes, Response)
 
-__version__ = '0.2.1'
+__version__ = '0.2.2'
 uses_configuration = False
 CBException = ConfiguredBotException('Base')
 global_dictionary = {}
@@ -83,10 +83,9 @@ def get_commands(bot):
             SubCommand(Opt('info'), doc='Gets server information'),
             SubCommand(
                 Opt('toggle'),
-                Arg('command', argtype=ArgTypes.MERGED,
-                    doc='The command to toggle. If a specific subcommand needs to be '
-                        'toggled, the index of the subcomand can be supplied after '
-                        'the base.'),
+                Arg('command', quotes_recommended=False),
+                Arg('specifier', argtype=ArgTypes.MERGED_OPTIONAL,
+                    doc='The index of the subcomand, or subcommand arguments.'),
                 doc='Enables or disables a command.'),
             SubCommand(
                 Opt('block'), Arg('user', argtype=ArgTypes.MERGED,
@@ -280,13 +279,15 @@ async def base_wrapper(bot, context):
         response.content = "The bot has been on since **{}**\n{}".format(
             bot.readable_time, utilities.get_time_string(uptime, text=True, full=True))
 
-    # TODO: Revise
     elif subcommand.index == 3:  # Announcement
         announcement = data.get(bot, 'core', 'announcement')
         if not announcement:
             response.content = "No announcement right now!"
         else:
-            response.content = announcement
+            response.embed = discord.Embed(
+                title=":mega: Announcement", description=announcement[0],
+                timestamp=datetime.datetime.utcfromtimestamp(announcement[1]),
+                colour=discord.Colour(0x55acee))
 
     elif subcommand.index == 4:  # Invite
         if bot.selfbot:
@@ -403,35 +404,44 @@ async def mod_wrapper(bot, context):
                 guild_data.get('mention_mode', False),
                 display_list, cooldown_message)
 
-    elif subcommand.index == 1:  # Toggle command  (TODO: Fix for rewrite)
-        try:  # Explicit index
-            split_arguments = arguments[0].split()
-            command = bot.commands[split_arguments[0]]
-            if isinstance(command, commands.Shortcut):
-                command = command.command
-            disable_pair = [command.base, int(split_arguments[1]) - 1]
-            assert -1 < guess[1] < len(command.blueprints)
-        except IndexError:  # No index
-            disable_pair = [command.base, -1]
-        except:  # Guess the help index
-            guess = parser.guess_index(bot, arguments[0], message, safe=False)
+    elif subcommand.index == 1:  # Toggle command
+        index_guess = -1  # All
+        guess_text = '{} '.format(arguments[0])
+        if arguments[1]:  # Given the index or subcommand
+            if arguments[1].isdigit():
+                index_guess = int(arguments[1]) - 1
+            else:
+                guess_text += arguments[1]
+            pass
+        guess = await parser.guess_command(bot, guess_text, message, safe=False)
+        if isinstance(guess, Command):  # No subcommand found
+            if not -1 <= index_guess < len(guess.subcommands):
+                raise CBException(
+                    "Invalid subcommand index. Must be between 1 and {} inclusive, "
+                    "or 0 to toggle all subcommands.".format(len(guess.subcommands)))
+        else:  # Subcommand
+            index_guess = guess.index
+            guess = guess.command
 
-        command = bot.commands[guess[0]]
-        if command.category == 'core':
+        # Display disabled command and potentially subcommand
+        if guess.category == 'core':
             raise CBException("The core commands cannot be disabled.")
-        pass_in = (bot, 'core', 'disabled', guess)
+        subcommand = guess.subcommands[index_guess] if index_guess != -1 else None
+        toggle = [guess.base, index_guess]
+        pass_in = (bot, 'core', 'disabled', toggle)
         pass_in_keywords = {'guild_id': message.guild.id}
-        disabled_commands = data.get(
-            *pass_in[:-1], **pass_in_keywords, default=[])
-        if guess in disabled_commands:
-            data.list_data_remove(*pass_in, **pass_in_keywords)
+        disabled_commands = data.get(*pass_in[:-1], **pass_in_keywords, default=[])
+        if toggle in disabled_commands:
+            function = data.list_data_remove
             response = "Enabled"
         else:
-            data.list_data_append(*pass_in, **pass_in_keywords)
+            function = data.list_data_append
             response = "Disabled"
-        response += " the `{0}` command {1}.".format(
-            guess[0], "and all associated subcommands"
-            if guess[1] == -1 else "(subcommand {})".format(guess[1] + 1))
+        function(*pass_in, **pass_in_keywords)
+        if index_guess == -1:
+            response += " all `{}` subcommands.".format(guess.base)
+        else:
+            response += " the \t{}\t subcommand.".format(subcommand.help_string)
         mod_action = response
 
     elif subcommand.index in (2, 3):  # Block or unblock
@@ -889,11 +899,10 @@ async def botowner_wrapper(bot, context):
         response.content = "Feedback has been {}.".format(action)
     elif subcommand.index == 8:  # Announcement
         if arguments[0]:
-            text = '{0}:\n{1}'.format(time.strftime('%c'), arguments[0])
-            data.add(bot, 'core', 'announcement', text)
+            data.add(bot, 'core', 'announcement', [arguments[0], int(time.time())])
             response.content = "Announcement set!"
         else:
-            data.add(bot, 'core', 'announcement', '')
+            data.remove(bot, 'core', 'announcement')
             response.content = "Announcement cleared!"
     elif subcommand.index == 9:  # Update
         response.embed = discord.Embed(
@@ -1083,7 +1092,6 @@ async def manual_menu(bot, context, response, result, timed_out):
             previous_entry = [None]*3
         response.current_state = previous_entry
         embed_details = plugins.get_manual(bot, *previous_entry)
-        assert embed_details  # TODO: Remove debug
 
     elif selection in (1, 2):  # Page navigation
         new_page = response.current_state[2] + (1 if selection == 2 else -1)
@@ -1138,7 +1146,6 @@ async def help_wrapper(bot, context):
         else:  # Load menu from scratch
             embed_details = plugins.get_manual(bot)
             state = [None]*3
-        assert embed_details  # TODO: Remove debug
         crumbs, text, page, total_pages = embed_details
         state[2] = page
         response.backtrack = []
@@ -1188,7 +1195,7 @@ async def help_wrapper(bot, context):
                     pass
             if guess is None:
                 text = arguments[0] + ' ' + arguments[1]
-                guess = parser.guess_command(
+                guess = await parser.guess_command(
                     bot, text, message, safe=False, substitue_shortcuts=False)
             for name, value in guess.help_embed_fields:
                 response.embed.add_field(name=name, value=value, inline=False)
