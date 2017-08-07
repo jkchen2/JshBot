@@ -151,7 +151,7 @@ def get_commands(bot):
     new_commands.append(Command(
         'botowner', subcommands=[
             SubCommand(Opt('halt'), doc='Shuts down the bot.'),
-            SubCommand(Opt('restart'), doc='Restarts the bot.'),
+            #SubCommand(Opt('restart'), doc='Restarts the bot.'),
             SubCommand(
                 Opt('reload'),
                 Arg('plugin', argtype=ArgTypes.SPLIT_OPTIONAL, additional='additional plugins'),
@@ -854,24 +854,21 @@ async def botowner_wrapper(bot, context):
     if subcommand.index == 0:  # Halt
         await message.channel.send("Going down...")
         bot.shutdown()
-    elif subcommand.index == 1:  # Restart
-        await message.channel.send("Restarting...")
-        bot.restart()
-    elif subcommand.index == 2:  # Reload
+    elif subcommand.index == 1:  # Reload
         response.content = "Reloading..."
         response.message_type = MessageTypes.ACTIVE
         response.extra_function = handle_active_message
         response.extra = ('reload', arguments)
-    elif subcommand.index == 3:  # IP
+    elif subcommand.index == 2:  # IP
         s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
         s.connect(('8.8.8.8', 80))  # Thanks Google
         ip = s.getsockname()[0]
         s.close()
         response.content = "Local IP: " + ip
-    elif subcommand.index == 4:  # Backup
+    elif subcommand.index == 3:  # Backup
         utilities.make_backup(bot)
         await bot.send_file(message.channel, '{}/temp/backup1.zip'.format(bot.path))
-    elif subcommand.index == 5:  # Restore
+    elif subcommand.index == 4:  # Restore
         try:
             location = await utilities.download_url(
                 bot, message.attachments[0].url, extension='zip')
@@ -880,7 +877,7 @@ async def botowner_wrapper(bot, context):
         utilities.restore_backup(bot, location)
         response.content = "Restored backup file."
 
-    elif subcommand.index == 6:  # Blacklist
+    elif subcommand.index == 5:  # Blacklist
         blacklist = data.get(bot, 'core', 'blacklist', default=[])
         if not arguments[0]:
             response.content = "Blacklisted entries: {}".format(blacklist)
@@ -892,19 +889,19 @@ async def botowner_wrapper(bot, context):
             else:
                 data.list_data_append(bot, 'core', 'blacklist', user_id)
                 response.content = "User added to blacklist."
-    elif subcommand.index == 7:  # Toggle feedback
+    elif subcommand.index == 6:  # Toggle feedback
         status = data.get(bot, 'core', 'feedbackdisabled', default=False)
         action = "enabled" if status else "disabled"
         data.add(bot, 'core', 'feedbackdisabled', not status)
         response.content = "Feedback has been {}.".format(action)
-    elif subcommand.index == 8:  # Announcement
+    elif subcommand.index == 7:  # Announcement
         if arguments[0]:
             data.add(bot, 'core', 'announcement', [arguments[0], int(time.time())])
             response.content = "Announcement set!"
         else:
             data.remove(bot, 'core', 'announcement')
             response.content = "Announcement cleared!"
-    elif subcommand.index == 9:  # Update
+    elif subcommand.index == 8:  # Update
         response.embed = discord.Embed(
             title=':arrow_up: Update', description='', colour=discord.Color(0x3b88c3))
         tooltip = ':regional_indicator_a: : Update core\n:regional_indicator_b: : Update plugins'
