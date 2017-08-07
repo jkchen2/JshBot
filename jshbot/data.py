@@ -836,8 +836,10 @@ def db_exists(bot, entry, check_type=False):
         query = "SELECT True FROM pg_type WHERE typname=%s"
     else:
         query = "SELECT to_regclass(%s)"
-    cursor = db_execute(bot, query, input_args=[entry])
-    return cursor.fetchone()[0]
+    result = db_execute(bot, query, input_args=[entry]).fetchone()
+    if isinstance(result, tuple):
+        result = result[0]
+    return result
 
 
 def db_dump_exclude(bot, table_name):
