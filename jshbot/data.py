@@ -729,7 +729,8 @@ def db_select(
 
     try:
         return db_execute(
-            bot, query, input_args=input_args, cursor_kwargs=cursor_kwargs, pass_error=pass_error)
+            bot, query, input_args=input_args, cursor_kwargs=cursor_kwargs,
+            pass_error=pass_error, safe=safe)
     except Exception as e:
         if safe:
             return
