@@ -151,7 +151,6 @@ def get_commands(bot):
     new_commands.append(Command(
         'botowner', subcommands=[
             SubCommand(Opt('halt'), doc='Shuts down the bot.'),
-            #SubCommand(Opt('restart'), doc='Restarts the bot.'),
             SubCommand(
                 Opt('reload'),
                 Arg('plugin', argtype=ArgTypes.SPLIT_OPTIONAL, additional='additional plugins'),
