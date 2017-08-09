@@ -414,8 +414,8 @@ def get_time_string(total_seconds, text=False, full=False):
     """Gets either digital-clock-like time or time in plain English."""
     total_seconds = int(total_seconds)
     values = [
-        ('weeks', int(total_seconds / 604800)),
-        ('days', int((total_seconds % 604800) / 86400)),
+        #('weeks', int(total_seconds / 604800)),  # Weeks are more confusing than days
+        ('days', int(total_seconds / 86400)),
         ('hours', int((total_seconds % 86400) / 3600)),
         ('minutes', int((total_seconds % 3600) / 60)),
         ('seconds', int(total_seconds % 60))
@@ -425,6 +425,8 @@ def get_time_string(total_seconds, text=False, full=False):
     if text:
         for scale, value in values:
             if value > 0:
+                if not full and len(result) == 1 and values[0][1] >= 7:
+                    break  # Lower resolution if there are several days already
                 result.append('{} {}{}'.format(
                     value, scale[:-1], '' if value == 1 else 's'))
                 if not full and len(result) > 1:
