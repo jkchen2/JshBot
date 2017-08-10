@@ -176,7 +176,7 @@ def get_commands(bot):
                 'reload', 'reload {arguments}',
                 Arg('arguments', argtype=ArgTypes.MERGED_OPTIONAL))],
         description='Commands for the bot owner(s).',
-        elevated_level=3, category='core', function=botowner_wrapper))
+        hidden=True, elevated_level=3, category='core', function=botowner_wrapper))
 
     new_commands.append(Command(
         'debug', subcommands=[
@@ -191,7 +191,7 @@ def get_commands(bot):
                 doc='Evaluates or executes the given code.')],
         description='Commands to help the bot owner debug stuff.',
         other='Be careful with these commands! They can break the bot.',
-        elevated_level=3, category='core', function=debug_wrapper))
+        hidden=True, elevated_level=3, category='core', function=debug_wrapper))
 
     new_commands.append(Command(
         'help', subcommands=[
