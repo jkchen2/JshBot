@@ -209,7 +209,8 @@ async def match_subcommand(bot, command, parameters, message, match_closest=Fals
                         options[option_name] = new_value
                 for index, pair in enumerate(zip(subcommand.args, arguments)):  # Check arguments
                     arg, value = pair
-                    if value or arg.argtype in (ArgTypes.SINGLE, ArgTypes.SPLIT, ArgTypes.MERGED):
+                    if (value is not None
+                            or arg.argtype in (ArgTypes.SINGLE, ArgTypes.SPLIT, ArgTypes.MERGED)):
                         if arg.argtype not in (ArgTypes.SINGLE, ArgTypes.OPTIONAL):
                             new_values = await arg.convert_and_check(
                                 bot, message, arguments[index:])
@@ -244,7 +245,7 @@ async def fill_shortcut(bot, shortcut, parameters, message):
     current_index = -1
     for current_index, current in enumerate(stripped_parameters):
         if current_index >= len(shortcut.args):
-            raise CBException('Too many arguments.', embed_fields=shortcut.help_embed_fields)
+            raise CBException("Too many arguments.", embed_fields=shortcut.help_embed_fields)
         else:
             arg = shortcut.args[current_index]
             if arg.argtype in (ArgTypes.SINGLE, ArgTypes.OPTIONAL):
@@ -262,24 +263,24 @@ async def fill_shortcut(bot, shortcut, parameters, message):
         if arg.argtype is ArgTypes.OPTIONAL:
             while (arg and arg.argtype is ArgTypes.OPTIONAL and
                     current_index < len(shortcut.args)):
-                arguments.append(arg.default)
+                arguments.append('' if arg.default is None else arg.default)
                 current_index += 1
                 try:
                     arg = shortcut.args[current_index]
                 except:
                     arg = None
         if arg and arg.argtype in (ArgTypes.SPLIT_OPTIONAL, ArgTypes.MERGED_OPTIONAL):
-            arguments_dictionary[arg.name] = arg.default
+            arguments_dictionary[arg.name] = '' if arg.default is None else arg.default
         elif arg:
-            raise CBException('Not enough arguments.', embed_fields=shortcut.help_embed_fields)
+            raise CBException("Not enough arguments.", embed_fields=shortcut.help_embed_fields)
     logger.debug("Finished checking for optional arguments. %s", arguments_dictionary)
     for arg in shortcut.args:
         value = arguments_dictionary[arg.name]
-        if value:
+        if value is not None:
             logger.debug("Converting and checking 4")
             new_value = await arg.convert_and_check(bot, message, value)
             arguments_dictionary[arg.name] = new_value
-    return shortcut.replacement.format(**arguments_dictionary)
+    return shortcut.replacement.format(**arguments_dictionary).strip()
 
 
 async def parse(bot, command, parameters, message):
@@ -294,7 +295,7 @@ async def parse(bot, command, parameters, message):
         logger.debug("Filling shortcut...")
         parameters = await fill_shortcut(bot, command, parameters, message)
         command = command.command  # command is actually a Shortcut. Not confusing at all
-        logger.debug("Shortcut filled to: %s", parameters)
+        logger.debug("Shortcut filled to: [%s]", parameters)
 
     subcommand, options, arguments = await match_subcommand(bot, command, parameters, message)
 

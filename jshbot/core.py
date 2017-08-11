@@ -68,7 +68,7 @@ def get_new_bot(client_type, path, debug, docker_mode):
 
         def __init__(self, path, debug, docker_mode):
             self.version = '0.4.0-rewrite'
-            self.date = 'August 6th, 2017'
+            self.date = 'August 11th, 2017'
             self.time = int(time.time())
             self.readable_time = time.strftime('%c')
             self.path = path

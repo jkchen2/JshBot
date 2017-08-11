@@ -197,7 +197,7 @@ def get_commands(bot):
         'help', subcommands=[
             SubCommand(
                 Opt('manual'), Opt('here', optional=True),
-                Arg('subject', argtype=ArgTypes.OPTIONAL),
+                Arg('subject', argtype=ArgTypes.OPTIONAL, default=''),
                 Arg('topic number', argtype=ArgTypes.OPTIONAL, convert=int, default=None,
                     check=lambda b, m, v, *a: v > 0, check_error='Must be a positive number.',
                     quotes_recommended=False),
@@ -212,7 +212,7 @@ def get_commands(bot):
             SubCommand(
                 Opt('here', optional=True),
                 Arg('base', argtype=ArgTypes.OPTIONAL, quotes_recommended=False),
-                Arg('topic', argtype=ArgTypes.MERGED_OPTIONAL,
+                Arg('topic', argtype=ArgTypes.MERGED_OPTIONAL, default='',
                     doc='Either the subcommand index, or standard subcommand syntax.'),
                 doc='Gets the specified help entry. If no base is specified, this '
                     'brings up the general help menu.')],
@@ -1062,8 +1062,9 @@ async def help_menu(bot, context, response, result, timed_out):
     embed_fields, page, total_pages = embed_details
     response.current_state[3] = page
     response.embed.clear_fields()
+    invoker = utilities.get_invoker(bot, guild=response.message.guild)
     for name, value in embed_fields:
-        response.embed.add_field(name=name, value=value, inline=False)
+        response.embed.add_field(name=name, value=value.format(invoker=invoker), inline=False)
     response.embed.add_field(
         value='Page [ {} / {} ]'.format(page+1, total_pages+1), name='\u200b', inline=False)
     await response.message.edit(embed=response.embed)
@@ -1193,8 +1194,10 @@ async def help_wrapper(bot, context):
                 text = arguments[0] + ' ' + arguments[1]
                 guess = await parser.guess_command(
                     bot, text, message, safe=False, substitue_shortcuts=False)
+            invoker = utilities.get_invoker(bot, guild=context.guild)
             for name, value in guess.help_embed_fields:
-                response.embed.add_field(name=name, value=value, inline=False)
+                response.embed.add_field(
+                    name=name, value=value.format(invoker=invoker), inline=False)
             help_here = True
         else:  # Help menu
             state = [None]*3 + [0]
@@ -1248,14 +1251,15 @@ async def handle_active_message(bot, context, response):
 
         # Preliminary check
         plugins_to_reload = []
-        if response.extra[1]:
+        if response.extra[1][0]:
             for plugin_name in response.extra[1]:
                 if plugin_name in bot.plugins:
                     plugins_to_reload.append(plugin_name)
                 else:
                     raise CBException("Invalid plugin.", plugin_name)
         else:
-            plugins_to_reload = bot.plugins.keys()
+            plugins_to_reload = list(bot.plugins.keys())
+            plugins_to_reload.remove('core')
 
         data.save_data(bot)  # Safety save
         logger.info("Reloading plugins and commands...")

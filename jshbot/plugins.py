@@ -74,7 +74,6 @@ def load_plugin(bot, plugin_name):
 
     add_configuration(bot, clean_name, plugin_name, module)
     add_manual(bot, clean_name, plugin_name)
-    # TODO: Add manuals
 
     try:
         while command_spawner_functions:

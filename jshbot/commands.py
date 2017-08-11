@@ -311,7 +311,7 @@ class Command():
 class Opt():
     def __init__(
             self, name, optional=False, attached=None, doc=None, quotes_recommended=True,
-            convert=None, check=None, convert_error=None, check_error=None, default='',
+            convert=None, check=None, convert_error=None, check_error=None, default=None,
             always_include=False, group=None):
         """
         Keyword arguments:
@@ -449,7 +449,7 @@ class Arg(Opt):
     def __init__(
             self, name, argtype=ArgTypes.SINGLE, additional=None, doc=None,
             convert=None, check=None, convert_error=None, check_error=None,
-            quotes_recommended=True, default='', group=None):
+            quotes_recommended=True, default=None, group=None):
         self.argtype = argtype
         self.additional = additional
         super().__init__(
