@@ -22,7 +22,7 @@ from jshbot.commands import (
     Command, SubCommand, Shortcut, ArgTypes, Arg, Opt, Attachment,
     MessageTypes, Response)
 
-__version__ = '0.2.2'
+__version__ = '0.2.3'
 uses_configuration = False
 CBException = ConfiguredBotException('Base')
 global_dictionary = {}
@@ -1229,7 +1229,7 @@ async def help_wrapper(bot, context):
 
 async def get_response(bot, context):
     if context.base == 'ping':
-        if context.arguments:
+        if context.arguments[0]:
             response = 'Pong!\n{}'.format(context.arguments[0])
         else:
             response = 'Pong!'
