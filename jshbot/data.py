@@ -809,8 +809,6 @@ def db_create_table(
         table_specification = bot.db_templates.get(template)
         if not table_specification:
             raise CBException("No template specified for table creation.")
-    if table_suffix:
-        table_suffix = '_{}'.format(table_suffix)
     full_table = table + ('_{}'.format(table_suffix) if table_suffix else '')
     query = "CREATE TABLE IF NOT EXISTS {} ({})".format(full_table, table_specification)
     db_execute(bot, query, mark=full_table if mark else None)
