@@ -69,10 +69,9 @@
         See the next page for more examples.
         
       - |
-        Example: **`tag`**`​　​`**`create ​`__`"tag name"`__**`​　​`_`sound`_`​　​`__**`tag contents`**__
+        Example: **`tag`**`​　​`**`create`**`​　​`_`sound`_`​　​`**__`"tag name"`__**`​　​`__**`tag contents`**__
         Note: Command simplified for this example
-        Note: __**`"tag name"`**__ is attached to **`create`**
-        Sample: `{invoker}tag create ok sound https://youtu.be/oYtldnVOHc0`
+        Sample: `{invoker}tag create sound ok https://youtu.be/oYtldnVOHc0`
         
         Example: **`wolfram`**`​　​`_`text`_`​　​`_`results ​`__`number`___`​　​`__**`query`**__
         Note: If you include the option _`results`_, you must also include its attached parameter ___`number`___
@@ -91,7 +90,7 @@
         These commands use an uploaded attachment file. To call these commands, drag a file into Discord. In the "Add a comment" field, write the command.
         
         Example: **`tag`**`​　​`**`import`**`​　​`**`[Attachment: `__`tag database`__`]`**
-        In order to call this command, you would first drag the tag database file into discord, then under "Add a comment" field, write `{invoker}tag import`
+        In order to call this command, you would first drag the tag database file into Discord, then under the "Add a comment" field, type `{invoker}tag import`
         
       - |
         Tip: Sometimes, the argument you want is also the name of an option. To ensure that the bot interprets your input as an argument, wrap it around in quotes.
