@@ -19,7 +19,7 @@ class BotException(Exception):
     def __init__(
             self, error_subject, error_details, *args, e=None,
             error_type=ErrorTypes.RECOVERABLE, edit_pair=None, autodelete=0,
-            use_embed=True, embed_fields=[], serious=False):
+            use_embed=True, embed_fields=[], embed_format={}, serious=False):
         self.error_type = error_type
         self.error_subject = str(error_subject)
         self.error_details = str(error_details)
@@ -54,7 +54,7 @@ class BotException(Exception):
 
         self.embed_fields = embed_fields
         for name, value in embed_fields:
-            self.embed.add_field(name=name, value=value, inline=False)
+            self.embed.add_field(name=name, value=value.format(**embed_format), inline=False)
 
         logger.error(self.error_message)
 

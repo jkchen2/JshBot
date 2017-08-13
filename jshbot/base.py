@@ -198,10 +198,10 @@ def get_commands(bot):
             SubCommand(
                 Opt('manual'), Opt('here', optional=True),
                 Arg('subject', argtype=ArgTypes.OPTIONAL, default=''),
-                Arg('topic number', argtype=ArgTypes.OPTIONAL, convert=int, default=None,
+                Arg('topic number', argtype=ArgTypes.OPTIONAL, convert=int,
                     check=lambda b, m, v, *a: v > 0, check_error='Must be a positive number.',
                     quotes_recommended=False),
-                Arg('page number', argtype=ArgTypes.OPTIONAL, convert=int, default=None,
+                Arg('page number', argtype=ArgTypes.OPTIONAL, convert=int,
                     check=lambda b, m, v, *a: v > 0, check_error='Must be a positive number.',
                     quotes_recommended=False),
                 doc='Gets the specified manual. If no subject is specified, this '

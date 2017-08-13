@@ -332,7 +332,7 @@ class Opt():
         self.doc = doc
         self.quotes_recommended = quotes_recommended
         self.default = default
-        self.always_include = always_include
+        self.always_include = always_include if always_include else default is not None
         self.group = group
         self.subcommand = None  # Set by Subcommand in init
 

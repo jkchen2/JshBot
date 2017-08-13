@@ -1,6 +1,6 @@
 import re
 
-from jshbot import commands, logger
+from jshbot import commands, utilities, logger
 from jshbot.commands import ArgTypes
 from jshbot.exceptions import ConfiguredBotException
 
@@ -76,7 +76,7 @@ async def match_subcommand(bot, command, parameters, message, match_closest=Fals
         last_opt_index = -1
         arg_index = -1
         used_opts = []
-        exhausted_opts = False
+        exhausted_opts = len(subcommand.opts) == 0
         not_found_error = None
 
         while current_index < len(stripped_parameters):
@@ -123,6 +123,9 @@ async def match_subcommand(bot, command, parameters, message, match_closest=Fals
                     for opt in remaining_opts:
                         if opt.optional:
                             matches += 1
+                            if opt.always_include:
+                                logger.debug("Including this option! [%s] with value [%s]", opt.name, opt.default)
+                                options[opt.name] = opt.default
                         else:  # Not optional. Unfit subcommand
                             not_found_error = 'Option {} is required.'.format(opt.name_string)
                             break
@@ -155,6 +158,7 @@ async def match_subcommand(bot, command, parameters, message, match_closest=Fals
                 if opt.optional:
                     matches += 1
                     if opt.always_include:
+                        logger.debug("Including this option! [%s] with value [%s]", opt.name, opt.default)
                         options[opt.name] = opt.default
                 else:  # Not optional. Unfit subcommand
                     not_found_error = 'Option {} is required.'.format(opt.name_string)
@@ -235,7 +239,9 @@ async def match_subcommand(bot, command, parameters, message, match_closest=Fals
         else:
             guess = command
             syntax_error = 'Invalid syntax.'
-        raise CBException(syntax_error, embed_fields=guess.help_embed_fields)
+        invoker = utilities.get_invoker(bot, guild=message.guild)
+        raise CBException(
+            syntax_error, embed_fields=guess.help_embed_fields, embed_format={'invoker': invoker})
 
 
 async def fill_shortcut(bot, shortcut, parameters, message):
@@ -245,7 +251,10 @@ async def fill_shortcut(bot, shortcut, parameters, message):
     current_index = -1
     for current_index, current in enumerate(stripped_parameters):
         if current_index >= len(shortcut.args):
-            raise CBException("Too many arguments.", embed_fields=shortcut.help_embed_fields)
+            invoker = utilities.get_invoker(bot, guild=message.guild)
+            raise CBException(
+                "Too many arguments.", embed_fields=shortcut.help_embed_fields,
+                embed_format={'invoker': invoker})
         else:
             arg = shortcut.args[current_index]
             if arg.argtype in (ArgTypes.SINGLE, ArgTypes.OPTIONAL):
@@ -272,7 +281,10 @@ async def fill_shortcut(bot, shortcut, parameters, message):
         if arg and arg.argtype in (ArgTypes.SPLIT_OPTIONAL, ArgTypes.MERGED_OPTIONAL):
             arguments_dictionary[arg.name] = '' if arg.default is None else arg.default
         elif arg:
-            raise CBException("Not enough arguments.", embed_fields=shortcut.help_embed_fields)
+            invoker = utilities.get_invoker(bot, guild=message.guild)
+            raise CBException(
+                "Not enough arguments.", embed_fields=shortcut.help_embed_fields,
+                embed_format={'invoker': invoker})
     logger.debug("Finished checking for optional arguments. %s", arguments_dictionary)
     for arg in shortcut.args:
         value = arguments_dictionary[arg.name]
