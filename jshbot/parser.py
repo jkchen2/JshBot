@@ -124,7 +124,6 @@ async def match_subcommand(bot, command, parameters, message, match_closest=Fals
                         if opt.optional:
                             matches += 1
                             if opt.always_include:
-                                logger.debug("Including this option! [%s] with value [%s]", opt.name, opt.default)
                                 options[opt.name] = opt.default
                         else:  # Not optional. Unfit subcommand
                             not_found_error = 'Option {} is required.'.format(opt.name_string)
@@ -158,13 +157,13 @@ async def match_subcommand(bot, command, parameters, message, match_closest=Fals
                 if opt.optional:
                     matches += 1
                     if opt.always_include:
-                        logger.debug("Including this option! [%s] with value [%s]", opt.name, opt.default)
                         options[opt.name] = opt.default
                 else:  # Not optional. Unfit subcommand
                     not_found_error = 'Option {} is required.'.format(opt.name_string)
                     break
         if not not_found_error and arg_index < len(subcommand.args) - 1:  # Optional arguments
-            arg = subcommand.args[arg_index + 1]
+            arg_index += 1
+            arg = subcommand.args[arg_index]
             if arg.argtype is ArgTypes.OPTIONAL:
                 matches += 1
                 while (arg and arg.argtype is ArgTypes.OPTIONAL and

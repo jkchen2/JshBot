@@ -103,7 +103,8 @@ class PercentageConverter(BaseConverter):
         try:
             converted = float(cleaned)
         except:
-            self.error_reason = "Must be a percentage."
+            raise CBException("Must be a percentage.")
+            #self.error_reason = "Must be a percentage."
         else:
             if self.accuracy is not None:
                 converted = round(converted, self.accuracy)
@@ -341,8 +342,6 @@ def set_player(bot, guild_id, player):
     data.add(bot, 'core', 'voice_player', player, guild_id=guild_id, volatile=True)
 
 
-# TODO: Convert muted channels into ints
-# TODO: Check code for missing 'include_player' parameter
 async def join_and_ready(bot, voice_channel, is_mod=False, reconnect=False):
     """Joins the voice channel and stops any player if it exists.
 

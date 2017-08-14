@@ -107,7 +107,10 @@ def get_commands(bot):
                 doc='Allows the bot to respond to messages sent in the given '
                     'channel, or the entire server if the channel is not given.'),
             SubCommand(
-                Opt('invoker'), Arg('custom invoker', argtype=ArgTypes.MERGED_OPTIONAL),
+                Opt('invoker'),
+                Arg('custom invoker', argtype=ArgTypes.MERGED_OPTIONAL,
+                    check=lambda b, m, v, *a: len(v) <= 10,
+                    check_error='The invoker can be a maximum of 10 characters long.'),
                 doc='Sets or clears the custom invoker.'),
             SubCommand(
                 Opt('mention'), doc='Toggles mention mode. If enabled, the bot '
@@ -115,7 +118,7 @@ def get_commands(bot):
             SubCommand(
                 Opt('cooldown'),
                 Arg('number of commands', argtype=ArgTypes.MERGED_OPTIONAL,
-                    convert=int, check=lambda b, m, v, *a: 0 < v <= b.spam_limit,
+                    convert=int, check=lambda b, m, v, *a: 1 <= v <= b.spam_limit,
                     check_error='Must be between 1 and {b.spam_limit} inclusive.'),
                 doc='Limits the number of commands per default time interval to the '
                     'value specified. Bot moderators are not subject to this limit. If '
@@ -377,10 +380,8 @@ async def mod_wrapper(bot, context):
             display_list.append('{0} ({1})'.format(
                 disabled_command[0],
                 'all' if disabled_command[1] == -1 else disabled_command[1]+1))
-        cooldown_message = (
-            "{} command(s) per {} seconds(s)".format(
-                guild_data.get('spam_limit', bot.spam_limit),
-                bot.spam_timeout))
+        cooldown_message = "{} command(s) per {} seconds(s)".format(
+            guild_data.get('spam_limit', bot.spam_limit), bot.spam_timeout)
         response = (
             '```\n'
             'Information for server {0}\n'
@@ -506,8 +507,6 @@ async def mod_wrapper(bot, context):
                 response = "Server {}muted.".format('' if mute else 'un')
 
     elif subcommand.index == 7:  # Invoker
-        if len(arguments[0]) > 10:
-            raise CBException("The invoker can be a maximum of 10 characters long.")
         data.add(
             bot, 'core', 'command_invoker',
             arguments[0] if arguments[0] else None,
@@ -528,22 +527,15 @@ async def mod_wrapper(bot, context):
         mod_action = "{}activated mention mode.".format('de' if current_mode else '').capitalize()
 
     elif subcommand.index == 9:  # Cooldown
-        if arguments[0]:
-            try:
-                cooldown = int(arguments[0])
-                if not 1 <= cooldown <= bot.spam_limit:
-                    raise ValueError
-            except ValueError:
-                raise CBException(
-                    "Cooldown value must be between 1 and {} inclusive.".format(bot.spam_limit))
+        cooldown = arguments[0]
+        if cooldown:
             data.add(bot, 'core', 'spam_limit', cooldown, guild_id=message.guild.id)
             cooldown_message = (
                 "{} command(s) per {} seconds(s)".format(cooldown, bot.spam_timeout))
             response = "Cooldown set to {}.".format(cooldown_message)
             mod_action = "set the cooldown to {}.".format(cooldown_message)
         else:
-            data.remove(
-                bot, 'core', 'spam_limit', guild_id=message.guild.id)
+            data.remove(bot, 'core', 'spam_limit', guild_id=message.guild.id, safe=True)
             cooldown_message = (
                 "{} command(s) per {} seconds(s)".format(bot.spam_limit, bot.spam_timeout))
             response = "Cooldown reset to the default {}.".format(cooldown_message)
@@ -1013,8 +1005,8 @@ async def debug_wrapper(bot, context):
 
 
 async def help_menu(bot, context, response, result, timed_out):
+    invoker = utilities.get_invoker(bot, guild=None if response.destination else context.guild)
     if timed_out:
-        invoker = utilities.get_invoker(bot, guild=context.guild)
         response.embed.add_field(
             name=":information_source: The menu timed out",
             value="Type `{}help` to start again.".format(invoker), inline=False)
@@ -1062,7 +1054,6 @@ async def help_menu(bot, context, response, result, timed_out):
     embed_fields, page, total_pages = embed_details
     response.current_state[3] = page
     response.embed.clear_fields()
-    invoker = utilities.get_invoker(bot, guild=response.message.guild)
     for name, value in embed_fields:
         response.embed.add_field(name=name, value=value.format(invoker=invoker), inline=False)
     response.embed.add_field(
@@ -1071,8 +1062,9 @@ async def help_menu(bot, context, response, result, timed_out):
 
 
 async def manual_menu(bot, context, response, result, timed_out):
+    invoker_guild = None if response.destination else context.guild
+    invoker = utilities.get_invoker(bot, guild=invoker_guild)
     if timed_out:
-        invoker = utilities.get_invoker(bot, guild=context.guild)
         response.embed.add_field(
             name=":information_source: The menu timed out",
             value="Type `{}manual` to start again.".format(invoker), inline=False)
@@ -1088,12 +1080,12 @@ async def manual_menu(bot, context, response, result, timed_out):
         else:
             previous_entry = [None]*3
         response.current_state = previous_entry
-        embed_details = plugins.get_manual(bot, *previous_entry)
+        embed_details = plugins.get_manual(bot, *previous_entry, guild=invoker_guild)
 
     elif selection in (1, 2):  # Page navigation
         new_page = response.current_state[2] + (1 if selection == 2 else -1)
         test_state = response.current_state[:2] + [new_page]
-        embed_details = plugins.get_manual(bot, *test_state)
+        embed_details = plugins.get_manual(bot, *test_state, guild=invoker_guild)
         if not embed_details:  # Ignore page change failure
             return
 
@@ -1107,7 +1099,7 @@ async def manual_menu(bot, context, response, result, timed_out):
         page_compensation = response.current_state[2] * 5
         test_state = response.current_state[:2] + [0]
         test_state[selection_type_index] = page_compensation + selection - 3
-        embed_details = plugins.get_manual(bot, *test_state)
+        embed_details = plugins.get_manual(bot, *test_state, guild=invoker_guild)
         if embed_details:  # Successful selection
             response.backtrack.append(response.current_state)
             response.current_state = test_state
@@ -1127,6 +1119,8 @@ async def help_wrapper(bot, context):
     response = Response()
     is_owner = data.is_owner(bot, message.author.id)
     help_here = 'here' in options
+    invoker_guild = context.guild if (context.direct or help_here or bot.selfbot) else None
+    invoker = utilities.get_invoker(bot, guild=invoker_guild)
 
     if subcommand.index == 0:  # Manual
         if arguments[0]:  # Load from given state
@@ -1139,9 +1133,9 @@ async def help_wrapper(bot, context):
             if arguments[2] is not None:
                 arguments[2] -= 1
             state = [subject_test, arguments[1], arguments[2]]
-            embed_details = plugins.get_manual(bot, *state, safe=False)
+            embed_details = plugins.get_manual(bot, *state, safe=False, guild=invoker_guild)
         else:  # Load menu from scratch
-            embed_details = plugins.get_manual(bot)
+            embed_details = plugins.get_manual(bot, guild=invoker_guild)
             state = [None]*3
         crumbs, text, page, total_pages = embed_details
         state[2] = page
@@ -1194,14 +1188,12 @@ async def help_wrapper(bot, context):
                 text = arguments[0] + ' ' + arguments[1]
                 guess = await parser.guess_command(
                     bot, text, message, safe=False, substitue_shortcuts=False)
-            invoker = utilities.get_invoker(bot, guild=context.guild)
             for name, value in guess.help_embed_fields:
                 response.embed.add_field(
                     name=name, value=value.format(invoker=invoker), inline=False)
             help_here = True
         else:  # Help menu
             state = [None]*3 + [0]
-            invoker = utilities.get_invoker(bot, guild=context.guild)
             embed_fields, page, total_pages = plugins.get_help(
                 bot, *state, guild=message.guild, elevation=context.elevation)
             for name, value in embed_fields:

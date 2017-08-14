@@ -407,7 +407,8 @@ class Opt():
                 if hasattr(e, 'error_details'):  # BotException
                     if getattr(self.convert, 'pass_error', False):
                         raise e
-                    convert_error = e.error_details
+                    convert_error = 'Invalid value type for {name}: {error}'.format(
+                        name=self.help_string, error=e.error_details)
                 elif hasattr(self.convert, 'get_convert_error'):
                     convert_error = self.convert.get_convert_error(bot, message, value)
                 else:
@@ -434,7 +435,9 @@ class Opt():
                 if hasattr(e, 'error_details'):  # BotException
                     if getattr(self.check, 'pass_error', False):
                         raise e
-                    check_error = e.error_details
+                    check_error = 'Invalid value for {name}: {error}'.format(
+                        name=self.attached_string if self.attached else self.help_string,
+                        error=e.error_details)
                 elif hasattr(self.check, 'get_check_error'):
                     check_error = self.check.get_check_error(bot, message, value)
                 else:
