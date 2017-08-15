@@ -858,7 +858,8 @@ async def botowner_wrapper(bot, context):
         response.content = "Local IP: " + ip
     elif subcommand.index == 3:  # Backup
         utilities.make_backup(bot)
-        await bot.send_file(message.channel, '{}/temp/backup1.zip'.format(bot.path))
+        response.content = "Manual backup file:"
+        response.file = discord.File('{}/temp/backup1.zip'.format(bot.path))
     elif subcommand.index == 4:  # Restore
         try:
             location = await utilities.download_url(
