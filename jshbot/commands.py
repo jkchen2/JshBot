@@ -23,7 +23,7 @@ CBException = ConfiguredBotException('Commands')
 class Response():
     def __init__(
             self, content=None, tts=False, message_type=MessageTypes.NORMAL, extra=None,
-            embed=None, file=None, files=None, reason=None, delete_after=None, nonce=None,
+            embed=None, file=None, files=None, delete_after=None, nonce=None,
             extra_function=None, destination=None, **kwargs):
         '''
         Keyword arguments:
@@ -41,7 +41,6 @@ class Response():
         self.embed = embed
         self.file = file
         self.files = files
-        self.reason = reason
         self.delete_after = delete_after
         self.nonce = nonce
         self.extra_function = extra_function
@@ -70,7 +69,7 @@ class Response():
             keywords = ['content', 'embed']
         else:
             keywords = [
-                'content', 'tts', 'embed', 'file', 'files', 'reason', 'delete_after', 'nonce']
+                'content', 'tts', 'embed', 'file', 'files', 'delete_after', 'nonce']
         return dict((it, getattr(self, it)) for it in keywords)
 
     def is_empty(self):
