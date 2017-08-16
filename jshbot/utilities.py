@@ -343,11 +343,9 @@ def set_player(bot, guild_id, player):
 
 
 async def join_and_ready(bot, voice_channel, is_mod=False, reconnect=False):
-    """Joins the voice channel and stops any player if it exists.
+    """Joins the voice channel and stops any audio playing.
 
-    Returns the voice_client object from bot.join_voice_channel.
-    If include_player is True, this will return a tuple of both the voice
-    client and the player (None if not found).
+    Returns the voice_client object from voice_channel.connect()
     """
     guild = voice_channel.guild
     muted = voice_channel.id in data.get(
@@ -364,16 +362,24 @@ async def join_and_ready(bot, voice_channel, is_mod=False, reconnect=False):
         try:
             voice_client = await voice_channel.connect()
         except Exception as e:
+            try:
+                await leave_and_stop(bot, guild)
+            except:
+                pass
             raise CBException("Failed to join the voice channel.", e=e)
     else:
+        if voice_client.is_playing():
+            voice_client.stop()
         if voice_client.channel != voice_channel:
             try:
                 await voice_client.move_to(voice_channel)
             except Exception as e:
+                try:
+                    await leave_and_stop(bot, guild)
+                except:
+                    pass
                 raise CBException("Failed to move to the voice channel.", e=e)
 
-    if voice_client.is_playing():
-        voice_client.stop()
     return voice_client
 
 
