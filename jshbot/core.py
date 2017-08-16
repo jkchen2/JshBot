@@ -68,7 +68,7 @@ def get_new_bot(client_type, path, debug, docker_mode):
 
         def __init__(self, path, debug, docker_mode):
             self.version = '0.4.0-rewrite'
-            self.date = 'August 12th, 2017'
+            self.date = 'August 15th, 2017'
             self.time = int(time.time())
             self.readable_time = time.strftime('%c')
             self.path = path
@@ -334,10 +334,8 @@ def get_new_bot(client_type, path, debug, docker_mode):
                 permissions = None
             self.last_response = message_reference
 
-            if response.message_type is MessageTypes.NORMAL:
+            if response.message_type is MessageTypes.NORMAL and message_reference:
                 # Edited commands are handled in base.py
-                if message_reference is None:  # Forbidden exception
-                    return
                 wait_time = self.edit_timeout
                 if wait_time:
                     self.edit_dictionary[str(message.id)] = message_reference
@@ -369,9 +367,7 @@ def get_new_bot(client_type, path, debug, docker_mode):
                         e, message, context, response, edit=message_reference)
                     self.last_response = message_reference
 
-            elif response.message_type is MessageTypes.ACTIVE:
-                if message_reference is None:  # Forbidden exception
-                    return
+            elif response.message_type is MessageTypes.ACTIVE and message_reference:
                 try:
                     await response.extra_function(self, context, response)
                 except Exception as e:  # General error
@@ -379,7 +375,7 @@ def get_new_bot(client_type, path, debug, docker_mode):
                         e, message, context, response, edit=message_reference)
                     self.last_response = message_reference
 
-            elif response.message_type is MessageTypes.INTERACTIVE:
+            elif response.message_type is MessageTypes.INTERACTIVE and message_reference:
                 try:
                     buttons = response.extra['buttons']
                     kwargs = response.extra.get('kwargs', {})
