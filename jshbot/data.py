@@ -357,15 +357,72 @@ def clean_data(bot):
     save_data(bot, force=True)
 
 
-def is_mod(bot, guild, user_id, strict=False):
+def add_custom_role(bot, plugin_name, role, role_name):
+    """Adds the given role as a custom internal role used by the bot."""
+    roles = get(bot, plugin_name, 'roles', guild_id=role.guild.id, create=True, default={})
+    roles[role_name] = role.id
+
+
+def remove_custom_role(bot, plugin_name, guild, role_name, safe=True):
+    roles = get(bot, plugin_name, 'roles', guild_id=guild.id, default={})
+    try:
+        return roles.pop(role_name)
+    except KeyError:
+        if not safe:
+            raise CBException("Custom role not found.")
+
+
+def get_custom_role(bot, plugin_name, guild, role_name, safe=True):
+    """Gets the role associated with the guild and the role name."""
+    if not guild:
+        if safe:
+            return None
+        raise CBException("Cannot check custom roles in a direct message.")
+    roles = get(bot, plugin_name, 'roles', guild_id=guild.id, default={})
+    role_id = roles.get(role_name, None)
+    role = discord.utils.get(guild.roles, id=role_id)
+    if not role and not safe:
+        raise CBException("Custom role not found.")
+    return role
+
+
+def has_custom_role(
+        bot, plugin_name, role_name, guild=None, user_id=None, member=None, strict=False):
+    """Checks if the given user has the given role."""
+    if member:
+        user_id = member.id
+        guild = getattr(member, 'guild', None)
+    role = get_custom_role(bot, plugin_name, guild, role_name)
+
+    if member is None:
+        member = guild.get_member(user_id)
+    if member is None:
+        raise CBException('Member not found.')
+
+    member_roles = getattr(member, 'roles', [])
+    if strict:
+        return role in member_roles
+    else:
+        return role in member_roles or is_mod(bot, member=member)
+
+
+def is_mod(bot, guild=None, user_id=None, strict=False, member=None):
     """Returns true if the given user is a moderator of the given guild.
 
     The guild owner and bot owners count as moderators. If strict is True,
     this will only look in the moderators list and nothing above that.
+
+    Member is given as a discord.Member or discord.User. If given, will
+    bypass guild and user_id.
     """
+    if member:
+        user_id = member.id
+        guild = getattr(member, 'guild', None)
+
     if guild is None:  # Private channel
         return is_owner(bot, user_id)
-    member = guild.get_member(user_id)
+    if member is None:
+        member = guild.get_member(user_id)
     if member is None:
         raise CBException('Member not found.')
     modrole = get(bot, 'core', 'modrole', guild_id=guild.id, volatile=True)
@@ -814,7 +871,7 @@ def db_create_table(
     db_execute(bot, query, mark=full_table if mark else None)
 
 
-def db_drop_table(bot, table, table_suffix='', safe=False, remove_backup=True):
+def db_drop_table(bot, table, table_suffix='', safe=False):
     """Drops the specified table."""
     full_table = table + ('_{}'.format(table_suffix) if table_suffix else '')
     if_exists = 'IF EXISTS ' if safe else ''
@@ -824,16 +881,18 @@ def db_drop_table(bot, table, table_suffix='', safe=False, remove_backup=True):
     except Exception as e:
         if not safe:
             raise e
-    if remove_backup:
-        os.remove(bot.path + '/data/db/' + full_table)
 
 
-def db_exists(bot, entry, check_type=False):
+def db_exists(bot, entry='', table='', table_suffix='', check_type=False):
     """Checks the existence of the given entry (table, index, etc.)"""
     if check_type:
         query = "SELECT True FROM pg_type WHERE typname=%s"
     else:
         query = "SELECT to_regclass(%s)"
+    if not any((entry, table, table_suffix)):
+        raise CBException("No DB check name provided.")
+    if table:
+        entry = table + ('_{}'.format(table_suffix) if table_suffix else '')
     result = db_execute(bot, query, input_args=[entry]).fetchone()
     if isinstance(result, tuple):
         result = result[0]
