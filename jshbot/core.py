@@ -68,7 +68,7 @@ def get_new_bot(client_type, path, debug, docker_mode):
 
         def __init__(self, path, debug, docker_mode):
             self.version = '0.4.0-rewrite'
-            self.date = 'August 15th, 2017'
+            self.date = 'August 28th, 2017'
             self.time = int(time.time())
             self.readable_time = time.strftime('%c')
             self.path = path
@@ -359,7 +359,7 @@ def get_new_bot(client_type, path, debug, docker_mode):
                         if response.extra:
                             await asyncio.sleep(response.extra)
                         try:
-                            await message.delete(reason='Automatic')
+                            await message.delete()
                         except:  # Ignore permissions errors
                             pass
                 except Exception as e:
@@ -455,7 +455,7 @@ def get_new_bot(client_type, path, debug, docker_mode):
                         e, message, context, response, edit=message_reference)
                     self.last_response = message_reference
 
-            else:
+            elif message_reference:
                 logger.error("Unknown message type: {}".format(response.message_type))
 
             '''
@@ -491,20 +491,21 @@ def get_new_bot(client_type, path, debug, docker_mode):
                     content, embed = '', error.embed
                 else:
                     content, embed = str(error), None
-                if command_editable:
+                if command_editable and error.autodelete == 0:
                     if content:
                         content += '\n\n(Note: The issuing command can be edited)'
-                    embed.set_footer(
-                        text="\u200b\u200b\u200bThe issuing command can be edited",
-                        icon_url="http://i.imgur.com/fM9yGzI.png")
+                    elif embed:
+                        embed.set_footer(
+                            text="\u200b\u200b\u200bThe issuing command can be edited",
+                            icon_url="http://i.imgur.com/fM9yGzI.png")
                 message_reference = await send_function(content=content, embed=embed)
 
                 if error.autodelete > 0:
                     await asyncio.sleep(error.autodelete)
                     try:  # Avoid delete_messages for selfbot mode
                         message_reference = edit if edit else message_reference
-                        await self.delete_message(message_reference, reason='Automatic')
-                        await self.delete_message(message, reason='Automatic')
+                        await message_reference.delete()
+                        await message.delete()
                     except:
                         pass
                     return
@@ -555,17 +556,12 @@ def get_new_bot(client_type, path, debug, docker_mode):
 
         async def on_ready(self):
             if self.fresh_boot is None:
-                app_info = await self.application_info()
-                if app_info.owner.id not in self.owners:
-                    self.owners.append(app_info.owner.id)
                 if self.selfbot:  # Selfbot safety checks
-                    if len(self.owners) != 1:
-                        raise CBException(
-                            "There can be only one owner for "
-                            "a selfbot.", error_type=ErrorTypes.STARTUP)
-                    elif self.owners[0] != self.user.id:
-                        raise CBException(
-                            "Token does not match the owner.", error_type=ErrorTypes.STARTUP)
+                    self.owners = [self.user.id]
+                else:
+                    app_info = await self.application_info()
+                    if app_info.owner.id not in self.owners:
+                        self.owners.append(app_info.owner.id)
                 # Start scheduler
                 asyncio.ensure_future(utilities._start_scheduler(self))
                 # Make sure guild data is ready
@@ -724,7 +720,7 @@ def start(start_file=None, debug=False):
         logger.error("Could not determine token /or selfbot mode.")
         raise e
 
-    if selfbot_mode:
+    if selfbot_mode == True:  # Explicit, for YAML 1.2 vs 1.1
         client_type = discord.Client
         logger.debug("Using standard client (selfbot enabled).")
     else:
