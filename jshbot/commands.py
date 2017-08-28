@@ -80,7 +80,7 @@ class SubCommand():
     def __init__(
             self, *optargs, doc=None, confidence_threshold=None,
             function=None, elevated_level=None, allow_direct=None,
-            strict_syntax=None, no_selfbot=None, id=None):
+            strict_syntax=None, no_selfbot=None, pre_check=None, id=None):
         """
         Arguments:
         optargs -- Composed of a sequence of Opt and Arg objects.
@@ -109,12 +109,13 @@ class SubCommand():
         self.allow_direct = allow_direct
         self.strict_syntax = strict_syntax
         self.no_selfbot = no_selfbot
+        self.pre_check = pre_check
         self.help_embed_fields = []
         self.short_help_embed_fields = []
         self.keywords = []
         self.command = None  # Set by Command in init
         self.index = None  # Set by Command in init
-        self.id = id  # Used as an alternative to index
+        self.id = id  # Used as an internal alternative to index
         for index, optarg in enumerate(optargs):
             if isinstance(optarg, Arg):
                 self.args.append(optarg)
@@ -204,7 +205,7 @@ class Command():
     def __init__(
             self, base, subcommands=[], description='', other='',
             category='miscellaneous', shortcuts=[], function=None, hidden=False, elevated_level=0,
-            allow_direct=True, strict_syntax=False, no_selfbot=False):
+            allow_direct=True, strict_syntax=False, no_selfbot=False, pre_check=None):
         """
         Arguments:
         base -- The base command name. Acts as a secondary invoker of sorts.
@@ -223,6 +224,7 @@ class Command():
         allow_direct -- Allows the command to be used in direct messages.
         strict_syntax -- Parameter order is strictly maintained.
         no_selfbot -- Disallows the command to be used in selfbot mode.
+        pre_check -- A function called with (bot, context) params before the execution.
         """
         self.base = base.lower().strip()
         if not subcommands:
@@ -238,6 +240,7 @@ class Command():
         self.shortcuts = shortcuts
         self.strict_syntax = strict_syntax
         self.no_selfbot = no_selfbot
+        self.pre_check = pre_check
         self.help_embed_fields = []
         self.plugin = None  # Assigned later on
 
@@ -247,7 +250,8 @@ class Command():
         # Generate help string and keywords and
         #   replace subcommand properties with configured values
         replacements = [
-            'function', 'elevated_level', 'allow_direct', 'strict_syntax', 'no_selfbot']
+            'function', 'elevated_level', 'allow_direct',
+            'strict_syntax', 'no_selfbot', 'pre_check']
         self.help_lines = []
         self.clean_help_lines = []
         self.keywords = []
@@ -749,6 +753,9 @@ async def execute(bot, context):
         if (subcommand.command.base == disabled_base and
                 disabled_index in (-1, subcommand.index) and elevation < 1):
             raise CBException("This command is disabled on this server.")
+
+    if subcommand.pre_check:
+        await subcommand.pre_check(bot, context)
 
     if subcommand.function:
         given_function = subcommand.function
