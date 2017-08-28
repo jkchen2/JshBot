@@ -25,7 +25,7 @@ class BotException(Exception):
         self.error_details = str(error_details)
         self.error_other = args
         self.provided_exception = e
-        self.autodelete = autodelete
+        self.autodelete = 0 if autodelete is None else autodelete
         self.use_embed = use_embed
         self.traceback = ''
         other_details = '\n'.join([str(arg) for arg in args])
