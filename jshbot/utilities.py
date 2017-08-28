@@ -88,7 +88,6 @@ class RoleConverter(MemberConverter):
         super().__init__()
     def __call__(self, bot, message, value, *a):
         try:
-            bot.extra = (bot, message, value, *a)
             return data.get_role(bot, value, message.guild)
         except BotException as e:
             self.set_error_reason(e, 'role')
@@ -204,6 +203,17 @@ def add_temporary_file(bot, bytes_io, filename, seek=True, overwrite=True, safe=
         except Exception as e:
             if not safe:
                 raise CBException("Failed to write temporary file.", e=e)
+
+
+def get_plugin_file(bot, filename, safe=True):
+    """Gets the plugin file in the plugin_data directory."""
+    test_path = '{0}/plugins/plugin_data/{1}'.format(bot.path, filename)
+    if os.path.isfile(test_path):
+        return test_path
+    elif safe:
+        return None
+    else:
+        raise CBException("Plugin file '{}' not found.".format(filename))
 
 
 async def get_url(bot, urls, headers={}, get_bytes=False):
