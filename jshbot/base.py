@@ -549,11 +549,10 @@ async def mod_wrapper(bot, context):
             mod_action = "set the timezone: {}".format(response)
         else:  # Clear timezone
             data.remove(bot, 'core', 'timezone', guild_id=context.guild.id, safe=True)
-            guess = utilities.get_timezone(bot, context.guild.id)
+            guess = utilities.get_timezone_offset(bot, context.guild.id, as_string=True)
             response = (
                 "Timezone cleared. Time will be interpreted based off of voice "
-                "server location instead. Current guess: (UTC{})".format(
-                    ('+' + str(guess)) if guess >= 0 else guess))
+                "server location instead. Current guess: ({})".format(guess))
             mod_action = "cleared the custom timezone offset."
 
     # Send notification if configured
