@@ -188,6 +188,7 @@ def get_commands(bot):
                 Opt('plugin', attached='plugin name'),
                 doc='Gets basic information about the given plugin.'),
             SubCommand(Opt('latency'), doc='Calculates the ping time.'),
+            SubCommand(Opt('logs'), doc='Uploads logs to the debug channel.'),
             SubCommand(Opt('resetlocals'), doc='Resets the debug local variables.'),
             SubCommand(
                 Arg('python', argtype=ArgTypes.MERGED),
@@ -938,11 +939,15 @@ async def debug_wrapper(bot, context):
         response = "Testing latency time..."
         extra = ('ping', time.time() * 1000)
 
-    elif subcommand.index == 3:  # Reset local dictionary
+    elif subcommand.index == 3:  # Upload logs
+        await utilities.upload_logs(bot)
+        response = "Logs uploaded to the debug channel."
+
+    elif subcommand.index == 4:  # Reset local dictionary
         _setup_debug_environment(bot)
         response = "Debug environment local dictionary reset."
 
-    elif subcommand.index == 4:  # Repl thingy
+    elif subcommand.index == 5:  # Repl thingy
         global_dictionary['message'] = message
         global_dictionary['bot'] = bot
         global_dictionary['channel'] = message.channel

@@ -2,6 +2,9 @@
 #   Once enabled, you can right click on things (servers, channels, members)
 #   and copy the ID directly to the clipboard.
 
+# If enabled, writes all logging messages to a file.
+debug: off
+
 # If enabled, the owners list must consist of just yourself
 selfbot_mode: off
 

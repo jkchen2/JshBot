@@ -68,7 +68,7 @@ def get_new_bot(client_type, path, debug, docker_mode):
 
         def __init__(self, path, debug, docker_mode):
             self.version = '0.4.0-rewrite'
-            self.date = 'August 28th, 2017'
+            self.date = 'August 31st, 2017'
             self.time = int(time.time())
             self.readable_time = time.strftime('%c')
             self.path = path
@@ -582,7 +582,7 @@ def get_new_bot(client_type, path, debug, docker_mode):
                     if not os.path.isfile(log_file):
                         await debug_channel.send(content="Started up fresh.")
                     else:
-                        discord_file = discord.File(log_file)
+                        discord_file = discord.File(log_file, filename='last_logs.txt')
                         await debug_channel.send(content="Logs:", file=discord_file)
                     if not os.path.isfile(error_file):
                         await debug_channel.send(content="No error log.")
@@ -700,7 +700,7 @@ def get_new_bot(client_type, path, debug, docker_mode):
     return Bot(path, debug, docker_mode)
 
 
-def start(start_file=None, debug=False):
+def start(start_file=None):
     if start_file:
         path = os.path.split(os.path.realpath(start_file))[0]
         logger.debug("Setting directory to " + path)
@@ -715,26 +715,26 @@ def start(start_file=None, debug=False):
         config_file_location = path + '/config/core-config.yaml'
         with open(config_file_location, 'rb') as config_file:
             config = yaml.load(config_file)
-            selfbot_mode, token = config['selfbot_mode'], config['token']
+            selfbot_mode, token, debug = config['selfbot_mode'], config['token'], config['debug']
     except Exception as e:
         logger.error("Could not determine token /or selfbot mode.")
         raise e
 
-    if selfbot_mode == True:  # Explicit, for YAML 1.2 vs 1.1
+    if selfbot_mode is True:  # Explicit, for YAML 1.2 vs 1.1
         client_type = discord.Client
         logger.debug("Using standard client (selfbot enabled).")
     else:
         client_type = discord.AutoShardedClient
         logger.debug("Using autosharded client (selfbot disabled).")
 
-    if debug:
+    if debug is True:
         log_file = '{}/temp/logs.txt'.format(path)
         if os.path.isfile(log_file):
             shutil.copy2(log_file, '{}/temp/last_logs.txt'.format(path))
         logging.basicConfig(
             level=logging.DEBUG,
             handlers=[
-                RotatingFileHandler(log_file, maxBytes=1000000, backupCount=3),
+                RotatingFileHandler(log_file, maxBytes=1000000, backupCount=5),
                 logging.StreamHandler()
             ]
         )

@@ -2,6 +2,7 @@ import discord
 import asyncio
 import aiohttp
 import functools
+import zipfile
 import shutil
 import socket
 import datetime
@@ -281,6 +282,24 @@ async def upload_to_discord(bot, fp, filename=None, rewind=True, close=False):
         pass
 
     return upload_url
+
+
+async def upload_logs(bot):
+    """Uploads any log files to the debug channel."""
+    log_zip_location = '{0}/temp/log_files.zip'.format(bot.path)
+    log_zip_file = zipfile.ZipFile(log_zip_location, mode='w')
+    log_location = '{0}/temp/logs.txt'.format(bot.path)
+    if os.path.exists(log_location):
+        log_zip_file.write(log_location, arcname=os.path.basename(log_location))
+    for log_number in range(5):
+        next_location = log_location + '.{}'.format(log_number + 1)
+        if os.path.exists(next_location):
+            log_zip_file.write(next_location, arcname=os.path.basename(next_location))
+    log_zip_file.close()
+
+    debug_channel = bot.get_channel(configurations.get(bot, 'core', 'debug_channel'))
+    discord_file = discord.File(log_zip_location, filename='all_logs.zip')
+    await debug_channel.send(content='All logs:', file=discord_file)
 
 
 async def parallelize(coroutines, return_exceptions=False):
