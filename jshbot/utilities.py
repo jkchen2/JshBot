@@ -289,12 +289,17 @@ async def upload_logs(bot):
     log_zip_location = '{0}/temp/log_files.zip'.format(bot.path)
     log_zip_file = zipfile.ZipFile(log_zip_location, mode='w')
     log_location = '{0}/temp/logs.txt'.format(bot.path)
+    compression = zipfile.ZIP_DEFLATED
     if os.path.exists(log_location):
-        log_zip_file.write(log_location, arcname=os.path.basename(log_location))
+        log_zip_file.write(
+            log_location, arcname=os.path.basename(log_location),
+            compress_type=compression)
     for log_number in range(5):
         next_location = log_location + '.{}'.format(log_number + 1)
         if os.path.exists(next_location):
-            log_zip_file.write(next_location, arcname=os.path.basename(next_location))
+            log_zip_file.write(
+                next_location, arcname=os.path.basename(next_location),
+                compress_type=compression)
     log_zip_file.close()
 
     debug_channel = bot.get_channel(configurations.get(bot, 'core', 'debug_channel'))

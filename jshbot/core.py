@@ -734,7 +734,7 @@ def start(start_file=None):
         logging.basicConfig(
             level=logging.DEBUG,
             handlers=[
-                RotatingFileHandler(log_file, maxBytes=1000000, backupCount=5),
+                RotatingFileHandler(log_file, maxBytes=5000000, backupCount=5),
                 logging.StreamHandler()
             ]
         )
