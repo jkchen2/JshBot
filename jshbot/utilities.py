@@ -396,6 +396,8 @@ async def join_and_ready(bot, voice_channel, is_mod=False, reconnect=False):
             except:
                 pass
             raise CBException("Failed to join the voice channel.", e=e)
+        if voice_client.is_playing():
+            voice_client.stop()
     else:
         if voice_client.is_playing():
             voice_client.stop()
