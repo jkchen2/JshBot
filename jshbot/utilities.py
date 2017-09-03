@@ -382,14 +382,16 @@ async def join_and_ready(bot, voice_channel, is_mod=False, reconnect=False):
     Returns the voice_client object from voice_channel.connect()
     """
     guild = voice_channel.guild
-    muted = voice_channel.id in data.get(
-        bot, 'core', 'muted_channels', guild_id=guild.id, default=[])
+    muted_channels = data.get(bot, 'core', 'muted_channels', guild_id=guild.id, default=[])
     if voice_channel == guild.afk_channel:
         raise CBException("This is the AFK channel.")
-    if muted and not is_mod:
+    if voice_channel.id in muted_channels and not is_mod:
         raise CBException("The bot is muted in this voice channel.")
     if reconnect:
-        await leave_and_stop(bot, guild)
+        try:
+            await leave_and_stop(bot, guild)
+        except:
+            pass
 
     voice_client = guild.voice_client
     if not voice_client:
@@ -442,13 +444,31 @@ async def leave_and_stop(bot, guild, member=None, safe=True):
         await voice_client.disconnect()
 
 
-async def delayed_leave(bot, guild_id, player, delay=60):
-    """Leaves the voice channel associated with the given guild.
+async def play_and_leave(bot, guild, audio_source, delay=30):
+    """Plays the audio source, and then leaves the voice channel."""
+    voice_client = guild.voice_client
+    if voice_client is None:
+        raise CBException("Voice client is missing.")
 
-    This command does nothing if the current player of the guild is not the
-    same as the one given.
-    """
-    # TODO: Implement
+    async def _leave():
+        logger.debug("_leave was called!")
+        await asyncio.sleep(delay)
+        test_voice_client = guild.voice_client
+        if not test_voice_client or test_voice_client.source != audio_source:
+            logger.debug("Voice client changed. Automatic disconnect cancelled.")
+        else:
+            try:
+                await voice_client.disconnect()
+            except Exception as e:
+                raise CBException("Failed to disconnect from the voice channel.", e=e)
+
+    def _start_leave(error):
+        if error:
+            raise CBException("Player failed to finish.", error)
+        else:
+            asyncio.ensure_future(_leave(), loop=bot.loop)
+
+    voice_client.play(audio_source, after=_start_leave)
 
 
 def get_time_string(total_seconds, text=False, full=False):
