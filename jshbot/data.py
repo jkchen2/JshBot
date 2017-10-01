@@ -7,7 +7,7 @@ import psycopg2.extras
 
 from types import GeneratorType
 
-from jshbot import core, utilities, logger
+from jshbot import core, utilities, logger, configurations
 from jshbot.exceptions import BotException, ConfiguredBotException, ErrorTypes
 
 CBException = ConfiguredBotException('Data')
@@ -650,7 +650,7 @@ async def add_to_cache(bot, url, name=None, file_location=None):
         download_stat = os.stat(file_location)
     except FileNotFoundError:
         raise CBException("The audio could not be saved. Please try again later.")
-    cache_limit = bot.configurations['core']['cache_size_limit'] * 1000 * 1000
+    cache_limit = configurations.get(bot, 'core', 'cache_size_limit') * 1000 * 1000
     store = cache_limit > 0 and download_stat.st_size < cache_limit / 2
 
     if store:
@@ -678,6 +678,17 @@ async def add_to_cache(bot, url, name=None, file_location=None):
             total_size -= size
 
     return cached_location
+
+
+async def add_to_cache_ydl(bot, downloader, url):
+    """Downloads the given URL using YoutubeDL and stores it in the cache.
+
+    The downloader must be provided as a YoutubeDL downloader object.
+    """
+    file_location = '{}/temp/tempsound_{}'.format(bot.path, utilities.get_cleaned_filename(url))
+    downloader.params.update({'outtmpl': file_location})
+    await utilities.future(downloader.download, [url])
+    return await add_to_cache(bot, None, name=url, file_location=file_location)
 
 
 def add_guild(bot, guild):
