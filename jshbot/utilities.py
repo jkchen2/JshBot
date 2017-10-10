@@ -68,6 +68,7 @@ class MemberConverter(BaseConverter):
 
 class ChannelConverter(MemberConverter):
     def __init__(self, server_only=True, live_check=None, constraint=None):
+        """Constraint can be used to specify only text or voice channels."""
         self.server_only = server_only
         self.live_check = live_check
         self.constraint = constraint

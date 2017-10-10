@@ -68,7 +68,7 @@ def get_new_bot(client_type, path, debug, docker_mode):
 
         def __init__(self, path, debug, docker_mode):
             self.version = '0.4.0-rewrite'
-            self.date = 'August 31st, 2017'
+            self.date = 'October 10th, 2017'
             self.time = int(time.time())
             self.readable_time = time.strftime('%c')
             self.path = path
@@ -251,10 +251,10 @@ def get_new_bot(client_type, path, debug, docker_mode):
                 if spam_value == spam_limit:
                     self.spam_dictionary[author_id] = spam_limit + 1
                     plugins.broadcast_event(self, 'bot_on_user_ratelimit', message.author)
-                    await self.send_message(
-                        message.channel, "{0}, you appear to be issuing/editing "
+                    await message.channel.send(content=(
+                        "{0}, you appear to be issuing/editing "
                         "commands too quickly. Please wait {1} seconds.".format(
-                            message.author.mention, self.spam_timeout))
+                            message.author.mention, self.spam_timeout)))
                 return
 
             # Parse command and reply
