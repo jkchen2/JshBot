@@ -13,6 +13,8 @@ import pip
 import os
 import re
 
+from logging.handlers import RotatingFileHandler
+
 from distutils.dir_util import copy_tree
 from discord.abc import PrivateChannel
 
@@ -22,7 +24,7 @@ from jshbot.commands import (
     Command, SubCommand, Shortcut, ArgTypes, Arg, Opt, Attachment,
     MessageTypes, Response)
 
-__version__ = '0.2.3'
+__version__ = '0.2.5'
 uses_configuration = False
 CBException = ConfiguredBotException('Base')
 global_dictionary = {}
@@ -162,7 +164,15 @@ def get_commands(bot):
             SubCommand(Opt('backup'), doc='Gets the data folder as a zip file.'),
             SubCommand(
                 Opt('restore'), Attachment('restore zip file'),
-                doc='Gets the data folder as a zip file.'),
+                doc='Downloads the restore zip file and replaces current data files with '
+                    'the contents of the backup.'),
+            SubCommand(
+                Opt('restoredb'),
+                Arg('table', argtype=ArgTypes.SPLIT_OPTIONAL, additional='additional tables',
+                    doc='Restores the given specific tables.'),
+                Attachment('db_dump file'),
+                doc='Loads the database dump and restores either the entire database, or the '
+                    'specified tables.'),
             SubCommand(
                 Opt('blacklist'),
                 Arg('user', argtype=ArgTypes.MERGED_OPTIONAL,
@@ -189,6 +199,7 @@ def get_commands(bot):
                 doc='Gets basic information about the given plugin.'),
             SubCommand(Opt('latency'), doc='Calculates the ping time.'),
             SubCommand(Opt('logs'), doc='Uploads logs to the debug channel.'),
+            SubCommand(Opt('toggle'), doc='Toggles the debug mode.'),
             SubCommand(Opt('resetlocals'), doc='Resets the debug local variables.'),
             SubCommand(
                 Arg('python', argtype=ArgTypes.MERGED),
@@ -845,21 +856,29 @@ async def botowner_wrapper(bot, context):
     if subcommand.index == 0:  # Halt
         await message.channel.send("Going down...")
         bot.shutdown()
+
     elif subcommand.index == 1:  # Reload
         response.content = "Reloading..."
         response.message_type = MessageTypes.ACTIVE
         response.extra_function = handle_active_message
         response.extra = ('reload', arguments)
+
     elif subcommand.index == 2:  # IP
         s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
         s.connect(('8.8.8.8', 80))  # Thanks Google
         ip = s.getsockname()[0]
         s.close()
         response.content = "Local IP: " + ip
+
     elif subcommand.index == 3:  # Backup
         utilities.make_backup(bot)
         response.content = "Manual backup file:"
+        if not bot.docker_mode:
+            response.content = (
+                "**NOTE:** Database dumps are only available "
+                "in Docker mode.\n{}".format(response.content))
         response.file = discord.File('{}/temp/backup1.zip'.format(bot.path))
+
     elif subcommand.index == 4:  # Restore
         try:
             location = await utilities.download_url(
@@ -869,7 +888,18 @@ async def botowner_wrapper(bot, context):
         utilities.restore_backup(bot, location)
         response.content = "Restored backup file."
 
-    elif subcommand.index == 5:  # Blacklist
+    elif subcommand.index == 5:  # DB Restore
+        if not bot.docker_mode:
+            raise CBException("Database restores can only be made in Docker mode.")
+        try:
+            location = await utilities.download_url(
+                bot, message.attachments[0].url, filename='db_dump')
+        except Exception as e:
+            raise CBException("Failed to download the file.", e=e)
+        exit_code = utilities.restore_db_backup(bot, tables=context.arguments)
+        response.content = "Restore exit code: `{}`".format(exit_code)
+
+    elif subcommand.index == 6:  # Blacklist
         blacklist = data.get(bot, 'core', 'blacklist', default=[])
         if not arguments[0]:
             response.content = "Blacklisted entries: {}".format(blacklist)
@@ -881,19 +911,22 @@ async def botowner_wrapper(bot, context):
             else:
                 data.list_data_append(bot, 'core', 'blacklist', user_id)
                 response.content = "User added to blacklist."
-    elif subcommand.index == 6:  # Toggle feedback
+
+    elif subcommand.index == 7:  # Toggle feedback
         status = data.get(bot, 'core', 'feedbackdisabled', default=False)
         action = "enabled" if status else "disabled"
         data.add(bot, 'core', 'feedbackdisabled', not status)
         response.content = "Feedback has been {}.".format(action)
-    elif subcommand.index == 7:  # Announcement
+
+    elif subcommand.index == 8:  # Announcement
         if arguments[0]:
             data.add(bot, 'core', 'announcement', [arguments[0], int(time.time())])
             response.content = "Announcement set!"
         else:
             data.remove(bot, 'core', 'announcement')
             response.content = "Announcement cleared!"
-    elif subcommand.index == 8:  # Update
+
+    elif subcommand.index == 9:  # Update
         response.embed = discord.Embed(
             title=':arrow_up: Update', description='', colour=discord.Color(0x3b88c3))
         tooltip = ':regional_indicator_a: : Update core\n:regional_indicator_b: : Update plugins'
@@ -943,11 +976,34 @@ async def debug_wrapper(bot, context):
         await utilities.upload_logs(bot)
         response = "Logs uploaded to the debug channel."
 
-    elif subcommand.index == 4:  # Reset local dictionary
+    elif subcommand.index == 4:  # Toggle debug mode
+        if bot.debug:  # Remove handlers
+            to_remove = []
+            for handler in logging.root.handlers:
+                if handler.get_name() == 'jb_debug':
+                    to_remove.append(handler)
+            for handler in to_remove:
+                logging.root.removeHandler(handler)
+            logging.root.setLevel(logging.WARN)
+            bot.debug = False
+            response = 'Debug mode is now off.'
+        else:  # Add handlers
+            log_file = '{}/temp/logs.txt'.format(bot.path)
+            if os.path.isfile(log_file):
+                shutil.copy2(log_file, '{}/temp/last_logs.txt'.format(bot.path))
+            file_handler = RotatingFileHandler(log_file, maxBytes=5000000, backupCount=5)
+            file_handler.set_name('jb_debug')
+            stream_handler = logging.StreamHandler()
+            stream_handler.set_name('jb_debug')
+            logging.basicConfig(level=logging.DEBUG, handlers=[file_handler, stream_handler])
+            bot.debug = True
+            response = 'Debug mode is now on.'
+
+    elif subcommand.index == 5:  # Reset local dictionary
         _setup_debug_environment(bot)
         response = "Debug environment local dictionary reset."
 
-    elif subcommand.index == 5:  # Repl thingy
+    elif subcommand.index == 6:  # Repl thingy
         global_dictionary['message'] = message
         global_dictionary['bot'] = bot
         global_dictionary['channel'] = message.channel
