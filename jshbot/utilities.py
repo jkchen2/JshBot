@@ -596,6 +596,30 @@ async def notify_owners(bot, message, user_id=None):
                 await member.send(message)
 
 
+def docker_send_command(command):
+    """Sends the database Docker container a command."""
+    logger.debug("Sending database container command: %s", command)
+    s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    s.settimeout(0.1)
+    s.connect(('db', 2345))
+    s.send(bytes(command, 'ascii'))
+    s.close()
+
+
+def docker_receive_exit_code():
+    """Waits until an exit code is returned from the database Docker container."""
+    s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    s.settimeout(30)
+    s.bind(('', 2345))
+    s.listen(1)
+    connection, _ = s.accept()
+    response = connection.recv(64)
+    connection.close()
+    s.close()
+    logger.debug("Database container response: %s", response)
+    return response
+
+
 # TODO: Add specific table dumping
 def db_backup(bot, safe=True):
     """Use the Docker setup to backup the database."""
@@ -608,22 +632,24 @@ def db_backup(bot, safe=True):
         else:
             exclusions = ''
         command = (
-            'pg_dump -U postgres -F t {} postgres > '
-            '/external/data/db_dump.tar'.format(exclusions))
-        host = 'db'
-        port = 2345
-        s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        s.settimeout(0.1)
-        s.connect((host, port))
-        s.send(bytes(command, 'ascii'))
-        s.close()
-        time.sleep(1)
+            'pg_dump -U postgres -F c {} postgres > '
+            '/external/data/db_dump'.format(exclusions))
+        docker_send_command(command)
         logger.debug("Told database container to backup")
     except Exception as e:
         logger.warn("Failed to communicate with the database container: %s", e)
         if safe:
             return
         raise CBException("Failed to communicate with the database container.", e=e)
+
+    # Read response code from database container
+    try:
+        return docker_receive_exit_code()
+    except Exception as e:
+        logger.warn("Failed to receive a response from the database container: %s", e)
+        if safe:
+            return
+        raise CBException("Failed to receive a response from the database container.", e=e)
 
 
 def make_backup(bot):
@@ -654,6 +680,25 @@ def restore_backup(bot, backup_file):
     except Exception as e:
         raise CBException("Failed to extract backup.", e=e)
     logger.info("Finished data restore.")
+
+
+def restore_db_backup(bot, tables=[]):
+    """Restores a database dump backup file.
+
+    If tables is specified, this will restore those instead of the entire database.
+    """
+    logger.info("Restoring database...")
+    try:
+        if tables:
+            specific_tables = '-t "' + '" -t "'.join(tables) + '"'
+        else:
+            specific_tables = ''
+        command = 'pg_restore -U postgres -d postgres {} /external/temp/db_dump'.format(specific_tables)
+        docker_send_command(command)
+        return docker_receive_exit_code()
+    except Exception as e:
+        raise CBException("Failed to restore backup.", e=e)
+    logger.info("Finished database restore.")
 
 
 def get_timezone_offset(bot, guild_id=None, utc_dt=None, utc_seconds=None, as_string=False):
