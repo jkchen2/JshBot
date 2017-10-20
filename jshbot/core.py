@@ -15,7 +15,9 @@ from concurrent.futures import FIRST_COMPLETED
 from collections import namedtuple, OrderedDict
 from discord.abc import PrivateChannel
 
-from jshbot import configurations, plugins, commands, parser, data, utilities, base, logger
+from jshbot import (
+        configurations, plugins, commands, parser, data, utilities,
+        base, logger, core_version, core_date)
 from jshbot.exceptions import BotException, ConfiguredBotException, ErrorTypes
 from jshbot.commands import Response, MessageTypes
 
@@ -67,8 +69,8 @@ def get_new_bot(client_type, path, debug, docker_mode):
         )
 
         def __init__(self, path, debug, docker_mode):
-            self.version = '0.4.0-rewrite'
-            self.date = 'October 10th, 2017'
+            self.version = core_version
+            self.date = core_date
             self.time = int(time.time())
             self.readable_time = time.strftime('%c')
             self.path = path
@@ -669,7 +671,10 @@ def get_new_bot(client_type, path, debug, docker_mode):
             while interval:
                 utilities.make_backup(self)
                 discord_file = discord.File('{}/temp/backup1.zip'.format(self.path))
-                await debug_channel.send(file=discord_file)
+                try:
+                    await debug_channel.send(file=discord_file)
+                except Exception as e:
+                    logger.error("Failed to upload backup file! %s", e)
                 await asyncio.sleep(interval)
 
         def save_data(self, force=False):
@@ -731,13 +736,11 @@ def start(start_file=None):
         log_file = '{}/temp/logs.txt'.format(path)
         if os.path.isfile(log_file):
             shutil.copy2(log_file, '{}/temp/last_logs.txt'.format(path))
-        logging.basicConfig(
-            level=logging.DEBUG,
-            handlers=[
-                RotatingFileHandler(log_file, maxBytes=5000000, backupCount=5),
-                logging.StreamHandler()
-            ]
-        )
+        file_handler = RotatingFileHandler(log_file, maxBytes=5000000, backupCount=5)
+        file_handler.set_name('jb_debug')
+        stream_handler = logging.StreamHandler()
+        stream_handler.set_name('jb_debug')
+        logging.basicConfig(level=logging.DEBUG, handlers=[file_handler, stream_handler])
 
     def safe_exit():
         loop = asyncio.get_event_loop()
