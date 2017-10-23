@@ -833,10 +833,15 @@ def schedule(
     """Adds the entry to the schedule table and starts the timer.
 
     It should be noted that the function CANNOT be a lambda function. It must
-        be a function residing in the plugin.
-    The payload should be a standard dictionary.
-    The search keyword argument is to assist in later deletion or modification.
+        be a function residing in the top level of the plugin.
     Time should be a number in seconds from the epoch.
+
+    Keyword arguments:
+    payload -- Standard json-serializable dictionary
+    search -- Used to assist in later deletion or modification
+    destination -- Starts with either a 'c' or 'u', then the ID of the channel or user
+        This is used to help determine what will need to be messaged.
+    info -- Currently not really used
     """
     input_args = [
         int(time),

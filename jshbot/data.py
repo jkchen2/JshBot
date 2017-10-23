@@ -769,6 +769,8 @@ def db_select(
     select_arg -- List of columns to select. (unsanitized)
     from_arg -- List of tables to select from. (unsanitized)
     where_arg -- Conditionals for the selection. (unsanitized)
+    additional -- Additional parameters following the WHERE clause (unsanitized)
+    limit -- Limits the number of results
     input_args -- Arguments passed into the query via old pyformat. (sanitized)
     table_suffix -- Suffix appended to each entry in from_arg. (unsanitized)
     safe -- Will not throw an exception.
