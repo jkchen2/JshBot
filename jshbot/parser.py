@@ -2,7 +2,7 @@ import re
 
 from jshbot import commands, utilities, logger
 from jshbot.commands import ArgTypes
-from jshbot.exceptions import ConfiguredBotException
+from jshbot.exceptions import ConfiguredBotException, BotException
 
 CBException = ConfiguredBotException('Parser')
 
