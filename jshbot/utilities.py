@@ -472,7 +472,7 @@ async def play_and_leave(bot, guild, audio_source, delay=30):
     voice_client.play(audio_source, after=_start_leave)
 
 
-def get_time_string(total_seconds, text=False, full=False):
+def get_time_string(total_seconds, text=False, full=False, resolution=2):
     """Gets either digital-clock-like time or time in plain English."""
     total_seconds = int(total_seconds)
     values = [
@@ -491,10 +491,8 @@ def get_time_string(total_seconds, text=False, full=False):
                     break  # Lower resolution if there are several days already
                 result.append('{} {}{}'.format(
                     value, scale[:-1], '' if value == 1 else 's'))
-                if not full and len(result) > 1:
+                if not full and len(result) >= resolution:
                     break
-            elif not full and len(result) == 1:
-                break
         for it in range(len(result) - 2):
             result.insert((it * 2) + 1, ', ')
         if len(result) > 1:
@@ -510,7 +508,7 @@ def get_time_string(total_seconds, text=False, full=False):
                 result.append(format_string.format(value))
                 full = True
 
-    return '{}'.format('' if text else ':').join(result)
+    return ('' if text else ':').join(result)
 
 
 def get_formatted_message(message):
