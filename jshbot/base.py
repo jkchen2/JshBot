@@ -306,26 +306,27 @@ async def base_wrapper(bot, context):
     elif subcommand.index == 4:  # Invite
         if bot.selfbot:
             raise CBException("Nope.")
-        response_list = []
+
+        permissions_number = utilities.get_permission_bits(bot)
+        app_id = (await bot.application_info()).id
+        authorization_link = (
+            '**[`Authorization link`](https://discordapp.com/oauth2/authorize?'
+            '&client_id={0}&scope=bot&permissions={1})\nRemember: you must have the '
+            '`Administrator` role on the server you are trying to add the '
+            'bot to.**'.format(app_id, permissions_number))
+        response.embed = discord.Embed(
+            title=':inbox_tray: Invite', colour=discord.Colour(0x77b255),
+            description=authorization_link)
 
         if 'details' in options:
             for plugin in bot.plugins.keys():
                 permission_items = data.get(
                     bot, plugin, 'permissions', volatile=True, default={}).items()
                 if permission_items:
-                    response_list.append('***`{}`***'.format(plugin))
-                    response_list.append('\t' + '\n\t'.join(
+                    plugin_permissions = '\n'.join(
                         ['**`{0[0]}`** -- {0[1]}'.format(item)
-                            for item in permission_items]) + '\n')
-
-        permissions_number = utilities.get_permission_bits(bot)
-        app_id = (await bot.application_info()).id
-        response_list.append(
-            'https://discordapp.com/oauth2/authorize?&client_id={0}'
-            '&scope=bot&permissions={1}\n**Remember: you must have the '
-            '"Administrator" role on the server you are trying to add the '
-            'bot to.**'.format(app_id, permissions_number))
-        response.content = '\n'.join(response_list)
+                            for item in permission_items])
+                    response.embed.add_field(name=plugin, value=plugin_permissions)
 
     elif subcommand.index == 5:  # Notifications
         if context.direct:  # List user notifications
@@ -1393,7 +1394,8 @@ async def bot_on_ready_boot(bot):
         'read_message_history': "Gets chat context when bot moderators change settings.",
         'connect': "Allows the bot to connect to voice channels. (Framework)",
         'speak': "Allows the bot to speak. (Framework)",
-        'add_reactions': "Allows for interactive menus. (Framework)"
+        'add_reactions': "Allows for interactive menus. (Framework)",
+        'embed_links': "Allows for embeded messages. (Framework)",
     }
     utilities.add_bot_permissions(bot, 'core', **permissions)
 

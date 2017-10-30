@@ -119,7 +119,7 @@ def add_bot_permissions(bot, plugin_name, **permissions):
         try:
             getattr(dummy, permission.lower())
         except:  # Permission not found
-            raise CBException("Permission '{}' does not exist", permission)
+            raise CBException("Permission '{}' does not exist".format(permission))
     current = data.get(
         bot, plugin_name, 'permissions', create=True, volatile=True)
     if current is None:
