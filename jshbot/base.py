@@ -586,7 +586,6 @@ async def mod_wrapper(bot, context):
     return Response(content=response)
 
 
-# TODO: FIX FIX FIX
 async def owner_wrapper(bot, context):
     message, _, subcommand, _, arguments = context[:5]
     mod_action = ''
@@ -602,8 +601,9 @@ async def owner_wrapper(bot, context):
             data.add(bot, 'core', 'modrole', role, guild_id=message.guild.id, volatile=True)
         else:
             response = mod_action = 'Removed the bot moderator role.'
-            data.remove(bot, 'core', 'modrole', guild_id=message.guild.id)
-            data.remove(bot, 'core', 'modrole', guild_id=message.guild.id, volatile=True)
+            data.remove(bot, 'core', 'modrole', guild_id=message.guild.id, safe=True)
+            data.remove(
+                bot, 'core', 'modrole', guild_id=message.guild.id, volatile=True, safe=True)
 
     elif subcommand.index == 1:  # Send feedback
         if data.get(bot, 'core', 'feedbackdisabled', default=False):
