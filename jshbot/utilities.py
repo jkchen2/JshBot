@@ -308,12 +308,15 @@ async def upload_logs(bot):
     await debug_channel.send(content='All logs:', file=discord_file)
 
 
-async def parallelize(coroutines, return_exceptions=False):
+async def parallelize(coroutines, return_exceptions=False, pass_error=False):
     """Uses asyncio.gather to "parallelize" the coroutines (not really)."""
     try:
         return await asyncio.gather(*coroutines, return_exceptions=return_exceptions)
     except Exception as e:
-        raise CBException("Failed to await coroutines.", e=e)
+        if pass_error:
+            raise e
+        else:
+            raise CBException("Failed to await coroutines.", e=e)
 
 
 def future(function, *args, **kwargs):
