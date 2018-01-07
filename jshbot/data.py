@@ -436,9 +436,9 @@ def is_mod(bot, guild=None, user_id=None, strict=False, member=None):
 def is_admin(bot, guild, user_id, strict=False):
     """Checks that the user is an admin or higher."""
     if strict:
-        return user_id == guild.owner.id
+        return guild and user_id == guild.owner.id
     else:
-        return user_id == guild.owner.id or is_owner(bot, user_id)
+        return (guild and user_id == guild.owner.id) or is_owner(bot, user_id)
 
 
 def is_owner(bot, user_id):

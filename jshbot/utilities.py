@@ -253,6 +253,7 @@ async def upload_to_discord(bot, fp, filename=None, rewind=True, close=False):
         channel_id = data.get(bot, 'core', 'upload_channel')
     channel = data.get_channel(bot, channel_id, safe=True)
 
+    # TODO: Remove. Guild creation via bots is a whitelisted process
     if channel is None:  # Create guild
         logger.debug("Creating guild for upload channel...")
         try:
