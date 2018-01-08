@@ -854,13 +854,14 @@ def db_update(bot, table, table_suffix='', set_arg='', where_arg='', input_args=
 
 
 def db_delete(bot, table, table_suffix='', where_arg='', input_args=[], safe=True, mark=True):
-    """Deletes an entry from the table """
+    """Deletes entries from the given table. Returns the number of entries deleted."""
     full_table = table + ('_{}'.format(table_suffix) if table_suffix else '')
     query = "DELETE FROM {} WHERE {}".format(full_table, where_arg)
     try:
-        return db_execute(
+        cursor = db_execute(
             bot, query, input_args=input_args, pass_error=True,
             mark=full_table if mark else None)
+        return cursor.rowcount
     except Exception as e:
         if safe:
             return
