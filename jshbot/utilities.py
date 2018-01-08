@@ -883,23 +883,23 @@ async def _schedule_timer(bot, raw_entry, delay):
     try:
         cursor = data.db_select(bot, select_arg='min(time)', from_arg='schedule')
         minimum_time = cursor.fetchone()[0]
-        data.db_delete(
+        deleted = data.db_delete(
             bot, 'schedule', where_arg='time=%s', input_args=[minimum_time], safe=False)
     except Exception as e:
         logger.warn("_schedule_timer failed to delete schedule entry. %s", e)
-        raise e
-    try:
-        logger.debug("_schedule_timer done sleeping for %s seconds!", delay)
-        scheduled_time, plugin, function, payload, search, destination, info = raw_entry
-        if payload:
-            payload = json.loads(payload)
-        plugin = bot.plugins[plugin]
-        function = getattr(plugin, function)
-        late = delay < -60
-        asyncio.ensure_future(function(bot, scheduled_time, payload, search, destination, late))
-    except Exception as e:
-        logger.warn("Failed to execute scheduled function: %s", e)
-        raise e
+    if deleted:
+        try:
+            logger.debug("_schedule_timer done sleeping for %s seconds!", delay)
+            scheduled_time, plugin, function, payload, search, destination, info = raw_entry
+            if payload:
+                payload = json.loads(payload)
+            plugin = bot.plugins[plugin]
+            function = getattr(plugin, function)
+            late = delay < -60
+            asyncio.ensure_future(
+                function(bot, scheduled_time, payload, search, destination, late))
+        except Exception as e:
+            logger.warn("Failed to execute scheduled function: %s", e)
     asyncio.ensure_future(_start_scheduler(bot))
 
 
