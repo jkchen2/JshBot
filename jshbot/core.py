@@ -378,6 +378,9 @@ def get_new_bot(client_type, path, debug, docker_mode):
                     self.last_response = message_reference
 
             elif response.message_type is MessageTypes.INTERACTIVE and message_reference:
+                # There are two additional options for the extra object to change menu behavior:
+                # reactionlock -- Whether or not non-menu reactions can be used for responses
+                # userlock -- Whether or not the menu only responds to the command author
                 try:
                     buttons = response.extra['buttons']
                     kwargs = response.extra.get('kwargs', {})
