@@ -469,12 +469,21 @@ def get_member(bot, identity, guild=None, attribute=None, safe=False, strict=Fal
 
     if isinstance(identity, int):
         used_id = True
-    identity_string = str(identity)
-    if identity_string.startswith('<@') and identity_string.endswith('>'):
-        identity = identity_string.strip('<@!>')
+    identity = str(identity)
+    if identity.startswith('<@') and identity.endswith('>'):
+        identity = identity.strip('<@!>')
         used_id = True
     else:
         used_id = False
+
+    # Check for name + discriminator first if we're not using an ID
+    split = identity.split('#')
+    if not used_id and len(split) >= 2 and len(split[-1]) == 4 and split[-1].isnumeric():
+        guilds = [guild] if guild else bot.guilds
+        for it in guilds:
+            result = it.get_member_named(identity)
+            if result:
+                return result
 
     tests = []
     try:  # Double check used_id in case we're given "<@123foo456>"
@@ -493,9 +502,9 @@ def get_member(bot, identity, guild=None, attribute=None, safe=False, strict=Fal
                 while duplicate:
                     duplicate = discord.utils.get(members, **test)
                     if duplicate and duplicate != result:
-                        raise CBException("Duplicate user found; use a mention.")
+                        raise CBException("Duplicate user found. Use a mention.")
             elif list(members).count(result) > 1:
-                raise CBException("Duplicate user found; use a mention.")
+                raise CBException("Duplicate user found. Use a mention.")
             break
 
     if result:
