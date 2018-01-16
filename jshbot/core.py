@@ -237,7 +237,7 @@ def get_new_bot(client_type, path, debug, docker_mode):
             except KeyError:
                 if self.single_command:
                     try:
-                        parameters = '{} {}'.format(base, parameters)
+                        parameters = content
                         base = self.single_command
                         command = self.commands[base]
                     except KeyError:
