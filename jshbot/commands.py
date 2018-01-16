@@ -589,12 +589,6 @@ def get_general_help(bot, guild=None, is_owner=False):
     response = "Here is a list of commands by group:\n"
     invoker = utilities.get_invoker(bot, guild=guild)
 
-    '''
-    plugin_pairs = []
-    for plugin_name, plugin in bot.plugins.items():
-        plugin_pairs.append((plugin_name, plugin[1]))
-    plugin_pairs.sort()
-    '''
     group_dictionary = {}
 
     for plugin_name, plugin in bot.plugins.items():

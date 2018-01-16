@@ -46,6 +46,12 @@ command_invokers:
 # List of command bases that should be disabled for non-botowners
 locked_commands: []
 
+# Single command mode
+# Allows for a base command to be automatically filled in if not provided
+# This will only happen if no other valid command is found
+# Useful for single-purpose bots that rely on only one plugin
+single_command: ""
+
 # Connection parameters to connect to the PostgreSQL database
 # NOTE: If using the Dockerized version that bundles a PostgreSQL container,
 #   leave this field empty

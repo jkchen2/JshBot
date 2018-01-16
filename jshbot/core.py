@@ -109,6 +109,7 @@ def get_new_bot(client_type, path, debug, docker_mode):
             self.spam_timeout = config['command_limit_timeout']
             self.command_invokers = config['command_invokers']
             self.locked_commands = config['locked_commands']
+            self.single_command = config['single_command']
             self.edit_timeout = config['edit_timeout']
             self.selfbot = config['selfbot_mode']
             self.owners = config['owners']
@@ -235,8 +236,17 @@ def get_new_bot(client_type, path, debug, docker_mode):
             try:
                 command = self.commands[base]
             except KeyError:
-                logger.debug("Suitable command not found: " + base)
-                return
+                if self.single_command:
+                    try:
+                        parameters = '{} {}'.format(base, parameters)
+                        base = self.single_command
+                        command = self.commands[base]
+                    except KeyError:
+                        logger.error("Single command fill not found!")
+                        return
+                else:
+                    logger.debug("Suitable command not found: %s", base)
+                    return
 
             # Check that user is not spamming
             author_id = message.author.id
@@ -572,6 +582,18 @@ def get_new_bot(client_type, path, debug, docker_mode):
                 # Make sure guild data is ready
                 data.check_all(self)
                 data.load_data(self)
+                # Set single command notification
+                if self.single_command:
+                    try:
+                        command = self.commands[self.single_command]
+                    except KeyError:
+                        raise CBException(
+                            "Invalid single command base.", error_type=ErrorTypes.STARTUP)
+                    command.help_embed_fields.append((
+                        '[Single command mode]',
+                        'The base `{}` can be omitted when invoking these commands.'.format(
+                            self.single_command)))
+                    
                 self.fresh_boot = True
                 plugins.broadcast_event(self, 'bot_on_ready_boot')
 
