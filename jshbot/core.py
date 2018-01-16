@@ -152,19 +152,18 @@ def get_new_bot(client_type, path, debug, docker_mode):
             has_name_invoker = False
             has_nick_invoker = False
             has_regular_invoker = False
+            is_direct = isinstance(message.channel, PrivateChannel)
             for invoker in invokers:
                 if content.startswith(invoker):
                     has_regular_invoker = True
                     break
-            if not has_regular_invoker:
+            if not has_regular_invoker and not is_direct:
                 has_mention_invoker = content.startswith(
                     ('<@' + str(self.user.id) + '>', '<@!' + str(self.user.id) + '>'))
                 if not has_mention_invoker:
                     clean_content = content.lower()
                     has_name_invoker = clean_content.startswith(self.user.name.lower())
-                    if (not has_name_invoker and
-                            not isinstance(message.channel, PrivateChannel) and
-                            message.guild.me.nick):
+                    if not has_name_invoker and not is_direct and message.guild.me.nick:
                         has_nick_invoker = clean_content.startswith(message.guild.me.nick.lower())
                         if has_nick_invoker:  # Clean up content (nickname)
                             content = content[len(message.guild.me.nick):].strip()
@@ -172,7 +171,7 @@ def get_new_bot(client_type, path, debug, docker_mode):
                         content = content[len(self.user.name):].strip()
                 else:  # Clean up content (mention)
                     content = content.partition(' ')[2].strip()
-            else:  # Clean up content (invoker)
+            elif has_regular_invoker:  # Clean up content (invoker)
                 content = content.partition(invoker)[2].strip()
 
             if guild_data.get('mention_mode', False):  # Mention mode enabled
@@ -180,7 +179,7 @@ def get_new_bot(client_type, path, debug, docker_mode):
                     return False
             else:  # Any invoker will do
                 if not (has_regular_invoker or has_mention_invoker or
-                        has_name_invoker or has_nick_invoker):
+                        has_name_invoker or has_nick_invoker or is_direct):
                     return False
 
             if self.selfbot:  # Selfbot check
@@ -192,7 +191,7 @@ def get_new_bot(client_type, path, debug, docker_mode):
             # Respond to direct messages
             author = message.author
             is_owner = author.id in self.owners
-            if isinstance(message.channel, PrivateChannel):
+            if is_direct:
                 return [content, False, False, is_owner]
 
             modrole = data.get(self, 'core', 'modrole', guild_id=message.guild.id, volatile=True)
