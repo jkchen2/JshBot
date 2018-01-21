@@ -551,7 +551,7 @@ def get_channel(
         tests.append({'id': int(identity)})
     except:
         used_id = False
-    tests += [{'name': identity}]
+    tests.append({'name': identity})
     for test in tests:
         channels = guild.channels if guild else bot.get_all_channels()
         result = discord.utils.get(channels, **test)
@@ -566,7 +566,7 @@ def get_channel(
                     duplicate = discord.utils.get(channels, **test)
                     if duplicate and duplicate != result:
                         raise CBException("Duplicate channel found; use a mention.")
-            elif list(channels).count(result) > 1:
+            elif list(it.name for it in channels).count(result.name) > 1:
                 raise CBException("Duplicate channel found; use a mention.")
             break
 
@@ -609,7 +609,7 @@ def get_role(bot, identity, guild, safe=False):
         if result:  # Check for duplicates
             if used_id:
                 break
-            elif list(guild.roles).count(result) > 1:
+            elif list(it.name for it in guild.roles).count(result.name) > 1:
                 raise CBException("Duplicate role found; use a mention.")
             break
     if result:
