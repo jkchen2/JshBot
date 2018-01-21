@@ -18,7 +18,7 @@ CBException = ConfiguredBotException('Utilities')
 
 
 # Voice region time offsets (no DST)
-voice_regions = {
+VOICE_REGIONS = {
     'us-west': -8,
     'us-east': -5,
     'us-south': -6,
@@ -58,7 +58,7 @@ class MemberConverter(BaseConverter):
         except BotException as e:
             self.set_error_reason(e, 'member')
     def set_error_reason(self, error, convert_type):
-        if error.error_subject.startswith('Duplicate'):
+        if error.error_details.startswith('Duplicate'):
             pre_format = "Duplicate {}s found.".format(convert_type)
         else:
             pre_format = "{} not found.".format(convert_type.title())
@@ -710,7 +710,7 @@ def get_timezone_offset(bot, guild_id=None, utc_dt=None, utc_seconds=None, as_st
         offset = data.get(bot, 'core', 'timezone', guild_id=guild_id)
     if offset is None:
         guild = bot.get_guild(guild_id)
-        offset = voice_regions.get(str(guild.region), 0)
+        offset = VOICE_REGIONS.get(str(guild.region), 0)
         if 'us-' in str(guild.region):  # Apply DST offset
             if utc_dt and utc_dt.dst():
                 in_dst = utc_dt.timetuple().tm_isdst > 0

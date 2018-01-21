@@ -327,6 +327,7 @@ class Opt():
         check_error -- Error message upon check failure.
         always_include -- Always add to options dictionary, even if not given.
         default -- Default value to use if always_include is used.
+        group -- Groups common options together to simplify the help entry.
         """
         self.name = name.strip()
         self.optional = optional
@@ -456,6 +457,11 @@ class Arg(Opt):
             self, name, argtype=ArgTypes.SINGLE, additional=None, doc=None,
             convert=None, check=None, convert_error=None, check_error=None,
             quotes_recommended=True, default=None, group=None):
+        """
+        Keyword Arguments:
+        additional -- Used for split arguments. Name of the extra component.
+        quotes_recommended -- Whether or not to wrap the argument in quotes in the help menu.
+        """
         self.argtype = argtype
         self.additional = additional
         super().__init__(
