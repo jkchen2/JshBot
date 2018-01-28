@@ -24,7 +24,7 @@ from jshbot.commands import (
     Command, SubCommand, Shortcut, ArgTypes, Arg, Opt, Attachment,
     MessageTypes, Response)
 
-__version__ = '0.2.5'
+__version__ = '0.2.6'
 uses_configuration = False
 CBException = ConfiguredBotException('Base')
 global_dictionary = {}
@@ -735,7 +735,7 @@ async def _update_plugins(bot, plugin_list, progress_function):
                 else:
                     shutil.copy2(entry_path, plugins_directory)
 
-            elif entry == plugin[:-3] + '-config.yaml':
+            elif entry.startswith(plugin[:-3] + '-'):
                 if entry in os.listdir(config_directory):  # Check existing config
                     changes = _compare_config(bot, plugin, entry_path)
                     if changes:
