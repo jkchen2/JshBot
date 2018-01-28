@@ -760,5 +760,8 @@ async def execute(bot, context):
     if subcommand.function:
         given_function = subcommand.function
     else:
-        given_function = subcommand.command.plugin.get_response
+        if hasattr(subcommand.command, 'get_response'):
+            given_function = subcommand.command.plugin.get_response
+        else:
+            return
     return await given_function(bot, context)
