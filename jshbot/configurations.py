@@ -30,7 +30,7 @@ def get(bot, plugin_name, key=None, extra=None, extension='yaml'):
         except KeyError:
             raise CBException("Key {} not found in the configuration file.".format(key))
     try:
-        with open(filename, 'r') as config_file:
+        with open(filename, 'r', encoding='utf-8') as config_file:
             if extension.lower() == 'json':
                 return json.load(config_file)
             elif extension.lower() == 'yaml':
