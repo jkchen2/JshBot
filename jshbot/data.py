@@ -425,8 +425,9 @@ def is_mod(bot, guild=None, user_id=None, strict=False, member=None):
         member = guild.get_member(user_id)
     if member is None:
         raise CBException('Member not found.')
-    modrole = get(bot, 'core', 'modrole', guild_id=guild.id, volatile=True)
-    mod_check = bool(modrole in member.roles or member.guild_permissions.administrator)
+    modrole_id = get(bot, 'core', 'modrole', guild_id=guild.id)
+    mod_check = bool(
+        member.guild_permissions.administrator or modrole_id in [it.id for it in member.roles])
     if strict:  # Only look for the user in the moderators list
         return mod_check
     else:  # Check higher privileges too

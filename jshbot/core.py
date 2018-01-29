@@ -194,8 +194,10 @@ def get_new_bot(client_type, path, debug, docker_mode):
             if is_direct:
                 return [content, False, False, is_owner]
 
-            modrole = data.get(self, 'core', 'modrole', guild_id=message.guild.id, volatile=True)
-            is_mod = modrole in author.roles or author.guild_permissions.administrator
+            modrole_id = data.get(self, 'core', 'modrole', guild_id=message.guild.id)
+            is_mod = (
+                author.guild_permissions.administrator or
+                modrole_id in [it.id for it in author.roles])
             is_admin = author == message.guild.owner
             result = [content, is_mod, is_admin, is_owner]
 

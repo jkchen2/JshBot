@@ -24,7 +24,7 @@ from jshbot.commands import (
     Command, SubCommand, Shortcut, ArgTypes, Arg, Opt, Attachment,
     MessageTypes, Response)
 
-__version__ = '0.2.6'
+__version__ = '0.2.7'
 uses_configuration = False
 CBException = ConfiguredBotException('Base')
 global_dictionary = {}
@@ -383,11 +383,10 @@ async def mod_wrapper(bot, context):
     mod_action = ''
 
     if subcommand.index == 0:  # info
-        guild_data = data.get(
-            bot, 'core', None, guild_id=message.guild.id, default={})
-        guild_volatile_data = data.get(
-            bot, 'core', None, guild_id=message.guild.id, default={}, volatile=True)
+        guild_data = data.get(bot, 'core', None, guild_id=message.guild.id, default={})
         disabled_commands = guild_data.get('disabled', [])
+        modrole_id = guild_data.get('modrole', None)
+        modrole = data.get_role(bot, modrole_id, context.guild, safe=True)
         display_list = []
         for disabled_command in disabled_commands:
             display_list.append('{0} ({1})'.format(
@@ -409,7 +408,7 @@ async def mod_wrapper(bot, context):
             'Disabled commands: {7}\n'
             'Cooldown: {8}```').format(
                 message.guild,
-                guild_volatile_data.get('modrole', None),
+                modrole.id if modrole else None,
                 guild_data.get('blocked', []),
                 guild_data.get('muted', []),
                 guild_data.get('muted_channels', []),
@@ -598,12 +597,9 @@ async def owner_wrapper(bot, context):
         if role:
             response = mod_action = 'Set the bot moderator role to {}.'.format(role)
             data.add(bot, 'core', 'modrole', role.id, guild_id=message.guild.id)
-            data.add(bot, 'core', 'modrole', role, guild_id=message.guild.id, volatile=True)
         else:
             response = mod_action = 'Removed the bot moderator role.'
             data.remove(bot, 'core', 'modrole', guild_id=message.guild.id, safe=True)
-            data.remove(
-                bot, 'core', 'modrole', guild_id=message.guild.id, volatile=True, safe=True)
 
     elif subcommand.index == 1:  # Send feedback
         if data.get(bot, 'core', 'feedbackdisabled', default=False):
