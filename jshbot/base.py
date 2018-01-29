@@ -1396,7 +1396,7 @@ async def bot_on_ready_boot(bot):
         'connect': "Allows the bot to connect to voice channels. (Framework)",
         'speak': "Allows the bot to speak. (Framework)",
         'add_reactions': "Allows for interactive menus. (Framework)",
-        'embed_links': "Allows for embeded messages. (Framework)",
+        'embed_links': "Allows for embedded messages. (Framework)",
     }
     utilities.add_bot_permissions(bot, 'core', **permissions)
 

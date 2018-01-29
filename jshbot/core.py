@@ -532,7 +532,7 @@ def get_new_bot(client_type, path, debug, docker_mode):
                         content="Sorry, I don't have permission to carry "
                         "out that command in that channel. The bot may have had "
                         "its `Send Messages` permission revoked (or any other "
-                        "necessary permissions, like `Manage Messages` or "
+                        "necessary permissions, like `Embed Links`, `Manage Messages`, or "
                         "`Speak`).\nIf you are a bot moderator or server owner, "
                         "you can mute channels with `{}mod mute <channel>` "
                         "instead of using permissions directly. If that's not the "
