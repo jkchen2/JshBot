@@ -19,6 +19,12 @@ from jshbot.exceptions import BotException, ConfiguredBotException, ErrorTypes
 
 CBException = ConfiguredBotException('Commands')
 
+ELEVATION = [
+    "bot moderators",
+    "the server owner",
+    "the bot owners"
+]
+
 
 class Response():
     def __init__(
@@ -194,6 +200,15 @@ class SubCommand():
             self.help_embed_fields.append(('Parameter details:', self.parameter_string))
             self.short_help_embed_fields.append(('Parameter details:', self.parameter_string))
 
+        # Privilege warning
+        if self.elevated_level != 0:
+            elevation_string = 'This subcommand can only be used by {}.'.format(
+                ELEVATION[self.elevated_level - 1])
+            self.quick_help += '\n\n**Privilege**:\n{}'.format(elevation_string)
+            self.clean_quick_help += '\n\nPrivilege:\n{}'.format(elevation_string)
+            self.help_embed_fields.append(('Privilege:', elevation_string))
+            self.short_help_embed_fields.append(('Privilege:', elevation_string))
+
     def __repr__(self):
         if hasattr(self, 'clean_help_string'):
             return "<SubCommand '{}'>".format(self.clean_help_string)
@@ -303,6 +318,14 @@ class Command():
             self.clean_help_string += '\n\nOther information:\n{other_string}'.format(
                 other_string = self.other)
             self.help_embed_fields.append(('Other information:', self.other))
+
+        # Privilege warning
+        if self.elevated_level != 0:
+            elevation_string = 'These commands can only be used by {}.'.format(
+                ELEVATION[self.elevated_level - 1])
+            self.help_string += '\n\n**Privilege**:\n{}'.format(elevation_string)
+            self.clean_help_string += '\n\nPrivilege:\n{}'.format(elevation_string)
+            self.help_embed_fields.append(('Privilege:', elevation_string))
 
     def __repr__(self):
         return "<Command '{}'>".format(self.base)
@@ -484,11 +507,18 @@ class Arg(Opt):
             wrap=wrap, quotes=quotes, name=self.name)
         clean_current = '{wrap[0]}<{quotes}{name}{quotes}>{wrap[1]}'.format(
             wrap=clean_wrap, quotes=quotes, name=self.name)
-        if self.additional:
-            current += '`\u200b　\u200b`___`{quotes}{additional}{quotes} ...`___'.format(
-                quotes=quotes, wrap=wrap, additional=self.additional)
-            clean_current += '    {wrap[0]}<{additional}>{wrap[1]}'.format(
-                wrap=clean_wrap, additional=self.additional)
+        if self.argtype in (ArgTypes.SPLIT, ArgTypes.SPLIT_OPTIONAL):
+            if self.additional:
+                current += '`\u200b　\u200b`___`{quotes}{additional}{quotes} ...`___'.format(
+                    quotes=quotes, wrap=wrap, additional=self.additional)
+                clean_current += (
+                    '    {wrap[0]}<{additional}>{wrap[1]} {wrap[0]}...{wrap[1]}'.format(
+                        wrap=clean_wrap, additional=self.additional))
+            else:
+                current += '`\u200b　\u200b`___`{quotes}...{quotes}`___'.format(
+                    quotes=quotes, wrap=wrap)
+                clean_current += '    {wrap[0]}...{wrap[1]}'.format(
+                    wrap=clean_wrap, additional=self.additional)
         self.help_string = current
         self.clean_help_string = clean_current
         if self.doc:
