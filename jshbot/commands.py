@@ -441,7 +441,7 @@ class Opt():
                 else:
                     convert_error = self.convert_error
                 raise BotException(
-                    'Parser', convert_error.format(b=bot, m=message, v=value),
+                    'Parser', self.convert_error.format(b=bot, m=message, v=value),
                     embed_fields=self.subcommand.help_embed_fields)
         if self.check:
             use_await = inspect.iscoroutinefunction(self.check.__call__)

@@ -51,7 +51,7 @@ class MemberConverter(BaseConverter):
         super().__init__()
     def __call__(self, bot, message, value, *a):
         if self.live_check:
-            self.server_only = live_check(bot, message, value, *a)
+            self.server_only = self.live_check(bot, message, value, *a)
         guild = message.guild if self.server_only else None
         try:
             return data.get_member(bot, value, guild=guild, strict=self.server_only)
@@ -75,7 +75,7 @@ class ChannelConverter(MemberConverter):
         super().__init__()
     def __call__(self, bot, message, value, *a):
         if self.live_check:
-            guild = live_check(bot, message, value, *a)
+            guild = self.live_check(bot, message, value, *a)
         else:
             guild = message.guild if self.server_only else None
         try:

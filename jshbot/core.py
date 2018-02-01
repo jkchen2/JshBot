@@ -563,7 +563,10 @@ def get_new_bot(client_type, path, debug, docker_mode):
                 plugins.broadcast_event(self, 'bot_on_general_error', error, message)
                 logger.error(self.last_traceback)
                 logger.error(self.last_exception)
-                parsed_input = '[{0.subcommand}, {0.options}, {0.arguments}]'.format(context)
+                if context:
+                    parsed_input = '[{0.subcommand}, {0.options}, {0.arguments}]'.format(context)
+                else:
+                    parsed_input = '!Context is missing!'
                 await utilities.notify_owners(
                     self, '```\n{0}\n{1}\n{2}\n{3}```'.format(
                         message.content, parsed_input, self.last_exception, self.last_traceback))
