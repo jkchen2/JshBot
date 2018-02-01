@@ -449,7 +449,10 @@ def is_owner(bot, user_id):
 
 def is_blocked(bot, guild, user_id, strict=False):
     """Checks that the user is blocked in the given guild."""
-    blocked_list = get(bot, 'core', 'blocked', guild_id=guild.id, default=[])
+    if guild:
+        blocked_list = get(bot, 'core', 'blocked', guild_id=guild.id, default=[])
+    else:
+        blocked_list = []
     if strict:
         return user_id in blocked_list
     else:

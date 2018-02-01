@@ -430,6 +430,7 @@ def get_new_bot(client_type, path, debug, docker_mode):
                                     continue
                             is_mod = data.is_mod(self, message.guild, result[1].id)
                             if (response.extra.get('reactionlock', True) and not result[0].me or
+                                    data.is_blocked(self, message.guild, result[1].id) or
                                     (response.extra.get('userlock', True) and not
                                         (result[1] == message.author or is_mod))):
                                 continue
