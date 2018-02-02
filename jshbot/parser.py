@@ -142,7 +142,15 @@ async def match_subcommand(bot, command, parameters, message, match_closest=Fals
                         if arg.argtype in (ArgTypes.SPLIT, ArgTypes.SPLIT_OPTIONAL):
                             arguments += stripped_parameters[current_index:]
                         else:  # Merged
-                            arguments += [''.join(parameters[current_index * 2:])]
+                            split_arguments = []
+                            quote_index = current_index * 2
+                            for segment in parameters[current_index * 2:]:
+                                if quote_index in quoted_indices:  # Add quotes back in
+                                    split_arguments.append('"{}"'.format(segment))
+                                else:
+                                    split_arguments.append(segment)
+                                quote_index += 1
+                            arguments += [''.join(split_arguments)]
                         break
 
             if not_found_error:  # Skip rest of loop and evaluate matches
