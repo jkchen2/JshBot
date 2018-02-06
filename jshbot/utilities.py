@@ -394,17 +394,25 @@ async def join_and_ready(bot, voice_channel, is_mod=False, reconnect=False):
         raise CBException("The bot is muted in this voice channel.")
     if reconnect:
         try:
-            await leave_and_stop(bot, guild)
+            await stop_audio(bot, guild)
         except:
             pass
 
     voice_client = guild.voice_client
     if not voice_client:
         try:
-            voice_client = await voice_channel.connect()
+            voice_client = await asyncio.wait_for(
+                voice_channel.connect(timeout=5.0, reconnect=False),
+                timeout=10.0, loop=bot.loop)
+        except asyncio.TimeoutError as e:
+            try:
+                await stop_audio(bot, guild, force=True)
+            except:
+                pass
+            raise CBException("Timed out trying to join the voice channel.")
         except Exception as e:
             try:
-                await leave_and_stop(bot, guild)
+                await stop_audio(bot, guild)
             except:
                 pass
             raise CBException("Failed to join the voice channel.", e=e)
@@ -418,7 +426,7 @@ async def join_and_ready(bot, voice_channel, is_mod=False, reconnect=False):
                 await voice_client.move_to(voice_channel)
             except Exception as e:
                 try:
-                    await leave_and_stop(bot, guild)
+                    await stop_audio(bot, guild)
                 except:
                     pass
                 raise CBException("Failed to move to the voice channel.", e=e)
@@ -426,13 +434,15 @@ async def join_and_ready(bot, voice_channel, is_mod=False, reconnect=False):
     return voice_client
 
 
-async def leave_and_stop(bot, guild, member=None, safe=True):
-    """Leaves any voice channel in the given guild and stops any players.
+async def stop_audio(bot, guild, member=None, safe=True, disconnect=True, force=False):
+    """Stops any playing audio.
 
     Keyword arguments:
     member -- Checks that the the bot is connected to the member's
         voice channel. The safe option overrides this.
     safe -- Prevents exceptions from being thrown. Can be seen as 'silent'.
+    disconnect -- Disconnects from the voice channel.
+    force -- If disconnect is set, forces the disconnect.
     """
     voice_client = guild.voice_client
     if not voice_client:
@@ -440,23 +450,26 @@ async def leave_and_stop(bot, guild, member=None, safe=True):
             return
         else:
             raise CBException("Bot not connected to a voice channel.")
-    voice_client.stop()
     member_voice = member.voice.channel if member and member.voice else None
     if member and voice_client.channel != member_voice:
         if not safe:
             raise CBException("Bot not connected to your voice channel.")
     else:
-        await voice_client.disconnect()
+        voice_client.stop()
+        if disconnect:
+            await voice_client.disconnect(force=force)
 
 
 async def play_and_leave(bot, guild, audio_source, delay=30):
-    """Plays the audio source, and then leaves the voice channel."""
+    """Plays the audio source, and then leaves the voice channel.
+    
+    If the delay is negative, the bot will not leave the voice channel.
+    """
     voice_client = guild.voice_client
     if voice_client is None:
         raise CBException("Voice client is missing.")
 
     async def _leave():
-        logger.debug("_leave was called!")
         await asyncio.sleep(delay)
         test_voice_client = guild.voice_client
         if not test_voice_client or test_voice_client.source != audio_source:
@@ -470,7 +483,7 @@ async def play_and_leave(bot, guild, audio_source, delay=30):
     def _start_leave(error):
         if error:
             raise CBException("Player failed to finish.", error)
-        else:
+        elif delay >= 0:
             asyncio.ensure_future(_leave(), loop=bot.loop)
 
     voice_client.play(audio_source, after=_start_leave)

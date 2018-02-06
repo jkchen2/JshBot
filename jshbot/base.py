@@ -24,7 +24,7 @@ from jshbot.commands import (
     Command, SubCommand, Shortcut, ArgTypes, Arg, Opt, Attachment,
     MessageTypes, Response)
 
-__version__ = '0.2.7'
+__version__ = '0.2.8'
 uses_configuration = False
 CBException = ConfiguredBotException('Base')
 global_dictionary = {}
@@ -69,14 +69,19 @@ def get_commands(bot):
                 Opt('join'), doc='Have the bot join the voice channel you are in.',
                 allow_direct=False),
             SubCommand(
-                Opt('leave'), doc='Have the bot leave the voice channel you are in.',
+                Opt('leave'), Opt('force', optional=True),
+                doc='Have the bot leave the voice channel you are in.',
+                allow_direct=False),
+            SubCommand(
+                Opt('stop'), doc='Stops currently playing audio.',
                 allow_direct=False)],
         shortcuts = [
             Shortcut('announcement', 'announcement'),
             Shortcut('invite', 'invite'),
             Shortcut('join', 'join'),
             Shortcut('leave', 'leave'),
-            Shortcut('stfu', 'leave')],
+            Shortcut('stfu', 'stop'),
+            Shortcut('stop', 'stop')],
         description='Essential bot commands that anybody can use.',
         category='core', function=base_wrapper))
 
@@ -365,14 +370,21 @@ async def base_wrapper(bot, context):
                         bot, message.guild, message.author.id))
                 response.content = "Joined {}.".format(voice_channel.name)
             else:
-                await utilities.leave_and_stop(
-                    bot, message.guild, member=message.author, safe=False)
+                await utilities.stop_audio(
+                    bot, message.guild, member=message.author, safe=False,
+                    force='force' in options)
                 response.content = "Left {}.".format(voice_channel.name)
         except BotException as e:
             raise e  # Pass up
         except Exception as e:
             action = 'join' if subcommand.index == 6 else 'leave'
             raise CBException("Failed to {} the voice channel.".format(action), e=e)
+
+    elif subcommand.index == 8:  # Stop audio
+        await utilities.stop_audio(
+            bot, message.guild, member=message.author, safe=False, disconnect=False)
+        response.content = "Stopped audio."
+
 
     return response
 
@@ -498,7 +510,7 @@ async def mod_wrapper(bot, context):
                     data.list_data_append(
                         bot, 'core', 'muted_channels', channel.id, guild_id=guild_id)
                     if isinstance(channel, discord.VoiceChannel):  # disconnect
-                        await utilities.leave_and_stop(bot, message.guild)
+                        await utilities.stop_audio(bot, message.guild)
                     response = "Channel muted."
             else:  # unmute
                 if not muted:
@@ -1008,7 +1020,7 @@ async def debug_wrapper(bot, context):
         global_dictionary['guild'] = message.guild
 
         # Cleaning up input
-        arguments = cleaned_content[6:]
+        arguments = cleaned_content[6:].lstrip()
         if arguments.startswith('```py\n') and arguments.endswith('```'):
             arguments = arguments[6:-3]
         else:
