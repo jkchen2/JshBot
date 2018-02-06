@@ -118,6 +118,7 @@ def get_new_bot(client_type, path, debug, docker_mode):
             self.last_traceback = None
             self.last_response = None
             self.fresh_boot = None
+            self.ready = False
             self.extra = None
 
             # Extras
@@ -600,6 +601,7 @@ def get_new_bot(client_type, path, debug, docker_mode):
                             self.single_command)))
                     
                 self.fresh_boot = True
+                self.ready = True
                 plugins.broadcast_event(self, 'bot_on_ready_boot')
 
             elif self.fresh_boot:

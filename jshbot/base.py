@@ -1334,8 +1334,6 @@ async def handle_active_message(bot, context, response):
             plugin = bot.plugins[plugin_name]
             if hasattr(plugin, 'bot_on_ready_boot'):
                 asyncio.ensure_future(plugin.bot_on_ready_boot(bot))
-            if hasattr(plugin, 'on_ready'):
-                asyncio.ensure_future(plugin.on_ready(bot))
         await response.message.edit(content='Reloaded {} plugin{}.'.format(
             len(plugins_to_reload), '' if len(plugins_to_reload) == 1 else 's'))
 

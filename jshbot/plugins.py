@@ -398,7 +398,8 @@ def get_manual(bot, subject_id=None, topic_index=None, page=None, guild=None, sa
                 if safe:
                     return
                 raise CBException(
-                    "Invalid topic page number. Must be between 1 and {}.".format(total_topic_pages+1))
+                    "Invalid topic page number. Must be between 1 and {}.".format(
+                        total_topic_pages+1))
             topics = topics[page*MAX_E:(page + 1)*MAX_E]
             raw_list = []
             for index, topic in enumerate(topics):
@@ -426,6 +427,8 @@ def broadcast_event(bot, event, *args, **kwargs):
     Loops through all of the plugins and looks to see if the event index
     specified is associated it. If it is, call that function with args.
     """
+    if not bot.ready:
+        return
     for plugin in bot.plugins.values():
         function = getattr(plugin, event, None)
         if function:
