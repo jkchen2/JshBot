@@ -541,14 +541,13 @@ def get_channel(
         raise CBException("No guild specified for strict channel search.")
 
     # Convert
+    used_id = False
     if isinstance(identity, int):
         used_id = True
     identity_string = str(identity)
     if identity_string.startswith('<#') and identity_string.endswith('>'):
         identity = identity_string.strip('<#>')
         used_id = True
-    else:
-        used_id = False
 
     tests = []
     try:  # Double check used_id in case we're given "<#123foo456>"
@@ -568,9 +567,9 @@ def get_channel(
                 duplicate = result
                 while duplicate:
                     duplicate = discord.utils.get(channels, **test)
-                    if duplicate and duplicate != result:
+                    if not used_id and duplicate and duplicate != result:
                         raise CBException("Duplicate channel found; use a mention.")
-            elif list(it.name for it in channels).count(result.name) > 1:
+            elif not used_id and list(it.name for it in channels).count(result.name) > 1:
                 raise CBException("Duplicate channel found; use a mention.")
             break
 
