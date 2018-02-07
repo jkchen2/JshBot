@@ -564,7 +564,7 @@ class Shortcut():
         self.plugin = None  # Used to identify shortcuts to reload (set in plugins.py)
 
     def __repr__(self):
-        return "<'{}' Shortcut>".format(self.base)
+        return "<Shortcut '{}'>".format(self.base)
 
     def _build_help_string(self):
         command_base = self.command.base

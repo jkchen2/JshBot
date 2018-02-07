@@ -24,7 +24,7 @@ from jshbot.commands import (
     Command, SubCommand, Shortcut, ArgTypes, Arg, Opt, Attachment,
     MessageTypes, Response)
 
-__version__ = '0.2.8'
+__version__ = '0.2.9'
 uses_configuration = False
 CBException = ConfiguredBotException('Base')
 global_dictionary = {}
@@ -46,7 +46,7 @@ def get_commands(bot):
             SubCommand(
                 Arg('message', argtype=ArgTypes.MERGED_OPTIONAL),
                 doc='The bot will respond with "Pong!" and the given message if it is included.')],
-        description='Pings the bot for a response.', category='core'))
+        description='Pings the bot for a response.', category='core', function=get_ping))
 
     new_commands.append(Command(
         'base', subcommands=[
@@ -972,10 +972,10 @@ async def debug_wrapper(bot, context):
             plugin = bot.plugins[options['plugin']]
             version = getattr(plugin, '__version__', 'Unknown')
             has_flag = getattr(plugin, 'uses_configuration', False)
-            response = ("```\nPlugin information for: {0}\n"
-                        "Version: {1}\nConfig: {2}\n"
-                        "Dir: {3}\n```").format(
-                            options['plugin'], version, has_flag, dir(plugin))
+            response = (
+                "```\nPlugin information for: {0}\n"
+                "Version: {1}\nConfig: {2}\nDir: {3}\n```").format(
+                    options['plugin'], version, has_flag, dir(plugin))
 
     elif subcommand.index == 2:  # Latency
         message_type = MessageTypes.ACTIVE
@@ -1014,8 +1014,9 @@ async def debug_wrapper(bot, context):
         response = "Debug environment local dictionary reset."
 
     elif subcommand.index == 6:  # Repl thingy
-        global_dictionary['message'] = message
         global_dictionary['bot'] = bot
+        global_dictionary['message'] = message
+        global_dictionary['author'] = message.author
         global_dictionary['channel'] = message.channel
         global_dictionary['guild'] = message.guild
 
@@ -1290,15 +1291,11 @@ async def help_wrapper(bot, context):
     return response
 
 
-async def get_response(bot, context):
-    if context.base == 'ping':
-        if context.arguments[0]:
-            response = 'Pong!\n{}'.format(context.arguments[0])
-        else:
-            response = 'Pong!'
+async def get_ping(bot, context):
+    if context.arguments[0]:
+        return Response(content='Pong!\n{}'.format(context.arguments[0]))
     else:
-        response = "This should not be seen. Your command was: " + base
-    return Response(content=response)
+        return Response(content='Pong! ({} ms)'.format(int(bot.latency * 1000)))
 
 
 async def handle_active_message(bot, context, response):
@@ -1308,7 +1305,7 @@ async def handle_active_message(bot, context, response):
     """
     if response.extra[0] == 'ping':
         latency_time = "Latency time: {:.2f} ms".format((time.time() * 1000) - response.extra[1])
-        await response.reference.edit(content=latency_time)
+        await response.message.edit(content=latency_time)
 
     elif response.extra[0] == 'reload':
 

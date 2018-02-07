@@ -146,7 +146,7 @@ def get_new_bot(client_type, path, debug, docker_mode):
                 invokers = self.command_invokers
             else:
                 guild_data = data.get(self, 'core', None, message.guild.id, default={})
-                invokers = [guild_data.get('command_invoker', None)]
+                invokers = [guild_data.get('command_invoker')]
                 if not invokers[0]:
                     invokers = self.command_invokers
             has_mention_invoker = False
@@ -154,11 +154,11 @@ def get_new_bot(client_type, path, debug, docker_mode):
             has_nick_invoker = False
             has_regular_invoker = False
             is_direct = isinstance(message.channel, PrivateChannel)
-            for invoker in invokers:
+            for invoker in invokers:  # Need to pick a single invoker
                 if content.startswith(invoker):
                     has_regular_invoker = True
                     break
-            if not has_regular_invoker and not is_direct:
+            if not has_regular_invoker:
                 has_mention_invoker = content.startswith(
                     ('<@' + str(self.user.id) + '>', '<@!' + str(self.user.id) + '>'))
                 if not has_mention_invoker:
@@ -168,11 +168,11 @@ def get_new_bot(client_type, path, debug, docker_mode):
                         has_nick_invoker = clean_content.startswith(message.guild.me.nick.lower())
                         if has_nick_invoker:  # Clean up content (nickname)
                             content = content[len(message.guild.me.nick):].strip()
-                    else:  # Clean up content (name)
+                    elif has_name_invoker:  # Clean up content (name)
                         content = content[len(self.user.name):].strip()
                 else:  # Clean up content (mention)
                     content = content.partition(' ')[2].strip()
-            elif has_regular_invoker:  # Clean up content (invoker)
+            else:  # Clean up content (invoker)
                 content = content.partition(invoker)[2].strip()
 
             if guild_data.get('mention_mode', False):  # Mention mode enabled
