@@ -24,7 +24,7 @@ from jshbot.commands import (
     Command, SubCommand, Shortcut, ArgTypes, Arg, Opt, Attachment,
     MessageTypes, Response)
 
-__version__ = '0.2.9'
+__version__ = '0.2.10'
 uses_configuration = False
 CBException = ConfiguredBotException('Base')
 global_dictionary = {}
@@ -303,8 +303,10 @@ async def base_wrapper(bot, context):
         if not announcement:
             response.content = "No announcement right now!"
         else:
+            invoker = utilities.get_invoker(bot, context.guild)
             response.embed = discord.Embed(
-                title=":mega: Announcement", description=announcement[0],
+                title=":mega: Announcement",
+                description=announcement[0].format(invoker=invoker),
                 timestamp=datetime.datetime.utcfromtimestamp(announcement[1]),
                 colour=discord.Colour(0x55acee))
 
