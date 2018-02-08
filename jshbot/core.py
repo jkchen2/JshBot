@@ -516,6 +516,7 @@ def get_new_bot(client_type, path, debug, docker_mode):
                         embed.set_footer(
                             text="\u200b\u200b\u200bThe issuing command can be edited",
                             icon_url="http://i.imgur.com/fM9yGzI.png")
+                # TODO: Handle long messages
                 message_reference = await send_function(content=content, embed=embed)
 
                 if error.autodelete > 0:

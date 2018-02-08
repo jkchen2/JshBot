@@ -373,15 +373,14 @@ class Opt():
             convert = lambda b, m, v, *a: float(v)
             if not convert_error:
                 convert_error = 'Must be a decimal number.'
-        if not convert_error:
-            convert_error = 'Unknown specification.'
         self.convert = convert
+        self.set_convert_error = convert_error or ''
         self.convert_error = 'Invalid value type for {name}: {error}'.format(
-            name=self.help_string, error=convert_error)
-        if not check_error:
-            check_error = 'Unknown specification.'
+            name=self.help_string, error=self.set_convert_error)
+        self.set_check_error = check_error or ''
         self.check_error = 'Invalid value for {name}: {error}'.format(
-            name=self.attached_string if self.attached else self.help_string, error=check_error)
+            name=self.attached_string if self.attached else self.help_string,
+            error=self.set_check_error)
 
     def _build_help_string(self):
         quotes = '"' if self.quotes_recommended else ''
@@ -438,11 +437,10 @@ class Opt():
                         name=self.help_string, error=e.error_details)
                 elif hasattr(self.convert, 'get_convert_error'):
                     convert_error = self.convert.get_convert_error(bot, message, value)
-                else:
-                    convert_error = self.convert_error
+                elif not self.set_convert_error:
+                    raise e
                 raise BotException(
-                    'Parser', self.convert_error.format(b=bot, m=message, v=value),
-                    embed_fields=self.subcommand.help_embed_fields)
+                    'Parser', convert_error, embed_fields=self.subcommand.help_embed_fields)
         if self.check:
             use_await = inspect.iscoroutinefunction(self.check.__call__)
             try:
@@ -467,11 +465,10 @@ class Opt():
                         error=e.error_details)
                 elif hasattr(self.check, 'get_check_error'):
                     check_error = self.check.get_check_error(bot, message, value)
-                else:
-                    check_error = self.check_error
+                elif not self.set_check_error:
+                    raise e
                 raise BotException(
-                    'Parser', check_error.format(b=bot, m=message, v=value),
-                    embed_fields=self.subcommand.help_embed_fields)
+                    'Parser', check_error, embed_fields=self.subcommand.help_embed_fields)
         return value
 
 
