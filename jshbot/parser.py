@@ -1,3 +1,4 @@
+import discord
 import re
 
 from jshbot import commands, utilities, logger
@@ -206,13 +207,20 @@ async def match_subcommand(bot, command, parameters, message, match_closest=Fals
             if subcommand.confidence_threshold is not None:  # Confidence threshold
                 if closest_index_matches >= subcommand.confidence_threshold:
                     continue  # Skip valid match due to low confidence
-            if match_closest:  # No additional processing
+
+            # No additional processing
+            if match_closest:
                 if matches <= 1 and matches < closest_index_matches:  # No confidence
                     continue
                 else:
                     return subcommand
-            else:
 
+            # Cannot match parameters in a direct message if disabled
+            elif not subcommand.allow_direct and isinstance(message.channel, discord.DMChannel):
+                return subcommand, {}, []
+
+            # Fill in options and arguments
+            else:
                 for option_name, value in options.items():  # Check options
                     current_opt = subcommand.opts[option_name]
                     new_value = await current_opt.convert_and_check(bot, message, value)
