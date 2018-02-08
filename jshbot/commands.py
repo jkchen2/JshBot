@@ -439,6 +439,8 @@ class Opt():
                     convert_error = self.convert.get_convert_error(bot, message, value)
                 elif not self.set_convert_error:
                     raise e
+                else:
+                    convert_error = self.convert_error
                 raise BotException(
                     'Parser', convert_error, embed_fields=self.subcommand.help_embed_fields)
         if self.check:
@@ -467,6 +469,8 @@ class Opt():
                     check_error = self.check.get_check_error(bot, message, value)
                 elif not self.set_check_error:
                     raise e
+                else:
+                    check_error = self.check_error
                 raise BotException(
                     'Parser', check_error, embed_fields=self.subcommand.help_embed_fields)
         return value
@@ -760,7 +764,7 @@ async def execute(bot, context):
 
     if isinstance(context.message.channel, PrivateChannel):
         if not subcommand.allow_direct:
-            raise CBException("Cannot use this command in a direct message.")
+            raise CBException("This command cannot be used in a direct message.")
         elif 0 < subcommand.elevated_level < 3:
             raise CBException("Special permissions commands cannot be used in direct messages.")
         disabled_commands = []
