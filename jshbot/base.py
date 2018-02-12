@@ -746,11 +746,11 @@ async def _update_plugins(bot, plugin_list, progress_function):
                     shutil.copy2(entry_path, plugins_directory)
 
             elif entry.startswith(plugin[:-3] + '-'):
-                if entry in os.listdir(config_directory):  # Check existing config
-                    if entry.endswith('-config.yaml'):
-                        changes = _compare_config(bot, plugin, entry_path)
-                        if changes:
-                            config_changed[plugin] = changes
+                if entry in os.listdir(config_directory) and entry.endswith('-config.yaml'):
+                    # Checks existing config files for changes
+                    changes = _compare_config(bot, plugin, entry_path)
+                    if changes:
+                        config_changed[plugin] = changes
                 else:  # Copy config over
                     shutil.copy2(entry_path, config_directory)
 
