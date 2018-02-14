@@ -546,6 +546,7 @@ def get_new_bot(client_type, path, debug, docker_mode):
                             self.command_invokers[0]))
                 except:  # User has blocked the bot
                     pass
+                # TODO: Consider sending a general permissions error
 
             else:
                 if isinstance(error, discord.HTTPException) and len(str(response)) > 1998:

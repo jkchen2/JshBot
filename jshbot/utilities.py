@@ -105,7 +105,6 @@ class PercentageConverter(BaseConverter):
             converted = float(cleaned)
         except:
             raise CBException("Must be a percentage.")
-            #self.error_reason = "Must be a percentage."
         else:
             if self.accuracy is not None:
                 converted = round(converted, self.accuracy)
