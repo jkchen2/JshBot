@@ -201,7 +201,7 @@ def list_data_append(
         current[plugin_name][key] = [value]
     else:  # List already exists
         current = current[plugin_name][key]
-        if type(current) is not list:
+        if not isinstance(current, list):
             raise CBException("Data is not a list.")
         elif duplicates or value not in current:
             current.append(value)
@@ -226,7 +226,7 @@ def list_data_remove(
         else:
             raise CBException("Key '{}' not found.".format(key))
     current = current[plugin_name][key]
-    if type(current) is not list:
+    if not isinstance(current, list):
         if safe:
             return default
         else:
@@ -250,6 +250,30 @@ def list_data_remove(
         else:
             current.remove(value)
             return value
+
+
+def list_data_toggle(
+        bot, plugin_name, key, value, guild_id=None, channel_id=None,
+        user_id=None, volatile=False):
+    """Toggles the value from the list at the location.
+
+    If the value exists in the list, it will be removed (one instance).
+    Otherwise, it will be added.
+    Returns whether or not the value was appended to the list.
+    """
+    current, location_key = get_location(bot, guild_id, channel_id, user_id, volatile)
+    if plugin_name not in current:
+        current[plugin_name] = {}
+    if key not in current[plugin_name]:  # List doesn't exist
+        current[plugin_name][key] = [value]
+        return True
+    else:  # List already exists
+        current = current[plugin_name][key]
+        if not isinstance(current, list):
+            raise CBException("Data is not a list.")
+        appended = value not in current
+        current.append(value) if appended else current.remove(value)
+        return appended
 
 
 def save_data(bot, force=False):
@@ -494,14 +518,14 @@ def get_member(bot, identity, guild=None, attribute=None, safe=False, strict=Fal
         tests.append({'id': int(identity)})
     except:
         used_id = False
-    tests += [{'name': identity}, {'nick': identity}]
+    tests.extend([{'name': identity}, {'nick': identity}])
     for test in tests:
         members = guild.members if guild else bot.get_all_members()
         result = discord.utils.get(members, **test)
         if result:  # Check for duplicates
             if used_id:
                 break
-            elif type(members) is GeneratorType:
+            elif isinstance(members, GeneratorType):
                 duplicate = result
                 while duplicate:
                     duplicate = discord.utils.get(members, **test)
@@ -563,7 +587,7 @@ def get_channel(
         elif result:  # Check for duplicates
             if used_id:
                 break
-            elif type(channels) is GeneratorType:
+            elif isinstance(channels, GeneratorType):
                 duplicate = result
                 while duplicate:
                     duplicate = discord.utils.get(channels, **test)
@@ -606,7 +630,10 @@ def get_role(bot, identity, guild, safe=False):
         tests.append({'id': int(identity)})
     except:
         used_id = False
-    tests += [{'name': identity}]
+    tests.append({'name': identity})
+    # Attempted mention, but the role is unmentionable
+    if identity.startswith('@') and len(identity) > 1:
+        tests.append({'name': identity[1:]})
     for test in tests:
         result = discord.utils.get(guild.roles, **test)
         if result:  # Check for duplicates
