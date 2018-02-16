@@ -614,6 +614,7 @@ def get_channel(
             raise CBException("Channel '{}' not found.".format(identity))
 
 
+# TODO: Add lowercase role list checking
 def get_role(bot, identity, guild, safe=False):
     """Gets a role given the identity and guild."""
     if isinstance(identity, int):
@@ -632,8 +633,9 @@ def get_role(bot, identity, guild, safe=False):
         used_id = False
     tests.append({'name': identity})
     # Attempted mention, but the role is unmentionable
-    if identity.startswith('@') and len(identity) > 1:
+    if identity_string.startswith('@') and len(identity_string) > 1:
         tests.append({'name': identity[1:]})
+
     for test in tests:
         result = discord.utils.get(guild.roles, **test)
         if result:  # Check for duplicates
@@ -642,6 +644,7 @@ def get_role(bot, identity, guild, safe=False):
             elif list(it.name for it in guild.roles).count(result.name) > 1:
                 raise CBException("Duplicate role found; use a mention.")
             break
+
     if result:
         return result
     else:

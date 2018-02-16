@@ -568,13 +568,17 @@ def get_text_as_file(text):
         raise CBException("Failed to convert text to a file.", e=e)
 
 
-def get_invoker(bot, guild=None):
+def get_invoker(bot, guild=None, message=None):
     """Gets a suitable command invoker for the bot.
 
     If a guild is specified, this will check for a custom invoker and
     whether or not mention mode is enabled.
+    If a message is specified, this will obtain a guild as long as the message
+    was not sent in a private channel.
     """
-    if guild is not None:
+    if message and isinstance(message.channel, discord.TextChannel):
+        guild = message.guild
+    if guild:
         guild_data = data.get(
             bot, 'core', None, guild_id=guild.id, default={})
         if guild_data.get('mention_mode', False):

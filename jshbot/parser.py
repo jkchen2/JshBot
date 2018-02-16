@@ -330,8 +330,15 @@ async def parse(bot, command, parameters, message):
     #  return (command, subcommand.index, options, arguments, command.keywords)
 
 
-async def guess_command(bot, text, message, safe=True, substitue_shortcuts=True):
-    """Guesses the closest command or subcommand."""
+async def guess_command(
+        bot, text, message, safe=True, substitute_shortcuts=True, suggest_help=True):
+    """Guesses the closest command or subcommand.
+    
+    Keyword arguments:
+    safe -- Returns None if no command was guessed
+    substitute_shortcuts -- Fills in the shortcut (if found) and guesses a command from that
+    suggest_help -- Suggests that the user run the regular help command
+    """
     if not text:
         if safe:
             return None
@@ -349,8 +356,13 @@ async def guess_command(bot, text, message, safe=True, substitue_shortcuts=True)
         if safe:
             return None
         else:
-            raise CBException("Invalid base.")
-    if isinstance(command, commands.Shortcut) and substitue_shortcuts:
+            if suggest_help:
+                invoker = utilities.get_invoker(bot, message=message)
+                additional = ' To see the menu, type `{}help`'.format(invoker)
+            else:
+                additional = ''
+            raise CBException("Invalid base.{}".format(additional))
+    if isinstance(command, commands.Shortcut) and substitute_shortcuts:
         try:
             parameters = await fill_shortcut(bot, command, parameters, message)
             command = command.command

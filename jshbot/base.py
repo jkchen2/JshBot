@@ -24,7 +24,7 @@ from jshbot.commands import (
     Command, SubCommand, Shortcut, ArgTypes, Arg, Opt, Attachment,
     MessageTypes, Response)
 
-__version__ = '0.2.10'
+__version__ = '0.2.11'
 uses_configuration = False
 CBException = ConfiguredBotException('Base')
 global_dictionary = {}
@@ -439,7 +439,8 @@ async def mod_wrapper(bot, context):
             else:
                 guess_text += arguments[1]
             pass
-        guess = await parser.guess_command(bot, guess_text, message, safe=False)
+        guess = await parser.guess_command(
+            bot, guess_text, message, safe=False, suggest_help=False)
         if isinstance(guess, Command):  # No subcommand found
             if not -1 <= index_guess < len(guess.subcommands):
                 raise CBException(
@@ -450,24 +451,14 @@ async def mod_wrapper(bot, context):
             guess = guess.command
 
         # Display disabled command and potentially subcommand
-        if guess.category == 'core':
-            raise CBException("The core commands cannot be disabled.")
         subcommand = guess.subcommands[index_guess] if index_guess != -1 else None
-        toggle = [guess.base, index_guess]
-        pass_in = (bot, 'core', 'disabled', toggle)
-        pass_in_keywords = {'guild_id': message.guild.id}
-        disabled_commands = data.get(*pass_in[:-1], **pass_in_keywords, default=[])
-        if toggle in disabled_commands:
-            function = data.list_data_remove
-            response = "Enabled"
-        else:
-            function = data.list_data_append
-            response = "Disabled"
-        function(*pass_in, **pass_in_keywords)
-        if index_guess == -1:
-            response += " all `{}` subcommands.".format(guess.base)
-        else:
+        disabled = data.list_data_toggle(
+            bot, 'core', 'disabled', [guess.base, index_guess], guild_id=context.guild.id)
+        response = "Disabled" if disabled else "Enabled"
+        if subcommand:
             response += " the \t{}\t subcommand.".format(subcommand.help_string)
+        else:
+            response += " all `{}` subcommands.".format(guess.base)
         mod_action = response
 
     elif subcommand.index in (2, 3):  # Block or unblock
@@ -1261,7 +1252,7 @@ async def help_wrapper(bot, context):
             if guess is None:
                 text = arguments[0] + ' ' + arguments[1]
                 guess = await parser.guess_command(
-                    bot, text, message, safe=False, substitue_shortcuts=False)
+                    bot, text, message, safe=False, substitute_shortcuts=False)
             for name, value in guess.help_embed_fields:
                 response.embed.add_field(
                     name=name, value=value.format(invoker=invoker), inline=False)
