@@ -381,14 +381,14 @@ def clean_data(bot):
     save_data(bot, force=True)
 
 
-def add_custom_role(bot, plugin_name, role, role_name):
+def add_custom_role(bot, plugin_name, role_name, role):
     """Adds the given role as a custom internal role used by the bot."""
-    roles = get(bot, plugin_name, 'roles', guild_id=role.guild.id, create=True, default={})
+    roles = get(bot, plugin_name, 'custom_roles', guild_id=role.guild.id, create=True, default={})
     roles[role_name] = role.id
 
 
-def remove_custom_role(bot, plugin_name, guild, role_name, safe=True):
-    roles = get(bot, plugin_name, 'roles', guild_id=guild.id, default={})
+def remove_custom_role(bot, plugin_name, role_name, guild, safe=True):
+    roles = get(bot, plugin_name, 'custom_roles', guild_id=guild.id, default={})
     try:
         return roles.pop(role_name)
     except KeyError:
@@ -396,17 +396,17 @@ def remove_custom_role(bot, plugin_name, guild, role_name, safe=True):
             raise CBException("Custom role not found.")
 
 
-def get_custom_role(bot, plugin_name, guild, role_name, safe=True):
+def get_custom_role(bot, plugin_name, role_name, guild, safe=True):
     """Gets the role associated with the guild and the role name."""
     if not guild:
         if safe:
             return None
         raise CBException("Cannot check custom roles in a direct message.")
-    roles = get(bot, plugin_name, 'roles', guild_id=guild.id, default={})
+    roles = get(bot, plugin_name, 'custom_roles', guild_id=guild.id, default={})
     role_id = roles.get(role_name, None)
     role = discord.utils.get(guild.roles, id=role_id)
     if not role:
-        remove_custom_role(bot, plugin_name, guild, role_name)
+        remove_custom_role(bot, plugin_name, role_name, guild)
         if safe:
             return None
         else:
@@ -418,20 +418,15 @@ def has_custom_role(
         bot, plugin_name, role_name, guild=None, user_id=None, member=None, strict=False):
     """Checks if the given user has the given role."""
     if member:
-        user_id = member.id
         guild = getattr(member, 'guild', None)
-    role = get_custom_role(bot, plugin_name, guild, role_name)
-
-    if member is None:
+    elif guild:
         member = guild.get_member(user_id)
+    role = get_custom_role(bot, plugin_name, role_name, guild)  # Checks for no guild
+
     if member is None:
         raise CBException('Member not found.')
-
     member_roles = getattr(member, 'roles', [])
-    if strict:
-        return role in member_roles
-    else:
-        return role in member_roles or is_mod(bot, member=member)
+    return role in member_roles or not strict and is_mod(bot, member=member)
 
 
 def is_mod(bot, guild=None, user_id=None, strict=False, member=None):
