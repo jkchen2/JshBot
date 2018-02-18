@@ -28,15 +28,15 @@ class BotException(Exception):
         self.autodelete = 0 if autodelete is None else autodelete
         self.use_embed = use_embed
         self.traceback = ''
-        other_details = '\n'.join([str(arg) for arg in args])
+        self.other_details = '\n'.join([str(arg) for arg in args])
         self.error_message = "`{subject} error: {details}`\n{others}".format(
             subject=self.error_subject,
             details=self.error_details,
-            others=other_details)
+            others=self.other_details)
         emoji = ':warning:' if serious or random() > 0.01 else ':thinking:'
         self.embed = Embed(
             title='{} {} error'.format(emoji, self.error_subject),
-            description='{}\n{}'.format(self.error_details, other_details),
+            description='{}\n{}'.format(self.error_details, self.other_details),
             colour=Colour(0xffcc4d))
 
         if e:

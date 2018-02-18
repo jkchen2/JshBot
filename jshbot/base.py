@@ -331,8 +331,7 @@ async def base_wrapper(bot, context):
                     bot, plugin, 'permissions', volatile=True, default={}).items()
                 if permission_items:
                     plugin_permissions = '\n'.join(
-                        ['**`{0[0]}`** -- {0[1]}'.format(item)
-                            for item in permission_items])
+                        ['**`{0[0]}`** -- {0[1]}'.format(item) for item in permission_items])
                     response.embed.add_field(name=plugin, value=plugin_permissions)
 
     elif subcommand.index == 5:  # Notifications

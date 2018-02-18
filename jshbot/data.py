@@ -405,8 +405,12 @@ def get_custom_role(bot, plugin_name, guild, role_name, safe=True):
     roles = get(bot, plugin_name, 'roles', guild_id=guild.id, default={})
     role_id = roles.get(role_name, None)
     role = discord.utils.get(guild.roles, id=role_id)
-    if not role and not safe:
-        raise CBException("Custom role not found.")
+    if not role:
+        remove_custom_role(bot, plugin_name, guild, role_name)
+        if safe:
+            return None
+        else:
+            raise CBException("Custom role '{}' not found.".format(role_name))
     return role
 
 
@@ -552,7 +556,7 @@ def get_member(bot, identity, guild=None, attribute=None, safe=False, strict=Fal
         elif safe:
             return None
         else:
-            raise CBException("User '{}' not found.".format(identity))
+            raise CBException("User '{}' not found.".format(identity), identity)
 
 
 def get_channel(
@@ -611,12 +615,13 @@ def get_channel(
         if safe:
             return None
         else:
-            raise CBException("Channel '{}' not found.".format(identity))
+            raise CBException("Channel '{}' not found.".format(identity), identity)
 
 
 # TODO: Add lowercase role list checking
 def get_role(bot, identity, guild, safe=False):
     """Gets a role given the identity and guild."""
+    used_id, used_name = False, False
     if isinstance(identity, int):
         used_id = True
     identity_string = str(identity)
@@ -624,17 +629,18 @@ def get_role(bot, identity, guild, safe=False):
         identity = identity_string.strip('<@&>')
         used_id = True
     else:
-        used_id = False
+        used_name = True
 
     tests = []
     try:  # Double check id in case we're given "<@&123foo456>"
         tests.append({'id': int(identity)})
     except:
         used_id = False
+        used_name = True
     tests.append({'name': identity})
     # Attempted mention, but the role is unmentionable
     if identity_string.startswith('@') and len(identity_string) > 1:
-        tests.append({'name': identity[1:]})
+        tests.append({'name': identity_string[1:]})
 
     for test in tests:
         result = discord.utils.get(guild.roles, **test)
@@ -647,11 +653,25 @@ def get_role(bot, identity, guild, safe=False):
 
     if result:
         return result
+    elif used_name:  # Search through lowercased role names
+        clean_roles = {}
+        for it in guild.roles:
+            clean_name = it.name.lower()
+            if clean_name in clean_roles:
+                clean_roles[clean_name][1] = True  # Duplicate found
+            else:
+                clean_roles[clean_name] = [it, False]
+        result = clean_roles.get(identity_string.lower())
+        if result:
+            if result[1]:
+                raise CBException("Duplicate role found; use a mention.")
+            else:
+                return result[0]
+
+    if safe:
+        return None
     else:
-        if safe:
-            return None
-        else:
-            raise CBException("Role '{}' not found.".format(identity))
+        raise CBException("Role '{}' not found.".format(identity), identity)
 
 
 def get_from_cache(bot, name, url=None):

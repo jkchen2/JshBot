@@ -61,7 +61,7 @@ class MemberConverter(BaseConverter):
         if error.error_details.startswith('Duplicate'):
             pre_format = "Duplicate {}s found.".format(convert_type)
         else:
-            pre_format = "{} not found.".format(convert_type.title())
+            pre_format = "{} '{}' not found.".format(convert_type.title(), error.other_details)
         self.error_reason = pre_format + ' Please use a mention.'
         assert False  # To trigger the conversion error
 
