@@ -374,6 +374,8 @@ def get_new_bot(client_type, path, debug, docker_mode):
                             await asyncio.sleep(response.extra)
                         try:
                             await message.delete()
+                            if replacement_message:
+                                await message_reference.delete()
                         except:  # Ignore permissions errors
                             pass
                 except Exception as e:
