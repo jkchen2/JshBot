@@ -111,6 +111,15 @@ class PercentageConverter(BaseConverter):
             return converted/100
 
 
+class HexColorConverter(BaseConverter):
+    def __call__(self, bot, message, value, *a):
+        cleaned = value.lower()[::-1][:6][::-1]
+        try:
+            return discord.Color(int(cleaned, 16))
+        except:
+            raise CBException("Invalid hex color.")
+
+
 def add_bot_permissions(bot, plugin_name, **permissions):
     """Adds the given permissions to the bot for authentication generation."""
     dummy = discord.Permissions()
