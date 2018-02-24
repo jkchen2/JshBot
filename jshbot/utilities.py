@@ -113,9 +113,8 @@ class PercentageConverter(BaseConverter):
 
 class HexColorConverter(BaseConverter):
     def __call__(self, bot, message, value, *a):
-        cleaned = value.lower()[::-1][:6][::-1]
         try:
-            return discord.Color(int(cleaned, 16))
+            return discord.Color(int(value.lower()[-6:], 16))
         except:
             raise CBException("Invalid hex color.")
 
