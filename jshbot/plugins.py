@@ -4,6 +4,7 @@ import yaml
 import importlib.util
 import os.path
 import sys
+import re
 
 # Debug
 import traceback
@@ -17,6 +18,8 @@ CBException = ConfiguredBotException('Plugins')
 command_spawner_functions = []
 db_template_functions = []
 command_load_functions = []
+event_functions = []
+plugin_permissions = []
 
 numeric_words = [
     ':zero:', ':one:', ':two:', ':three:', ':four:',
@@ -24,38 +27,77 @@ numeric_words = [
 
 
 def command_spawner(function):
+    """Decorator for getting plugin functions."""
     command_spawner_functions.append(function)
     return function
 
 
 def db_template_spawner(function):
+    """Decorator for fetching databse templates."""
     db_template_functions.append(function)
     return function
 
 
 def on_load(function):
+    """Decorator for functions that need to be called when the plugin is loaded."""
     command_load_functions.append(function)
+    return function
+
+
+def listen_for(event_name):
+    """Decorator for registering event functions."""
+    def _decorator(function):
+        event_functions.append((event_name, function))
+        return function
+    return _decorator
+
+
+def permissions_spawner(function):
+    """Decorator for plugin permissions."""
+    plugin_permissions.append(function)
     return function
 
 
 def load_plugin(bot, plugin_name):
     directory = '{}/plugins'.format(bot.path)
     if plugin_name == 'base':
-        raise CBException("Cannot (re)load base plugin.")
+        raise CBException("Cannot (re)load the base plugin.")
 
-    if plugin_name in bot.plugins:
-        logger.debug("Reloading plugin {}...".format(plugin_name))
+    if plugin_name in bot.plugins:  # Prepare plugin for reloading
+        logger.debug("Reloading plugin %s...", plugin_name)
         module = bot.plugins.pop(plugin_name)
-        # importlib.reload(module)
+
+        # Stop tasks
+        tasks = asyncio.Task.all_tasks()
+        pattern = re.compile('([^/(:\d>$)])+(?!.*\/)')
+        for task in tasks:
+            callback_info = task._repr_info()[1]
+            plugin_name_test = pattern.search(callback_info).group(0)
+            if plugin_name_test == plugin_name:
+                logger.debug("Canceling task: {}".format(task))
+                task.cancel()
+
+        # Remove plugin functions that are registered to events
+        for function_list in bot.event_functions.values():
+            to_remove = []
+            for function in function_list:
+                if function.__module__ == plugin_name:
+                    to_remove.append(function)
+            for function in to_remove:
+                function_list.remove(function)
+
+        # Delete plugin commands
         to_remove = []
         for base, command in bot.commands.items():
             if command.plugin is module:
                 to_remove.append(base)
         for base in to_remove:
             del bot.commands[base]
+
         del module
+
     else:
-        logger.debug("Loading plugin {}...".format(plugin_name))
+        logger.debug("Loading plugin %s...", plugin_name)
 
     try:
         spec = importlib.util.spec_from_file_location(
@@ -87,6 +129,15 @@ def load_plugin(bot, plugin_name):
         while command_load_functions:
             function = command_load_functions.pop()
             function(bot)
+        while event_functions:
+            event_name, function = event_functions.pop()
+            if event_name not in bot.event_functions:
+                bot.event_functions[event_name] = [function]
+            else:
+                bot.event_functions[event_name].append(function)
+        while plugin_permissions:
+            function = plugin_permissions.pop()
+            utilities.add_bot_permissions(bot, plugin_name, **function(bot))
     except Exception as e:
         raise CBException("Failed to initialize external plugin.", plugin_name, e=e)
     logger.debug("Plugin {} loaded.".format(plugin_name))
@@ -124,6 +175,15 @@ def add_plugins(bot):
     while command_load_functions:
         function = command_load_functions.pop()
         function(bot)
+    while event_functions:
+        event_name, function = event_functions.pop()
+        if event_name not in bot.event_functions:
+            bot.event_functions[event_name] = [function]
+        else:
+            bot.event_functions[event_name].append(function)
+    while plugin_permissions:
+        function = plugin_permissions.pop()
+        utilities.add_bot_permissions(bot, 'core', **function(bot))
 
     # Add plugins in plugin folder
     for plugin_name in plugins_list:
@@ -230,7 +290,7 @@ def get_help(
             category_index = int(category_id)
             assert category_index >= 0  # TODO: Better checking
         except ValueError:  # Category text given
-            category_name = subject_id.title()
+            category_name = category_id.title()
             if category_name not in categories:
                 if safe:
                     return
@@ -423,17 +483,12 @@ def get_manual(bot, subject_id=None, topic_index=None, page=None, guild=None, sa
 
 
 def broadcast_event(bot, event, *args, **kwargs):
-    """
-    Loops through all of the plugins and looks to see if the event index
-    specified is associated it. If it is, call that function with args.
-    """
+    """Calls functions registered to the given event."""
     if not bot.ready:
         return
-    for plugin in bot.plugins.values():
-        function = getattr(plugin, event, None)
-        if function:
-            try:
-                asyncio.ensure_future(function(bot, *args, **kwargs))
-            except TypeError as e:
-                logger.error("Bypassing event error: %s", e)
-                logger.error(traceback.format_exc())
+    for function in bot.event_functions.get(event, []):
+        try:
+            asyncio.ensure_future(function(bot, *args, **kwargs))
+        except TypeError as e:
+            logger.error("Bypassing event error: %s", e)
+            logger.error(traceback.format_exc())

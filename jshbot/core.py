@@ -1,18 +1,18 @@
 import asyncio
-import discord
 import traceback
 import logging
-import os.path
 import random
 import shutil
-import yaml
 import time
 import sys
 import os
 
+import discord
+import yaml
+
 from logging.handlers import RotatingFileHandler
 from concurrent.futures import FIRST_COMPLETED
-from collections import namedtuple, OrderedDict
+from collections import namedtuple, deque, OrderedDict
 from discord.abc import PrivateChannel
 
 from jshbot import (
@@ -100,6 +100,7 @@ def get_new_bot(client_type, path, debug, docker_mode):
             self.plugins = OrderedDict()
             self.manuals = OrderedDict()
             self.commands = {}
+            self.event_functions = {}
             plugins.add_plugins(self)
 
             config = self.configurations['core']
@@ -114,9 +115,12 @@ def get_new_bot(client_type, path, debug, docker_mode):
             self.selfbot = config['selfbot_mode']
             self.owners = config['owners']
             self.schedule_timer = None
+            self.response_deque = deque(maxlen=50)
+            self.error_deque = deque(maxlen=50)
             self.last_exception = None
             self.last_traceback = None
             self.last_response = None
+            self.last_context = None
             self.fresh_boot = None
             self.ready = False
             self.extra = None
@@ -215,6 +219,29 @@ def get_new_bot(client_type, path, debug, docker_mode):
             else:
                 return result  # Clear to respond
 
+        async def _parse_command(
+                self, message, command, parameters, initial_data, elevation, direct):
+            """Parses the command and builds a context."""
+            subcommand, options, arguments = await parser.parse(
+                self, command, parameters, message)
+            context = self.Context(
+                message, base, subcommand, options, arguments,
+                subcommand.command.keywords, initial_data[0], elevation,
+                message.guild, message.channel, message.author, direct,
+                subcommand.index, subcommand.id, self)
+            plugins.broadcast_event(self, 'bot_on_command', context)
+            logger.info([subcommand, options, arguments])
+            return context
+
+        async def _get_response(self, context):
+            """Takes a context and builds a response."""
+            response = await commands.execute(self, context)
+            if response is None:
+                response = Response()
+            elif self.selfbot and response.content:
+                response.content = '\u200b' + response.content
+            return response
+
         async def on_message(self, message, replacement_message=None):
             # Ensure bot can respond properly
             try:
@@ -273,23 +300,19 @@ def get_new_bot(client_type, path, debug, docker_mode):
 
             # Parse command and reply
             try:
+                logger.debug(message.author.name + ': ' + message.content)
                 context = None
-                with message.channel.typing():
-                    logger.debug(message.author.name + ': ' + message.content)
-                    subcommand, options, arguments = await parser.parse(
-                        self, command, parameters, message)
-                    context = self.Context(
-                        message, base, subcommand, options, arguments,
-                        subcommand.command.keywords, initial_data[0], elevation,
-                        message.guild, message.channel, message.author, direct,
-                        subcommand.index, subcommand.id, self)
-                    plugins.broadcast_event(self, 'bot_on_command', context)
-                    logger.info([subcommand, options, arguments])
-                    response = await commands.execute(self, context)
-                    if response is None:
-                        response = Response()
-                    if self.selfbot and response.content:
-                        response.content = '\u200b' + response.content
+                parse_command = self._parse_command(
+                    message, command, parameters, initial_data, elevation, direct)
+                if replacement_message:
+                    context = await parse_command
+                    response = await self._get_response(context)
+                else:
+                    with message.channel.typing():
+                        context = await parse_command
+                        response = await self._get_response(context)
+                self.response_deque.appendleft((context, response))
+
             except Exception as e:  # General error
                 response = Response()
                 destination = message.channel
@@ -347,15 +370,16 @@ def get_new_bot(client_type, path, debug, docker_mode):
             else:
                 permissions = None
             self.last_response = message_reference
+            self.last_context = context
 
             if response.message_type is MessageTypes.NORMAL and message_reference:
                 # Edited commands are handled in base.py
                 wait_time = self.edit_timeout
                 if wait_time:
-                    self.edit_dictionary[str(message.id)] = message_reference
+                    self.edit_dictionary[message.id] = message_reference
                     await asyncio.sleep(wait_time)
-                    if str(message.id) in self.edit_dictionary:
-                        del self.edit_dictionary[str(message.id)]
+                    if message.id in self.edit_dictionary:
+                        del self.edit_dictionary[message.id]
                         if message_reference.embeds:
                             embed = message_reference.embeds[0]
                             if embed.footer.text and embed.footer.text.startswith('\u200b'*3):
@@ -478,21 +502,6 @@ def get_new_bot(client_type, path, debug, docker_mode):
             elif message_reference:
                 logger.error("Unknown message type: {}".format(response.message_type))
 
-            '''
-            # TODO: Fix for rewrite
-            elif response[2] == 6:  # Wait for response
-                assert False
-                try:
-                    reply = await self.wait_for_message(**response[3][1])
-                    await response[3][0](
-                        self, message_reference, reply, response[3][2])
-                except Exception as e:
-                    message_reference = await self.handle_error(
-                        e, message, parsed_input, response,
-                        edit=message_reference, command_editable=False)
-                    self.last_response = message_reference
-            '''
-
         async def handle_error(
                 self, error, message, context, response, edit=None, command_editable=False):
             """Common error handler for sending responses."""
@@ -506,7 +515,7 @@ def get_new_bot(client_type, path, debug, docker_mode):
 
             if isinstance(error, BotException):
                 self.last_traceback = error.traceback
-                plugins.broadcast_event(self, 'bot_on_error', error, message)
+                plugins.broadcast_event(self, 'bot_on_exception', error, message)
                 if error.use_embed:
                     content, embed = '', error.embed
                 else:
@@ -532,7 +541,7 @@ def get_new_bot(client_type, path, debug, docker_mode):
                     return
 
             elif isinstance(error, discord.Forbidden):
-                plugins.broadcast_event(self, 'bot_on_discord_error', error, message)
+                plugins.broadcast_event(self, 'bot_on_discord_exception', error, message)
                 message_reference = None
                 try:
                     await message.author.send(
@@ -552,7 +561,7 @@ def get_new_bot(client_type, path, debug, docker_mode):
 
             else:
                 if isinstance(error, discord.HTTPException) and len(str(response)) > 1998:
-                    plugins.broadcast_event(self, 'bot_on_discord_error', error, message)
+                    plugins.broadcast_event(self, 'bot_on_discord_exception', error, message)
                     message_reference = await utilities.send_text_as_file(
                         message.channel, str(response), 'response',
                         extra="The response is too long. Here is a text file of the contents.")
@@ -566,13 +575,15 @@ def get_new_bot(client_type, path, debug, docker_mode):
                     embed.set_footer(text="The bot owners have been notified of this error.")
                     message_reference = await send_function(content='', embed=embed)
                 self.last_traceback = traceback.format_exc()
-                plugins.broadcast_event(self, 'bot_on_general_error', error, message)
+                plugins.broadcast_event(self, 'bot_on_uncaught_exception', error, message)
                 logger.error(self.last_traceback)
                 logger.error(self.last_exception)
                 if context:
                     parsed_input = '[{0.subcommand}, {0.options}, {0.arguments}]'.format(context)
                 else:
                     parsed_input = '!Context is missing!'
+                self.error_deque.appendleft((
+                    context or message, parsed_input, self.last_exception, self.last_traceback))
                 await utilities.notify_owners(
                     self, '```\n{0}\n{1}\n{2}\n{3}```'.format(
                         message.content, parsed_input, self.last_exception, self.last_traceback))
@@ -580,6 +591,7 @@ def get_new_bot(client_type, path, debug, docker_mode):
             return edit if edit else message_reference
 
         async def on_ready(self):
+
             if self.fresh_boot is None:
                 if self.selfbot:  # Selfbot safety checks
                     self.owners = [self.user.id]
@@ -587,11 +599,14 @@ def get_new_bot(client_type, path, debug, docker_mode):
                     app_info = await self.application_info()
                     if app_info.owner.id not in self.owners:
                         self.owners.append(app_info.owner.id)
+
                 # Start scheduler
                 asyncio.ensure_future(utilities._start_scheduler(self))
+
                 # Make sure guild data is ready
                 data.check_all(self)
                 data.load_data(self)
+
                 # Set single command notification
                 if self.single_command:
                     try:
@@ -603,7 +618,7 @@ def get_new_bot(client_type, path, debug, docker_mode):
                         '[Single command mode]',
                         'The base `{}` can be omitted when invoking these commands.'.format(
                             self.single_command)))
-                    
+
                 self.fresh_boot = True
                 self.ready = True
                 plugins.broadcast_event(self, 'bot_on_ready_boot')

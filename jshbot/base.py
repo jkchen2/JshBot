@@ -330,9 +330,11 @@ async def base_wrapper(bot, context):
                 permission_items = data.get(
                     bot, plugin, 'permissions', volatile=True, default={}).items()
                 if permission_items:
-                    plugin_permissions = '\n'.join(
-                        ['**`{0[0]}`** -- {0[1]}'.format(item) for item in permission_items])
-                    response.embed.add_field(name=plugin, value=plugin_permissions)
+                    lines = []
+                    for item in permission_items:
+                        lines.append('**`{}`** -- {}'.format(
+                            item[0].replace('_', ' ').title(), item[1]))
+                    response.embed.add_field(name=plugin, value='\n'.join(lines))
 
     elif subcommand.index == 5:  # Notifications
         if context.direct:  # List user notifications
@@ -1316,18 +1318,9 @@ async def handle_active_message(bot, context, response):
         data.save_data(bot)  # Safety save
         logger.info("Reloading plugins and commands...")
 
-        # Cancel running tasks associated with plugins
-        tasks = asyncio.Task.all_tasks()
-        pattern = re.compile('([^/(:\d>$)])+(?!.*\/)')
         for plugin_name in plugins_to_reload:
-            for task in tasks:
-                callback_info = task._repr_info()[1]
-                plugin_name_test = pattern.search(callback_info).group(0)
-                if plugin_name_test == plugin_name:
-                    logger.debug("Canceling task: {}".format(task))
-                    task.cancel()
             plugins.load_plugin(bot, plugin_name)
-
+        # TODO: Resetting volatile data can screw up other plugins
         bot.volatile_data = {'global_users': {}, 'global_plugins': {}}
         data.check_all(bot)
 
@@ -1375,14 +1368,9 @@ def _setup_debug_environment(bot):
     }
 
 
-# Standard discord.py event functions
-
-async def bot_on_ready_boot(bot):
-    """Sets up permissions and the debug environment."""
-    _setup_debug_environment(bot)
-    if bot.user.id == DEV_BOT_ID:  # Set debugging mode only for the dev bot
-        logger.setLevel(logging.DEBUG)
-    permissions = {
+@plugins.permissions_spawner
+def setup_permissions(bot):
+    return {
         'read_messages': "Standard.",
         'send_messages': "Standard.",
         'manage_messages': "Deletes messages and reactions of certain commands. (Framework)",
@@ -1393,10 +1381,21 @@ async def bot_on_ready_boot(bot):
         'add_reactions': "Allows for interactive menus. (Framework)",
         'embed_links': "Allows for embedded messages. (Framework)",
     }
-    utilities.add_bot_permissions(bot, 'core', **permissions)
 
 
-async def on_guild_join(bot, guild):
+# Standard discord.py event functions
+
+@plugins.listen_for('bot_on_ready_boot')
+async def setup_debug_environment(bot):
+    """Sets up the debug environment (and logger for the dev bot)."""
+    _setup_debug_environment(bot)
+    if bot.user.id == DEV_BOT_ID:  # Set debugging mode only for the dev bot
+        logger.setLevel(logging.DEBUG)
+
+
+@plugins.listen_for('on_guild_join')
+async def notify_server_owners(bot, guild):
+    """Notifies server owners about the bot joining their guild."""
     # Add guild to the list
     logger.info("Joining guild")
     data.add_guild(bot, guild)
@@ -1423,13 +1422,15 @@ async def on_guild_join(bot, guild):
     await guild.owner.send(text)
 
 
-async def on_message_edit(bot, before, after):
+@plugins.listen_for('on_message_edit')
+async def check_edited_commands(bot, before, after):
     """Integrates with the core to handle edited messages."""
-    if before.content != after.content and str(before.id) in bot.edit_dictionary:
-        message_reference = bot.edit_dictionary.pop(str(before.id))
+    if before.content != after.content and before.id in bot.edit_dictionary:
+        message_reference = bot.edit_dictionary.pop(before.id)
         await bot.on_message(after, replacement_message=message_reference)
 
 
+@plugins.listen_for('on_error')
 async def on_error(bot, event, *args, **kwargs):
     """Gets uncaught exceptions."""
     logger.error(

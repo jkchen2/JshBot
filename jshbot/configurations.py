@@ -12,7 +12,7 @@ def get(bot, plugin_name, key=None, extra=None, extension='yaml'):
     Keyword arguments:
     key -- Gets the specified key from the config file, otherwise everything.
     extra -- Looks for <plugin_name>-<extra>.<extension>
-    extension -- If 'json', reads the file as json, otherwise reads it as text.
+    extension -- If 'json', reads the file as json. Same for yaml. Otherwise reads it as text.
     """
     if extra:  # Open from external configuration file
         filename = '{0}/config/{1}-{2}.{3}'.format(bot.path, plugin_name[:-3], extra, extension)
