@@ -39,9 +39,9 @@ command_limit_timeout: 60
 # (seconds) How long users have to edit a standard message
 edit_timeout: 120
 
+# A list of invokers that the bot will respond to
 command_invokers:
     - "!"
-    - "."
 
 # List of command bases that should be disabled for non-botowners
 locked_commands: []
@@ -56,3 +56,8 @@ single_command: ""
 # NOTE: If using the Dockerized version that bundles a PostgreSQL container,
 #   leave this field empty
 database_credentials: ""
+
+# Internal error flavor text messages
+# These messages show up whenever a critical error happens
+exception_messages:
+    - "An internal error occurred."

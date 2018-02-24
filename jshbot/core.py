@@ -24,36 +24,6 @@ from jshbot.commands import Response, MessageTypes
 CBException = ConfiguredBotException('Core')
 
 
-exception_insults = [
-    'Ow.',
-    'Ah, shucks.',
-    'Wow, nice one.',
-    'That wasn\'t supposed to happen.',
-    'Tell Jsh to fix his bot.',
-    'I was really hoping that wouldn\'t happen, but it did.',
-    'segmentation fault (core dumped)',
-    '0xABADBABE 0xFEE1DEAD',
-    ':bomb: Sorry, a system error occurred.',
-    ':bomb: :bomb: :bomb: :bomb:',
-    'But... the future refused to be awaited.',
-    'So... cold...',
-    'Yup. Jsh is still awful at Python.',
-    'Yeah, I was a mistake.',
-    'Maybe it won\'t happen next time! *Right...?*',
-    'Darn.',
-    'I... have failed...',
-    'Well, it was worth a shot.',
-    'That one stung a bit.',
-    'Of *course*. Nothing ever works out, does it?',
-    'I yelled at Jsh for you.',
-    'Minsoo is bad at osu!. He wanted me to tell you that.',
-    'Existence is pain.',
-    'The Brass is impressed. Good work.',
-    'And the award for worst coded bot goes to...',
-    'Oh man. Oh god. Oh man. Oh god, oh man! Oh god, oh man, oh god oh man oh god!'
-]
-
-
 def get_new_bot(client_type, path, debug, docker_mode):
 
     class Bot(client_type):
@@ -108,6 +78,7 @@ def get_new_bot(client_type, path, debug, docker_mode):
             self.spam_dictionary = {}
             self.spam_limit = config['command_limit']
             self.spam_timeout = config['command_limit_timeout']
+            self.exception_messages = config['exception_messages']
             self.command_invokers = config['command_invokers']
             self.locked_commands = config['locked_commands']
             self.single_command = config['single_command']
@@ -566,7 +537,7 @@ def get_new_bot(client_type, path, debug, docker_mode):
                         message.channel, str(response), 'response',
                         extra="The response is too long. Here is a text file of the contents.")
                 else:
-                    insult = random.choice(exception_insults)
+                    insult = random.choice(self.exception_messages)
                     error = '**`{0}:`**`{1}`'.format(type(error).__name__, error)
                     embed = discord.Embed(
                         title=':x: Internal error',
