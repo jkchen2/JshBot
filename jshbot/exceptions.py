@@ -18,8 +18,24 @@ class BotException(Exception):
 
     def __init__(
             self, error_subject, error_details, *args, e=None,
-            error_type=ErrorTypes.RECOVERABLE, edit_pair=None, autodelete=0,
+            error_type=ErrorTypes.RECOVERABLE, edit_message=None, autodelete=0,
             use_embed=True, embed_fields=[], embed_format={}, serious=False):
+        """
+        Arguments:
+        error_subject -- The error title. Generally the plugin name.
+        error_details -- Primary error message.
+        args -- A list of additional errors that get appended after the details.
+
+        Keyword arguments:
+        e -- The provided exception object itself.
+        error_type -- The error type. Determines if the bot can recover from the exception.
+        edit_message -- Edits the given message with the exception text or embed.
+        autodelete -- Deletes after the given number of seconds, unless it is 0.
+        use_embed -- The error should be displayed as an embed.
+        embed_fields -- Additional fields used for providing titled descriptions of the error.
+        embed_format -- Used to format the strings of the values in the embed fields.
+        serious -- If True, always uses the :warning: emoji.
+        """
         self.error_type = error_type
         self.error_subject = str(error_subject)
         self.error_details = str(error_details)
@@ -28,7 +44,7 @@ class BotException(Exception):
         self.autodelete = 0 if autodelete is None else autodelete
         self.use_embed = use_embed
         self.traceback = ''
-        self.other_details = '\n'.join([str(arg) for arg in args])
+        self.other_details = '\n'.join([str(arg) for arg in self.error_other])
         self.error_message = "`{subject} error: {details}`\n{others}".format(
             subject=self.error_subject,
             details=self.error_details,
@@ -39,16 +55,17 @@ class BotException(Exception):
             description='{}\n{}'.format(self.error_details, self.other_details),
             colour=Colour(0xffcc4d))
 
-        if e:
-            if isinstance(e, BotException):
-                given_error = '{}'.format(e.error_details)
-                embed_fields = e.embed_fields
+        if self.provided_exception:
+            if isinstance(self.provided_exception, BotException):
+                given_error = '{}'.format(self.provided_exception.error_details)
+                embed_fields = self.provided_exception.embed_fields
             else:
-                given_error = '`{}: {}`'.format(type(e).__name__, e)
+                given_error = '`{}: {}`'.format(
+                    type(self.provided_exception).__name__, self.provided_exception)
             self.error_message += '\nGiven error:\n{}'.format(given_error)
             embed_fields = [('Given error:', given_error)] + embed_fields
-            if e.__traceback__:
-                self.traceback = traceback.format_tb(e.__traceback__)
+            if self.provided_exception.__traceback__:
+                self.traceback = traceback.format_tb(self.provided_exception.__traceback__)
             else:
                 self.traceback = traceback.format_exc()
 
@@ -63,15 +80,16 @@ class BotException(Exception):
             traceback.print_exc()
             sys.exit()
 
-        if edit_pair:
-            bot, message_reference = edit_pair
-            asyncio.ensure_future(bot.edit_message(message_reference, self.error_message))
+        # Edit the given message with the error
+        if edit_message:
+            content, embed = ('', self.embed) if self.use_embed else (str(self), None)
+            asyncio.ensure_future(edit_message.edit(content=content, embed=embed))
 
     def __str__(self):
         return self.error_message
 
 
-class ConfiguredBotException(BotException):
+class ConfiguredBotException():
 
     def __init__(self, error_subject):
         self.error_subject = error_subject

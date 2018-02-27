@@ -31,13 +31,13 @@ class Response():
             self, content=None, tts=False, message_type=MessageTypes.NORMAL, extra=None,
             embed=None, file=None, files=None, delete_after=None, nonce=None,
             extra_function=None, destination=None, **kwargs):
-        '''
+        """
         Keyword arguments:
         message_type -- One of the MessageTypes available. See core for more.
         extra -- Used depending on the given message_type
         extra_function -- Used depending on the given message_type
         destination -- If set, the bot sends to the destination instead of replying
-        '''
+        """
         # The following may be overwritten after the response object is passed
         #   back to a plugin via a special message type.
         self.content = content

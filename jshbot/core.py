@@ -193,8 +193,7 @@ def get_new_bot(client_type, path, debug, docker_mode):
         async def _parse_command(
                 self, message, command, parameters, initial_data, elevation, direct):
             """Parses the command and builds a context."""
-            subcommand, options, arguments = await parser.parse(
-                self, command, parameters, message)
+            subcommand, options, arguments = await parser.parse(self, command, parameters, message)
             context = self.Context(
                 message, base, subcommand, options, arguments,
                 subcommand.command.keywords, initial_data[0], elevation,
@@ -487,10 +486,7 @@ def get_new_bot(client_type, path, debug, docker_mode):
             if isinstance(error, BotException):
                 self.last_traceback = error.traceback
                 plugins.broadcast_event(self, 'bot_on_exception', error, message)
-                if error.use_embed:
-                    content, embed = '', error.embed
-                else:
-                    content, embed = str(error), None
+                content, embed = ('', error.embed) if error.use_embed else (str(error), None)
                 if command_editable and error.autodelete == 0:
                     if content:
                         content += '\n\n(Note: The issuing command can be edited)'

@@ -862,6 +862,14 @@ def schedule(
         be a function residing in the top level of the plugin.
     Time should be a number in seconds from the epoch.
 
+    The asynchronous function should take 6 arguments:
+    bot -- An instance of the bot.
+    scheduled_time -- Time at which the given function should be called.
+    payload -- Same as the keyword argument.
+    search -- Same as the keyword argument.
+    destination -- Same as the keyword argument.
+    late -- Whether or not the function was called late due to bot downtime.
+
     Keyword arguments:
     payload -- Standard json-serializable dictionary
     search -- Used to assist in later deletion or modification
@@ -914,11 +922,11 @@ async def _schedule_timer(bot, raw_entry, delay):
     if deleted:
         try:
             logger.debug("_schedule_timer done sleeping for %s seconds!", delay)
-            scheduled_time, plugin, function, payload, search, destination, info = raw_entry
+            scheduled_time, plugin, function_name, payload, search, destination, info = raw_entry
             if payload:
                 payload = json.loads(payload)
             plugin = bot.plugins[plugin]
-            function = getattr(plugin, function)
+            function = getattr(plugin, function_name)
             late = delay < -60
             asyncio.ensure_future(
                 function(bot, scheduled_time, payload, search, destination, late))

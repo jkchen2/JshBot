@@ -165,8 +165,8 @@ def remove(bot, plugin_name, key, guild_id=None, channel_id=None,
     If the key is None, it removes all of the data associated with that plugin
     for the given location. Use with caution.
     """
-    current, location_key = get_location(
-        bot, guild_id, channel_id, user_id, volatile)
+    current, location_key = get_location(bot, guild_id, channel_id, user_id, volatile)
+
     if (not current or
             plugin_name not in current or
             (key and key not in current[plugin_name])):
@@ -482,6 +482,19 @@ def is_blocked(bot, guild, user_id, strict=False):
         return user_id in blocked_list and not is_mod(bot, guild, user_id)
 
 
+def _get_attribute(result, attribute, safe):
+    """Helper function that pulls the attribute out of the result (if given)."""
+    if attribute:
+        if hasattr(result, attribute):
+            return getattr(result, attribute)
+        elif safe:
+            return None
+        else:
+            raise CBException("Invalid attribute, '{}'.".format(attribute))
+    else:
+        return result
+
+
 def get_member(bot, identity, guild=None, attribute=None, safe=False, strict=False):
     """Gets a member given the identity.
 
@@ -535,23 +548,14 @@ def get_member(bot, identity, guild=None, attribute=None, safe=False, strict=Fal
             break
 
     if result:
-        if attribute:
-            if hasattr(result, attribute):
-                return getattr(result, attribute)
-            elif safe:
-                return None
-            else:
-                raise CBException("Invalid attribute, '{}'.".format(attribute))
-        else:
-            return result
+        return _get_attribute(result, attribute, safe)
+    elif not strict and guild:  # Search again using all members
+        return get_member(
+            bot, identity, guild=None, attribute=attribute, safe=safe, strict=False)
+    elif safe:
+        return None
     else:
-        if not strict and guild:  # Search again using all members
-            return get_member(
-                bot, identity, guild=None, attribute=attribute, safe=safe, strict=False)
-        elif safe:
-            return None
-        else:
-            raise CBException("User '{}' not found.".format(identity), identity)
+        raise CBException("User '{}' not found.".format(identity), identity)
 
 
 def get_channel(
@@ -597,24 +601,15 @@ def get_channel(
             break
 
     if result:
-        if attribute:
-            if hasattr(result, attribute):
-                return getattr(result, attribute)
-            elif safe:
-                return None
-            else:
-                raise CBException("Invalid attribute, '{}'.".format(attribute))
-        else:
-            return result
+        return _get_attribute(result, attribute, safe)
+    elif safe:
+        return None
     else:
-        if safe:
-            return None
-        else:
-            raise CBException("Channel '{}' not found.".format(identity), identity)
+        raise CBException("Channel '{}' not found.".format(identity), identity)
 
 
 # TODO: Add lowercase role list checking
-def get_role(bot, identity, guild, safe=False):
+def get_role(bot, identity, guild, attribute=None, safe=False):
     """Gets a role given the identity and guild."""
     used_id, used_name = False, False
     if isinstance(identity, int):
@@ -647,7 +642,7 @@ def get_role(bot, identity, guild, safe=False):
             break
 
     if result:
-        return result
+        return _get_attribute(result, attribute, safe)
     elif used_name:  # Search through lowercased role names
         clean_roles = {}
         for it in guild.roles:
@@ -661,7 +656,7 @@ def get_role(bot, identity, guild, safe=False):
             if result[1]:
                 raise CBException("Duplicate role found; use a mention.")
             else:
-                return result[0]
+                return _get_attribute(result[0], attribute, safe)
 
     if safe:
         return None

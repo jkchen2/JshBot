@@ -1,6 +1,8 @@
 import discord
 import re
 
+from discord.abc import PrivateChannel
+
 from jshbot import commands, utilities, logger
 from jshbot.commands import ArgTypes
 from jshbot.exceptions import ConfiguredBotException, BotException
@@ -216,7 +218,7 @@ async def match_subcommand(bot, command, parameters, message, match_closest=Fals
                     return subcommand
 
             # Cannot match parameters in a direct message if disabled
-            elif not subcommand.allow_direct and isinstance(message.channel, discord.DMChannel):
+            elif not subcommand.allow_direct and isinstance(message.channel, PrivateChannel):
                 return subcommand, {}, []
 
             # Fill in options and arguments

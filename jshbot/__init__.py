@@ -1,5 +1,5 @@
 core_version = '0.4.0-rewrite'
-core_date = 'February 23rd, 2018'
+core_date = 'February 26th, 2018'
 
 # Create logger
 import logging
