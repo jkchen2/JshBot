@@ -45,16 +45,18 @@ class BaseConverter():
 
 
 class MemberConverter(BaseConverter):
-    def __init__(self, server_only=True, live_check=None):
+    def __init__(self, server_only=True, live_check=None, attribute=None):
         self.server_only = server_only
         self.live_check = live_check
+        self.attribute = attribute
         super().__init__()
     def __call__(self, bot, message, value, *a):
         if self.live_check:
             self.server_only = self.live_check(bot, message, value, *a)
         guild = message.guild if self.server_only else None
         try:
-            return data.get_member(bot, value, guild=guild, strict=self.server_only)
+            return data.get_member(
+                bot, value, guild=guild, strict=self.server_only, attribute=self.attribute)
         except BotException as e:
             self.set_error_reason(e, 'member')
     def set_error_reason(self, error, convert_type):
@@ -67,12 +69,14 @@ class MemberConverter(BaseConverter):
 
 
 class ChannelConverter(MemberConverter):
-    def __init__(self, server_only=True, live_check=None, constraint=None):
-        """Constraint can be used to specify only text or voice channels."""
+    def __init__(self, server_only=True, live_check=None, constraint=None, attribute=None):
+        """Constraint can be used to specify only text or voice channels.
+
+        The constraitn can either be discord.VoiceChannel or discord.TextChannel
+        """
         self.server_only = server_only
-        self.live_check = live_check
         self.constraint = constraint
-        super().__init__()
+        super().__init__(live_check=live_check, attribute=attribute)
     def __call__(self, bot, message, value, *a):
         if self.live_check:
             guild = self.live_check(bot, message, value, *a)
@@ -80,17 +84,18 @@ class ChannelConverter(MemberConverter):
             guild = message.guild if self.server_only else None
         try:
             return data.get_channel(
-                bot, value, guild=guild, strict=self.server_only, constraint=self.constraint)
+                bot, value, guild=guild, strict=self.server_only,
+                constraint=self.constraint, attribute=self.attribute)
         except BotException as e:
             self.set_error_reason(e, 'channel')
 
 
 class RoleConverter(MemberConverter):
-    def __init__(self):
-        super().__init__()
+    def __init__(self, attribute=None):
+        super().__init__(attribute=attribute)
     def __call__(self, bot, message, value, *a):
         try:
-            return data.get_role(bot, value, message.guild)
+            return data.get_role(bot, value, message.guild, attribute=self.attribute)
         except BotException as e:
             self.set_error_reason(e, 'role')
 
