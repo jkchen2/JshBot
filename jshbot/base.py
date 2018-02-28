@@ -904,17 +904,28 @@ async def botowner_wrapper(bot, context):
         response.content = "Restore exit code: `{}`".format(exit_code)
 
     elif subcommand.index == 6:  # Blacklist
-        blacklist = data.get(bot, 'core', 'blacklist', default=[])
         if not arguments[0]:
-            response.content = "Blacklisted entries: {}".format(blacklist)
+            blacklist = data.get(bot, 'core', 'blacklist')
+            if not blacklist:
+                raise CBException("The blacklist is empty.")
+            converted_members = [data.get_member(bot, it, safe=True) for it in blacklist]
+            readable_list = []
+            for member in converted_members:
+                if member:
+                    text = '{0.mention} ({0})'.format(member)
+                else:
+                    text = '{} [Not found]'.format(member)
+                readable_list.append(text)
+            response.embed = discord.Embed(
+                color=discord.Color(0xdd2e44), title='Blacklisted users',
+                description='\n'.join(readable_list))
         else:
-            user_id = arguments[0]
-            if user_id in blacklist:
-                data.list_data_remove(bot, 'core', 'blacklist', user_id)
-                response.content = "User removed from blacklist."
-            else:
-                data.list_data_append(bot, 'core', 'blacklist', user_id)
-                response.content = "User added to blacklist."
+            user = arguments[0]
+            blacklisted = data.list_data_toggle(bot, 'core', 'blacklist', user.id)
+            response.embed = discord.Embed(
+                color=discord.Color(0xdd2e44 if blacklisted else 0x77b255),
+                title='{}lacklisted user'.format('B' if blacklisted else 'Unb'),
+                description='{0.mention} ({0})'.format(user))
 
     elif subcommand.index == 7:  # Toggle feedback
         status = data.get(bot, 'core', 'feedbackdisabled', default=False)
