@@ -148,6 +148,38 @@ def get_permission_bits(bot):
     return dummy.value
 
 
+async def can_interact(bot, member, channel_id=None):
+    """Checks that the given member can be interacted with.
+
+    This ensures that the user is:
+    Not a bot
+    Not blocked in the server
+
+    Additionally, if the user is a member (guild exists):
+    Not in a blocked channel
+    Not blacklisted by the botowners
+
+    If given a channel ID, also checks that the bot is not muted in there
+    """
+    if data.is_owner(bot, member.id):
+        return True
+    elif member.bot or member.id in data.get(bot, 'core', 'blacklist', default=[]):
+        return False
+
+    # Guild specific check
+    guild = getattr(member, 'guild', None)
+    if guild:
+        if data.is_mod(bot, member.id):
+            return True
+        guild_data = data.get(bot, 'core', None, guild.id, default={})
+        if (guild_data.get('muted', False) or
+                (channel_id in guild_data.get('muted_channels', [])) or
+                (member.id in guild_data.get('blocked', []))):
+            return False
+
+    return True
+
+
 async def download_url(bot, url, include_name=False, extension=None, filename=None, use_fp=False):
     """Asynchronously downloads the given file to the temp folder.
 
