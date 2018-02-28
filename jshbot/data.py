@@ -288,7 +288,10 @@ def save_data(bot, force=False):
         if force:  # Save all data
             for key, value in bot.data.items():
                 with open(directory + key + '.json', 'w') as current_file:
-                    json.dump(value, current_file, indent=4)
+                    try:
+                        json.dump(value, current_file, indent=4)
+                    except TypeError as e:
+                        logger.error('Failed to save data for %s: (TypeError) %s', key, e)
             # Check to see if any guild was removed
             files = os.listdir(directory)
             for check_file in files:
