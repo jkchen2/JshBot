@@ -107,8 +107,11 @@ def get_new_bot(client_type, path, debug, docker_mode):
             guild/channel/user is not muted or blocked. Admins and mods
             override this.
             """
-            if self.fresh_boot is None:  # Ignore until bot is ready
+
+            # Ignore until bot is ready
+            if self.fresh_boot is None:
                 return False
+
             # Ignore empty messages and messages by bots
             if (not message.content or message.author.bot or
                     message.author.id == self.user.id) and not self.selfbot:
@@ -150,15 +153,19 @@ def get_new_bot(client_type, path, debug, docker_mode):
             else:  # Clean up content (invoker)
                 content = content.partition(invoker)[2].strip()
 
-            if guild_data.get('mention_mode', False):  # Mention mode enabled
+            # Mention mode enabled
+            if guild_data.get('mention_mode', False):
                 if not (has_mention_invoker or has_name_invoker or has_nick_invoker):
                     return False
-            else:  # Any invoker will do
+
+            # Any invoker will do
+            else:
                 if not (has_regular_invoker or has_mention_invoker or
                         has_name_invoker or has_nick_invoker or is_direct):
                     return False
 
-            if self.selfbot:  # Selfbot check
+            # Selfbot check
+            if self.selfbot:
                 if message.author.id == self.owners[0]:
                     return [content, False, False, True]
                 else:
@@ -170,6 +177,7 @@ def get_new_bot(client_type, path, debug, docker_mode):
             if is_direct:
                 return [content, False, False, is_owner]
 
+            # Get user bot permissions
             modrole_id = data.get(self, 'core', 'modrole', guild_id=message.guild.id)
             is_mod = (
                 author.guild_permissions.administrator or
@@ -182,6 +190,7 @@ def get_new_bot(client_type, path, debug, docker_mode):
             channel_id = message.channel.id
             if is_mod or is_admin or is_owner:
                 return result
+
             # Server/channel muted, or user is blocked
             if (guild_data.get('muted', False) or
                     (channel_id in guild_data.get('muted_channels', [])) or
@@ -537,7 +546,7 @@ def get_new_bot(client_type, path, debug, docker_mode):
                     error = '**`{0}:`**`{1}`'.format(type(error).__name__, error)
                     embed = discord.Embed(
                         title=':x: Internal error',
-                        description=insult, colour=discord.Colour(0xdd2e44))
+                        description=insult, color=discord.Color(0xdd2e44))
                     embed.add_field(name='Details:', value=error)
                     embed.set_footer(text="The bot owners have been notified of this error.")
                     message_reference = await send_function(content='', embed=embed)

@@ -169,7 +169,7 @@ async def can_interact(bot, member, channel_id=None):
     # Guild specific check
     guild = getattr(member, 'guild', None)
     if guild:
-        if data.is_mod(bot, member.id):
+        if data.is_mod(bot, member=member):
             return True
         guild_data = data.get(bot, 'core', None, guild.id, default={})
         if (guild_data.get('muted', False) or

@@ -112,7 +112,7 @@ async def match_subcommand(bot, command, parameters, message, match_closest=Fals
                                     current_index += 1
                                     options[found_opt.name] = stripped_parameters[current_index]
                                     matches += 6
-                            else:  # No attached argument
+                            else:  # No attached argument required
                                 options[found_opt.name] = None
                                 matches += 5
                             used_opts.append(found_opt)
@@ -193,10 +193,11 @@ async def match_subcommand(bot, command, parameters, message, match_closest=Fals
 
         if not not_found_error:  # Check for message attachment
             if subcommand.attaches:
-                if not message.attachments and not subcommand.attaches.optional:
+                if message.attachments or subcommand.attaches.optional:
+                    matches += 6
+                else:
                     not_found_error = 'Missing attachment **__`{name}`__**'.format(
                         name=subcommand.attaches.name)
-                matches += 6
             elif message.attachments:  # No attachment argument, but attachment was provided
                 not_found_error = 'No attachment required, but one was given.'
 
