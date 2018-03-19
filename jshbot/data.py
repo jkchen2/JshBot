@@ -708,6 +708,7 @@ async def add_to_cache(bot, url, name=None, file_location=None):
     cache_limit = configurations.get(bot, 'core', 'cache_size_limit') * 1000 * 1000
     store = cache_limit > 0 and download_stat.st_size < cache_limit / 2
 
+    # Ensure that the target destination does not exist (remove it if it does)
     if store:
         cached_location = '{0}/audio_cache/{1}'.format(bot.path, cleaned_name)
     else:
@@ -729,9 +730,16 @@ async def add_to_cache(bot, url, name=None, file_location=None):
 
         while total_size > cache_limit:
             _, size, path = cache_entries.pop()
+            logger.info("Removing from cache: %s", path)
             os.remove(path)
             total_size -= size
+    else:
+        logger.info("Not storing %s. Download size: %s", file_location, download_stat.st_size)
 
+    try:
+        download_stat = os.stat(cached_location)
+    except FileNotFoundError:
+        raise CBException("The file was not moved properly.")
     return cached_location
 
 
