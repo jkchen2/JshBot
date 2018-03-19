@@ -677,7 +677,7 @@ def get_from_cache(bot, name, url=None):
         name = utilities.get_cleaned_filename(url)
     file_path = '{0}/audio_cache/{1}'.format(bot.path, name)
     if os.path.isfile(file_path):
-        os.utime(file_path, None)
+        os.utime(file_path)
         return file_path
     else:
         return None
@@ -718,6 +718,7 @@ async def add_to_cache(bot, url, name=None, file_location=None):
     except:  # Doesn't matter if file doesn't exist
         pass
     os.rename(file_location, cached_location)
+    os.utime(cached_location)
 
     if store:
         cache_entries = []
