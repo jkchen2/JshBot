@@ -430,8 +430,8 @@ class Opt():
                     else:
                         value = self.convert(bot, message, value)
             except Exception as e:
-                if hasattr(e, 'error_details'):  # BotException
-                    if getattr(self.convert, 'pass_error', False):
+                if isinstance(e, BotException):
+                    if getattr(self.convert, 'propagate_error', False):
                         raise e
                     convert_error = 'Invalid value type for {name}: {error}'.format(
                         name=self.help_string, error=e.error_details)
@@ -459,8 +459,8 @@ class Opt():
                     else:
                         assert self.check(bot, message, value)
             except Exception as e:
-                if hasattr(e, 'error_details'):  # BotException
-                    if getattr(self.check, 'pass_error', False):
+                if isinstance(e, BotException):
+                    if getattr(self.check, 'propagate_error', False):
                         raise e
                     check_error = 'Invalid value for {name}: {error}'.format(
                         name=self.attached_string if self.attached else self.help_string,

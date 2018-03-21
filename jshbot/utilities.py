@@ -353,12 +353,12 @@ async def upload_logs(bot):
     await debug_channel.send(content='All logs:', file=discord_file)
 
 
-async def parallelize(coroutines, return_exceptions=False, pass_error=False):
+async def parallelize(coroutines, return_exceptions=False, propagate_error=False):
     """Uses asyncio.gather to "parallelize" the coroutines (not really)."""
     try:
         return await asyncio.gather(*coroutines, return_exceptions=return_exceptions)
     except Exception as e:
-        if pass_error:
+        if propagate_error:
             raise e
         else:
             raise CBException("Failed to await coroutines.", e=e)
@@ -765,6 +765,19 @@ def restore_db_backup(bot, tables=[]):
 
 
 def get_timezone_offset(bot, guild_id=None, utc_dt=None, utc_seconds=None, as_string=False):
+    """Converts the time to a guild's (guessed) local time.
+    
+    Keyword arguments:
+    guild_id -- Retrieves the configured timezone of the given guild, or
+        guesses it based on the voice server region.
+    utc_dt -- A timezone-naive datetime object that gets shifted by the offset.
+    utc_seconds -- An integer value that gets shifted by the offset.
+    as_string -- The UTC offset is returned as a UTC+X string instead of an integer value.
+
+    If either utc_dt or utc_seconds are specified, the return type will be a tuple of two
+        elements. The first element is the offset value, the second element is the
+        shifted datetime object or seconds value.
+    """
     if guild_id is None:
         offset = 0
     else:

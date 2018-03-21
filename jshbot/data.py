@@ -775,11 +775,14 @@ def db_connect(bot):
         raise CBException("Failed to connect to the database.", e=e, error_type=ErrorTypes.STARTUP)
 
 
+# TODO: Test
 def db_copy(
         bot, table='', table_suffix='', query='', input_args=[],
-        include_headers=True, safe=False, cursor_kwargs={}, pass_error=False):
+        include_headers=True, safe=False, cursor_kwargs={}, propagate_error=False):
+    """Returns the contents of a table as a string in CSV format."""
     string_file = io.StringIO()
     if query:
+        cursor = bot.db_connection.cursor()
         sql = cursor.mogrify("COPY ({}) TO STDOUT WITH CSV".format(query), input_args)
     else:
         if table_suffix:
@@ -794,7 +797,7 @@ def db_copy(
     except Exception as e:
         bot.extra = e
         bot.db_connection.rollback()
-        if pass_error:
+        if propagate_error:
             raise e
         elif safe:
             return
@@ -805,14 +808,23 @@ def db_copy(
 
 
 def db_execute(
-        bot, query, input_args=[], safe=False, cursor_kwargs={}, pass_error=False, mark=None):
-    """Executes the given query."""
+        bot, query, input_args=[], safe=False, cursor_kwargs={},
+        propagate_error=False, mark=None):
+    """Executes the given query.
+
+    Keyword arguments:
+    input_args -- Arguments passed into the query via old pyformat. (sanitized)
+    safe -- Will not throw an exception (overwritten by propagate_error).
+    cursor_kwargs -- Custom keyword arguments for configuring the cursor.
+    propagate_error -- Allows any exception thrown by the executed query to propagate up.
+    mark -- Marks the table as dirty.
+    """
     try:
         cursor = bot.db_connection.cursor(**cursor_kwargs)
         cursor.execute(query, input_args)
     except Exception as e:
         bot.db_connection.rollback()
-        if pass_error:
+        if propagate_error:
             raise e
         elif safe:
             return
@@ -825,7 +837,7 @@ def db_execute(
 
 def db_select(
         bot, select_arg=['*'], from_arg=[], where_arg='', additional='', limit=None,
-        input_args=[], table_suffix='', safe=True, pass_error=False, cursor_kwargs={},
+        input_args=[], table_suffix='', safe=True, propagate_error=False, cursor_kwargs={},
         use_tuple_cursor=True):
     """Makes a selection query. Returns a cursor.
 
@@ -838,7 +850,7 @@ def db_select(
     input_args -- Arguments passed into the query via old pyformat. (sanitized)
     table_suffix -- Suffix appended to each entry in from_arg. (unsanitized)
     safe -- Will not throw an exception.
-    use_tuple_cursor -- Changes the cursor factory to the namedtuple variant
+    use_tuple_cursor -- Changes the cursor factory to the namedtuple variant (sugar).
     """
     if use_tuple_cursor:
         cursor_kwargs.update({'cursor_factory': psycopg2.extras.NamedTupleCursor})
@@ -864,20 +876,33 @@ def db_select(
     try:
         return db_execute(
             bot, query, input_args=input_args, cursor_kwargs=cursor_kwargs,
-            pass_error=pass_error, safe=safe)
+            propagate_error=propagate_error, safe=safe)
     except Exception as e:
         if safe:
             return
-        elif pass_error or isinstance(e, BotException):
+        elif propagate_error or isinstance(e, BotException):
             raise e
         else:
             raise CBException("Database selection failed.", e=e)
 
 
 def db_insert(
-        bot, table, specifiers=[], input_args=[], table_suffix='',
-        safe=True, create=False, mark=True):
-    """Inserts the input arguments into the given table."""
+        bot, table, specifiers=[], input_args=[], table_suffix='', safe=True, create=False,
+        mark=True, return_inserted=True, cursor_kwargs={}, use_tuple_cursor=True):
+    """Inserts the input arguments into the given table.
+
+    Keyword arguments:
+    specifiers -- Specifies which column values should be changed. (unsanitized)
+    input_args -- Arguments passed into the query via old pyformat. (sanitized)
+    table_suffix -- Suffix appended to each entry in from_arg. (unsanitized)
+    safe -- Will not throw an exception.
+    create -- If the table does not exist, it will be created.
+    mark -- Marks the table as dirty.
+    return_inserted -- Returns the value inserted using RETURNING *.
+    use_tuple_cursor -- Changes the cursor factory to the namedtuple variant (sugar).
+    """
+    if use_tuple_cursor:
+        cursor_kwargs.update({'cursor_factory': psycopg2.extras.NamedTupleCursor})
     if not isinstance(specifiers, (list, tuple)):
         specifiers = [specifiers]
     if not isinstance(input_args, (list, tuple)):
@@ -887,18 +912,22 @@ def db_insert(
     if specifiers:
         query += "({}) ".format(', '.join(specifiers))
     query += "VALUES ({})".format(', '.join('%s' for it in range(len(input_args))))
+    if return_inserted:
+        query += " RETURNING *"
     try:
-        db_execute(bot, query, input_args=input_args, pass_error=True)
+        return db_execute(
+            bot, query, input_args=input_args, propagate_error=True, cursor_kwargs=cursor_kwargs)
     except psycopg2.ProgrammingError as e:
         stripped = str(e).split('\n')[0]
         if stripped.startswith('relation') and stripped.endswith('does not exist'):
             if create:
                 db_create_table(
                     bot, table, table_suffix=table_suffix, template=create, mark=mark)
-                db_insert(
+                return db_insert(
                     bot, table, specifiers=specifiers, input_args=input_args,
-                    table_suffix=table_suffix, safe=safe, create=False, mark=mark)
-                return
+                    table_suffix=table_suffix, safe=safe, create=False, mark=mark,
+                    return_inserted=return_inserted, cursor_kwargs=cursor_kwargs,
+                    use_tuple_cursor=use_tuple_cursor)
         if safe:
             return
         raise CBException("Invalid insert syntax.", e=e)
@@ -923,7 +952,7 @@ def db_delete(bot, table, table_suffix='', where_arg='', input_args=[], safe=Tru
     query = "DELETE FROM {} WHERE {}".format(full_table, where_arg)
     try:
         cursor = db_execute(
-            bot, query, input_args=input_args, pass_error=True,
+            bot, query, input_args=input_args, propagate_error=True,
             mark=full_table if mark else None)
         return cursor.rowcount
     except Exception as e:
@@ -955,7 +984,7 @@ def db_drop_table(bot, table, table_suffix='', safe=False):
     if_exists = 'IF EXISTS ' if safe else ''
     query = "DROP TABLE {}{}".format(if_exists, full_table)
     try:
-        db_execute(bot, query, pass_error=True)
+        db_execute(bot, query, propagate_error=True)
     except Exception as e:
         if not safe:
             raise e
