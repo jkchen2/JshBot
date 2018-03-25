@@ -854,7 +854,7 @@ def remove_schedule_entries(
 
 def update_schedule_entries(
         bot, plugin_name, search=None, destination=None, function=None,
-        payload=None, new_search=None, time=None, new_destination=None,
+        payload=None, new_search=None, new_time=None, new_destination=None,
         info=None, custom_match=None, custom_args=[]):
     """Updates the schedule entry with the given fields.
 
@@ -885,16 +885,16 @@ def update_schedule_entries(
     if payload:
         set_args.append('payload=%s')
         set_input_args.append(json.dumps(payload))
-    if time:
+    if new_time is not None:
         set_args.append('time=%s')
         set_input_args.append(int(time))
-    if new_search:
+    if new_search is not None:
         set_args.append('search=%s')
         set_input_args.append(new_search)
     if new_destination:
         set_args.append('destination=%s')
         set_input_args.append(new_destination)
-    if info:
+    if info is not None:
         set_args.append('info=%s')
         set_input_args.append(info)
     set_arg = ', '.join(set_args)
