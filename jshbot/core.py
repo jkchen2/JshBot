@@ -576,9 +576,6 @@ def get_new_bot(client_type, path, debug, docker_mode):
                     if app_info.owner.id not in self.owners:
                         self.owners.append(app_info.owner.id)
 
-                # Start scheduler
-                asyncio.ensure_future(utilities._start_scheduler(self))
-
                 # Make sure guild data is ready
                 data.check_all(self)
                 data.load_data(self)
@@ -598,6 +595,9 @@ def get_new_bot(client_type, path, debug, docker_mode):
                 self.fresh_boot = True
                 self.ready = True
                 plugins.broadcast_event(self, 'bot_on_ready_boot')
+
+                # Start scheduler
+                asyncio.ensure_future(utilities._start_scheduler(self))
 
             elif self.fresh_boot:
                 self.fresh_boot = False

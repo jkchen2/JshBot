@@ -987,6 +987,7 @@ async def _schedule_timer(bot, raw_entry, delay):
 
 async def _start_scheduler(bot):
     """Starts the interal scheduler."""
+    await bot.wait_until_ready()
     if bot.schedule_timer:  # Scheduler already running
         bot.schedule_timer.cancel()
         bot.schedule_timer = None
