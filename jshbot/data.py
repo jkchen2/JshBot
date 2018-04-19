@@ -279,7 +279,7 @@ def list_data_toggle(
 def save_data(bot, force=False):
     """Saves all of the current data in the data dictionary.
 
-    Does not save volatile_data, though. Backups data if forced.
+    Does not save volatile_data, though. Backs up data if forced.
     """
     if bot.data_changed or force:  # Only save if something changed or forced
         # Loop through keys
@@ -611,7 +611,6 @@ def get_channel(
         raise CBException("Channel '{}' not found.".format(identity), identity)
 
 
-# TODO: Add lowercase role list checking
 def get_role(bot, identity, guild, attribute=None, safe=False):
     """Gets a role given the identity and guild."""
     used_id, used_name = False, False
