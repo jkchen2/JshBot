@@ -226,9 +226,10 @@ async def match_subcommand(bot, command, parameters, message, match_closest=Fals
             else:
                 for option_name, value in options.items():  # Check options
                     current_opt = subcommand.opts[option_name]
-                    new_value = await current_opt.convert_and_check(bot, message, value)
-                    if new_value is not None:
-                        options[option_name] = new_value
+                    if value is not None:
+                        new_value = await current_opt.convert_and_check(bot, message, value)
+                        if new_value is not None:
+                            options[option_name] = new_value
                 for index, pair in enumerate(zip(subcommand.args, arguments)):  # Check arguments
                     arg, value = pair
                     if (value is not None
@@ -307,7 +308,6 @@ async def fill_shortcut(bot, shortcut, parameters, message):
     for arg in shortcut.args:
         value = arguments_dictionary[arg.name]
         if value is not None:
-            logger.debug("Converting and checking 4")
             new_value = await arg.convert_and_check(bot, message, value)
             arguments_dictionary[arg.name] = new_value
     return shortcut.replacement.format(**arguments_dictionary).strip()
