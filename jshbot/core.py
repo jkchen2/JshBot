@@ -19,7 +19,7 @@ from jshbot import (
         configurations, plugins, commands, parser, data, utilities,
         base, logger, core_version, core_date)
 from jshbot.exceptions import BotException, ConfiguredBotException, ErrorTypes
-from jshbot.commands import Response, MessageTypes
+from jshbot.commands import Response, MessageTypes, Elevation
 
 CBException = ConfiguredBotException('Core')
 
@@ -88,6 +88,8 @@ def get_new_bot(client_type, path, debug, docker_mode):
             self.schedule_timer = None
             self.response_deque = deque(maxlen=50)
             self.error_deque = deque(maxlen=50)
+            self.maintenance_message = ''
+            self.maintenance_mode = 0
             self.last_exception = None
             self.last_traceback = None
             self.last_response = None
@@ -235,7 +237,7 @@ def get_new_bot(client_type, path, debug, docker_mode):
 
             # Ensure command is valid
             content = initial_data[0]
-            elevation = 3 - (initial_data[4:0:-1] + [True]).index(True)
+            elevation = Elevation.BOT_OWNERS - (initial_data[4:0:-1] + [True]).index(True)
             split_content = content.split(' ', 1)
             if len(split_content) == 1:  # No spaces
                 split_content.append('')
@@ -260,7 +262,7 @@ def get_new_bot(client_type, path, debug, docker_mode):
             author_id = message.author.id
             direct = isinstance(message.channel, PrivateChannel)
             spam_value = self.spam_dictionary.get(author_id, 0)
-            if elevation > 0 or direct:  # Moderators ignore custom limit
+            if elevation > Elevation.ALL or direct:  # Moderators ignore custom limit
                 spam_limit = self.spam_limit
             else:
                 spam_limit = min(
@@ -277,10 +279,23 @@ def get_new_bot(client_type, path, debug, docker_mode):
                             message.author.mention, self.spam_timeout)))
                 return
 
-            # Parse command and reply
+            context = None
             try:
+                # Check for maintenance mode
+                if self.maintenance_mode and elevation != Elevation.BOT_OWNERS:
+                    if self.maintenance_mode == 1:  # Ignore attempts to respond if not 1
+                        if self.maintenance_message:
+                            fields = [('\u200b', self.maintenance_message)]
+                        else:
+                            fields = []
+                        raise CBException(
+                            "The bot is currently in maintenance mode.",
+                            embed_fields=fields, editable=False)
+                    else:
+                        return
+
+                # Parse command and reply
                 logger.debug(message.author.name + ': ' + message.content)
-                context = None
                 parse_command = self._parse_command(
                     message, command, parameters, initial_data, elevation, direct)
                 if replacement_message:
@@ -303,6 +318,8 @@ def get_new_bot(client_type, path, debug, docker_mode):
                 try:
                     destination = response.destination if response.destination else message.channel
                     message_reference = None
+
+                    # Edit the replacement_message as the response
                     if replacement_message:
                         try:
                             await replacement_message.edit(**send_arguments)
@@ -310,9 +327,12 @@ def get_new_bot(client_type, path, debug, docker_mode):
                         except discord.NotFound:  # Message deleted
                             response = Response()
                             message_reference = None
+
+                    # Send a new message as the response
                     elif (not response.is_empty() and not (self.selfbot and
                             response.message_type is MessageTypes.REPLACE)):
                         message_reference = await destination.send(**send_arguments)
+
                     response.message = message_reference
                     plugins.broadcast_event(self, 'bot_on_response', response, context)
                 except Exception as e:
@@ -326,21 +346,42 @@ def get_new_bot(client_type, path, debug, docker_mode):
             else:
                 self.spam_dictionary[author_id] = 1
 
-            # MessageTypes:
-            # NORMAL - Normal. The issuing command can be edited.
-            # PERMANENT - Message is not added to the edit dictionary.
-            # REPLACE - Deletes the issuing command after 'extra' seconds. Defaults
-            #   to 0 seconds if 'extra' is not given.
-            # ACTIVE - The message reference is passed back to the function defined
-            #   with 'extra_function'. If 'extra_function' is not defined, it will call
-            #   plugin.handle_active_message.
-            # INTERACTIVE - Assembles reaction buttons given by extra['buttons'] and
-            #   calls 'extra_function' whenever one is pressed.
-            # WAIT - Wait for event. Calls 'extra_function' with the result, or None
-            #   if the wait timed out.
-            #
-            # Only the NORMAL message type can be edited.
+            self.last_response = message_reference
+            self.last_context = context
 
+            await self.handle_response(
+                message, response, message_reference=message_reference,
+                replacement_message=replacement_message, context=context)
+
+        async def handle_response(
+                self, message, response,
+                message_reference=None, replacement_message=None, context=None):
+            """Handles responses.
+
+            Arguments:
+            message -- User message (can be bot sent message if no user message was
+                used to handle the response).
+            response -- commands.Response object.
+
+            Keyword arguments:
+            message_reference -- The message that the bot sent in response to the user message.
+            replacement_message -- The old message_reference that was replaced.
+            context -- A built bot.Context object.
+            
+            Response tuples contain a MessageTypes value.
+            These specify what kind of behavior results from sending the message.
+            See the commands module for documentation.
+            """
+
+            # Build partial context
+            if context is None:
+                data_message = message_reference or message
+                context = self.Context(
+                    message, None, None, None, None, None, None, Elevation.ALL,
+                    data_message.guild, data_message.channel, data_message.author,
+                    isinstance(data_message, PrivateChannel), None, None, self)
+
+            # Get permissions
             response.message = message_reference
             if message_reference and isinstance(message_reference.channel, PrivateChannel):
                 permissions = self.user.permissions_in(message_reference.channel)
@@ -348,9 +389,8 @@ def get_new_bot(client_type, path, debug, docker_mode):
                 permissions = message_reference.guild.me.permissions_in(message_reference.channel)
             else:
                 permissions = None
-            self.last_response = message_reference
-            self.last_context = context
 
+            # Change behavior based on message type
             if response.message_type is MessageTypes.NORMAL and message_reference:
                 # Edited commands are handled in base.py
                 wait_time = self.edit_timeout
@@ -359,6 +399,8 @@ def get_new_bot(client_type, path, debug, docker_mode):
                     await asyncio.sleep(wait_time)
                     if message.id in self.edit_dictionary:
                         del self.edit_dictionary[message.id]
+
+                        # Check for bot error - remove footer notification
                         if message_reference.embeds:
                             embed = message_reference.embeds[0]
                             if embed.footer.text and embed.footer.text.startswith('\u200b'*3):
@@ -370,13 +412,15 @@ def get_new_bot(client_type, path, debug, docker_mode):
 
             elif response.message_type is MessageTypes.REPLACE:
                 try:
-                    if self.selfbot and not replacement_message:  # Edit instead
+                    if self.selfbot and not replacement_message and message:  # Edit instead
+                        send_arguments = response.get_send_kwargs(replacement_message)
                         await message.edit(**send_arguments)
                     else:
                         if response.extra:
                             await asyncio.sleep(response.extra)
                         try:
-                            await message.delete()
+                            if message:
+                                await message.delete()
                             if replacement_message:
                                 await message_reference.delete()
                         except:  # Ignore permissions errors
@@ -395,9 +439,6 @@ def get_new_bot(client_type, path, debug, docker_mode):
                     self.last_response = message_reference
 
             elif response.message_type is MessageTypes.INTERACTIVE and message_reference:
-                # There are two additional options for the extra object to change menu behavior:
-                # reactionlock -- Whether or not non-menu reactions can be used for responses
-                # userlock -- Whether or not the menu only responds to the command author
                 try:
                     buttons = response.extra['buttons']
                     kwargs = response.extra.get('kwargs', {})
@@ -406,20 +447,37 @@ def get_new_bot(client_type, path, debug, docker_mode):
                     if 'check' not in kwargs:
                         kwargs['check'] = (
                             lambda r, u: r.message.id == message_reference.id and not u.bot)
+                    level = context.subcommand.elevated_level if context.subcommand else None
+                    level = response.extra.get('elevation', level or Elevation.ALL)
                     for button in buttons:
                         await message_reference.add_reaction(button)
-                    reaction_check = await destination.get_message(message_reference.id)
+
+                    # Ensure reactions are valid
+                    channel = message_reference.channel
+                    reaction_check = await channel.get_message(message_reference.id)
                     for reaction in reaction_check.reactions:
                         if not reaction.me or reaction.count > 1:
                             async for user in reaction.users():
                                 if user != self.user and permissions.manage_messages:
                                     asyncio.ensure_future(
                                         message_reference.remove_reaction(reaction, user))
+
+                    # Notify plugin that reactions have been added
                     await response.extra_function(self, context, response, None, False)
+
+                    # Read loop
                     process_result = True
                     while process_result is not False:
                         try:
-                            if not permissions.manage_messages:
+                            # Read reaction additions (or removals)
+                            if permissions.manage_messages:  # Can remove reactions
+                                result = await self.wait_for('reaction_add', **kwargs)
+                                if result[1] != self.user:
+                                    asyncio.ensure_future(
+                                        message_reference.remove_reaction(*result))
+                                else:
+                                    continue
+                            else:  # Cannot remove reactions
                                 add_task = self.wait_for('reaction_add', **kwargs)
                                 remove_task = self.wait_for('reaction_remove', **kwargs)
                                 done, pending = await asyncio.wait(
@@ -427,29 +485,46 @@ def get_new_bot(client_type, path, debug, docker_mode):
                                 result = next(iter(done)).result()
                                 for future in pending:
                                     future.cancel()
-                            else:  # Can remove reactions
-                                result = await self.wait_for('reaction_add', **kwargs)
-                                if result[1] != self.user:
-                                    asyncio.ensure_future(
-                                        message_reference.remove_reaction(*result))
-                                else:
-                                    continue
-                            is_mod = data.is_mod(self, message.guild, result[1].id)
-                            if (response.extra.get('reactionlock', True) and not result[0].me or
-                                    data.is_blocked(self, message.guild, result[1].id) or
-                                    (response.extra.get('userlock', True) and not
-                                        (result[1] == message.author or is_mod))):
+
+                            # Check reaction validity
+                            user_elevation = data.get_elevation(self, member=result[1])
+                            is_mod = user_elevation > Elevation.ALL
+                            # User cannot interact
+                            if not await utilities.can_interact(
+                                    self, result[1], channel_id=message.channel.id):
+                                continue
+                            # Custom reactions disabled
+                            if response.extra.get('reactionlock', True) and not result[0].me:
+                                continue
+                            # User lock check
+                            if (response.extra.get('userlock', True) and
+                                    not (result[1] == message.author or is_mod)):
+                                continue
+                            # Command permissions check
+                            if user_elevation < level:
                                 continue
                         except (asyncio.futures.TimeoutError, asyncio.TimeoutError):
+                            # Notify plugin that the menu timed out
                             await response.extra_function(self, context, response, None, True)
                             process_result = False
                         else:
+                            # Notify plugin that a valid reaction was read
                             process_result = await response.extra_function(
                                 self, context, response, result, False)
+
+                    # Clear reactions after timeout
                     try:
                         await response.message.clear_reactions()
-                    except:
+                    except:  # Ignore permissions errors (likely in DMs)
                         pass
+                    autodelete = response.extra.get('autodelete', 0)
+                    if autodelete:
+                        await asyncio.sleep(autodelete)
+                        for it in (message_reference, message):
+                            try:
+                                await it.delete()
+                            except:
+                                pass
                 except Exception as e:
                     message_reference = await self.handle_error(
                         e, message, context, response, edit=message_reference)
@@ -473,13 +548,21 @@ def get_new_bot(client_type, path, debug, docker_mode):
                         if not response.extra.get('loop', False):
                             process_result = False
 
+                    autodelete = response.extra.get('autodelete', 0)
+                    if autodelete:
+                        await asyncio.sleep(autodelete)
+                        for it in (message_reference, message):
+                            try:
+                                await it.delete()
+                            except:
+                                pass
                 except Exception as e:
                     message_reference = await self.handle_error(
                         e, message, context, response, edit=message_reference)
                     self.last_response = message_reference
 
             elif message_reference:
-                logger.error("Unknown message type: {}".format(response.message_type))
+                logger.error("Unknown message type: %s", response.message_type)
 
         async def handle_error(
                 self, error, message, context, response, edit=None, command_editable=False):
@@ -496,7 +579,7 @@ def get_new_bot(client_type, path, debug, docker_mode):
                 self.last_traceback = error.traceback
                 plugins.broadcast_event(self, 'bot_on_exception', error, message)
                 content, embed = ('', error.embed) if error.use_embed else (str(error), None)
-                if command_editable and error.autodelete == 0:
+                if command_editable and error.autodelete == 0 and error.editable:
                     if content:
                         content += '\n\n(Note: The issuing command can be edited)'
                     elif embed:

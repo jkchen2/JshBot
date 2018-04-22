@@ -19,7 +19,7 @@ class BotException(Exception):
     def __init__(
             self, error_subject, error_details, *args, e=None,
             error_type=ErrorTypes.RECOVERABLE, edit_message=None, autodelete=0,
-            use_embed=True, embed_fields=[], embed_format={}, serious=False):
+            use_embed=True, embed_fields=[], embed_format={}, serious=False, editable=True):
         """
         Arguments:
         error_subject -- The error title. Generally the plugin name.
@@ -28,13 +28,14 @@ class BotException(Exception):
 
         Keyword arguments:
         e -- The provided exception object itself.
-        error_type -- The error type. Determines if the bot can recover from the exception.
+        error_type -- Determines if the bot can recover from the exception.
         edit_message -- Edits the given message with the exception text or embed.
         autodelete -- Deletes after the given number of seconds, unless it is 0.
         use_embed -- The error should be displayed as an embed.
         embed_fields -- Additional fields used for providing titled descriptions of the error.
         embed_format -- Used to format the strings of the values in the embed fields.
         serious -- If True, always uses the :warning: emoji.
+        editable -- Whether or not the error displays an "issuing command is editable" note.
         """
         self.error_type = error_type
         self.error_subject = str(error_subject)
@@ -43,6 +44,7 @@ class BotException(Exception):
         self.provided_exception = e
         self.autodelete = 0 if autodelete is None else autodelete
         self.use_embed = use_embed
+        self.editable = editable
         self.traceback = ''
         self.other_details = '\n'.join([str(arg) for arg in self.error_other])
         self.error_message = "`{subject} error: {details}`\n{others}".format(

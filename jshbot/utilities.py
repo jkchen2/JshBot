@@ -160,10 +160,14 @@ async def can_interact(bot, member, channel_id=None):
     Not blacklisted by the botowners
 
     If given a channel ID, also checks that the bot is not muted in there
+
+    This also checks for maintenace mode
     """
     if data.is_owner(bot, member.id):
         return True
     elif member.bot or member.id in data.get(bot, 'core', 'blacklist', default=[]):
+        return False
+    elif bot.maintenance_mode:
         return False
 
     # Guild specific check

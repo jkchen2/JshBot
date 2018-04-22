@@ -22,12 +22,14 @@ from jshbot import parser, data, utilities, commands, plugins, configurations, l
 from jshbot.exceptions import BotException, ConfiguredBotException
 from jshbot.commands import (
     Command, SubCommand, Shortcut, ArgTypes, Arg, Opt, Attachment,
-    MessageTypes, Response)
+    MessageTypes, Response, Elevation)
 
-__version__ = '0.2.11'
+__version__ = '0.2.12'
 uses_configuration = False
 CBException = ConfiguredBotException('Base')
 global_dictionary = {}
+
+DEFAULT_PLUGINS_REPO = 'https://github.com/jkchen2/JshBot-plugins/archive/master.zip'
 
 # Debugging
 DEV_BOT_ID = 171672297017573376
@@ -138,7 +140,7 @@ def get_commands(bot):
                     doc='A UTC hours offset (-12 to +12).'),
                 doc='Sets or clears the bot\'s timezone interpretation for the server.')],
         shortcuts=[Shortcut('clear', 'clear')],
-        description='Commands for bot moderators.', elevated_level=1,
+        description='Commands for bot moderators.', elevated_level=Elevation.BOT_MODERATORS,
         no_selfbot=True, category='core', function=mod_wrapper))
 
     new_commands.append(Command(
@@ -156,7 +158,8 @@ def get_commands(bot):
                 doc='Toggles notifications from the bot regarding moderation events '
                     '(such as muting channels and blocking users from bot interaction).')],
         description='Commands for server owners.',
-        elevated_level=2, no_selfbot=True, category='core', function=owner_wrapper))
+        elevated_level=Elevation.GUILD_OWNERS, no_selfbot=True,
+        category='core', function=owner_wrapper))
 
     new_commands.append(Command(
         'botowner', subcommands=[
@@ -188,13 +191,22 @@ def get_commands(bot):
             SubCommand(
                 Opt('announcement'), Arg('text', argtype=ArgTypes.MERGED_OPTIONAL),
                 doc='Sets or clears the announcement text.'),
-            SubCommand(Opt('update'), doc='Opens the bot update menu.')],
+            SubCommand(
+                Opt('update'),
+                Arg('custom repo URL', argtype=ArgTypes.MERGED_OPTIONAL,
+                    doc='A custom URL to a .zip file containing plugins.'),
+                doc='Opens the bot update menu.'),
+            SubCommand(
+                Opt('maintenance'),
+                Opt('silent', optional=True, doc='Don\'t display the maintenance error.'),
+                Arg('message', argtype=ArgTypes.MERGED_OPTIONAL))],
         shortcuts=[
             Shortcut(
                 'reload', 'reload {arguments}',
                 Arg('arguments', argtype=ArgTypes.MERGED_OPTIONAL))],
         description='Commands for the bot owner(s).',
-        hidden=True, elevated_level=3, category='core', function=botowner_wrapper))
+        hidden=True, elevated_level=Elevation.BOT_OWNERS,
+        category='core', function=botowner_wrapper))
 
     new_commands.append(Command(
         'debug', subcommands=[
@@ -211,7 +223,8 @@ def get_commands(bot):
                 doc='Evaluates or executes the given code.')],
         description='Commands to help the bot owner debug stuff.',
         other='Be careful with these commands! They can break the bot.',
-        hidden=True, elevated_level=3, category='core', function=debug_wrapper))
+        hidden=True, elevated_level=Elevation.BOT_OWNERS,
+        category='core', function=debug_wrapper))
 
     new_commands.append(Command(
         'help', subcommands=[
@@ -689,9 +702,8 @@ async def _update_core(bot, progress_function):
     await progress_function('Core updated.')
 
 
-async def _download_plugins(bot, progress_function):
+async def _download_plugins(bot, progress_function, plugins_repo):
     await progress_function("Downloading plugins...")
-    plugins_repo = 'https://github.com/jkchen2/JshBot-plugins/archive/master.zip'
     archive_path = await utilities.download_url(bot, plugins_repo, filename='plugins.zip')
     await progress_function("Unpacking plugins...")
 
@@ -788,7 +800,8 @@ async def update_menu(bot, context, response, result, timed_out):
                 changed = await _update_core(bot, _progress_function)
             else:  # Download plugins
                 response.stage = 1
-                response.updates = await _download_plugins(bot, _progress_function)
+                plugins_repo = response.extra['repo'] or DEFAULT_PLUGINS_REPO
+                response.updates = await _download_plugins(bot, _progress_function, plugins_repo)
                 for index, update in enumerate(response.updates):
                     if update in response.plugin_list:
                         response.selected.append(index)
@@ -854,7 +867,7 @@ async def update_menu(bot, context, response, result, timed_out):
 
 
 async def botowner_wrapper(bot, context):
-    message, _, subcommand, _, arguments = context[:5]
+    message, _, subcommand, options, arguments = context[:5]
     response = Response()
 
     if subcommand.index == 0:  # Halt
@@ -950,12 +963,27 @@ async def botowner_wrapper(bot, context):
         response.embed.set_footer(text='---')
         response.message_type = MessageTypes.INTERACTIVE
         response.extra_function = update_menu
-        response.extra = {'buttons': ['❌', '⬆', '⬇', '🇦', '🇧']}
+        response.extra = {'buttons': ['❌', '⬆', '⬇', '🇦', '🇧'], 'repo': arguments[0]}
         response.selection_index = 0
         response.plugin_list = list(bot.plugins)[1:]
         response.updates = []
         response.selected = []
         response.stage = 0
+
+    elif subcommand.index == 10:  # Maintenance
+        if bot.maintenance_mode:
+            bot.maintenance_mode = 0
+            bot.maintenance_message = ''
+            await bot.change_presence(status=discord.Status.online)
+            response.content = "Maintenance mode disabled."
+        else:
+            silent = 'silent' in options
+            bot.maintenance_mode = 2 if silent else 1
+            bot.maintenance_message = arguments[0]
+            game = discord.Game('⚠️ Maintenance mode{}'.format(
+                (': ' + arguments[0][:100]) if arguments[0] else ''))
+            await bot.change_presence(activity=game, status=discord.Status.dnd)
+            response.content = "Maintenance mode enabled{}.".format(' (silent)' if silent else '')
 
     return response
 

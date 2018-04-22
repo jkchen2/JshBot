@@ -9,6 +9,7 @@ from types import GeneratorType
 
 from jshbot import core, utilities, logger, configurations
 from jshbot.exceptions import BotException, ConfiguredBotException, ErrorTypes
+from jshbot.commands import Elevation
 
 CBException = ConfiguredBotException('Data')
 
@@ -432,6 +433,32 @@ def has_custom_role(
     return role in member_roles or not strict and is_mod(bot, member=member)
 
 
+def get_elevation(bot, guild=None, user_id=None, member=None):
+    """Returns the given user's elevation level.
+
+    Member is given as a discord.Member or discord.User. If given, will
+    bypss guild and user_id.
+    """
+    if member:
+        user_id = member.id
+        guild = getattr(member, 'guild', None)
+
+    is_owner_result = is_owner(bot, user_id)
+    if guild is None or is_owner_result:  # Private channel or bot owner
+        return Elevation.BOT_OWNERS if is_owner_result else Elevation.ALL
+    if member is None:
+        member = guild.get_member(user_id)
+    if member is None:
+        raise CBException("Member not found.")
+
+    if is_admin(bot, guild, user_id):
+        return Elevation.GUILD_OWNERS
+    elif is_mod(bot, member=member):
+        return Elevation.BOT_MODERATORS
+    else:
+        return Elevation.ALL
+
+
 def is_mod(bot, guild=None, user_id=None, strict=False, member=None):
     """Returns true if the given user is a moderator of the given guild.
 
@@ -450,7 +477,7 @@ def is_mod(bot, guild=None, user_id=None, strict=False, member=None):
     if member is None:
         member = guild.get_member(user_id)
     if member is None:
-        raise CBException('Member not found.')
+        raise CBException("Member not found.")
     modrole_id = get(bot, 'core', 'modrole', guild_id=guild.id)
     mod_check = bool(
         member.guild_permissions.administrator or modrole_id in [it.id for it in member.roles])
@@ -566,6 +593,7 @@ def get_channel(
     """Like get_member(), but gets the channel instead.
 
     If a constraint is given, this will filter the channel by the constraint using isinstance.
+    discord.TextChannel or discord.VoiceChannel
     """
     if strict and guild is None:
         raise CBException("No guild specified for strict channel search.")

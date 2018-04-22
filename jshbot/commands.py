@@ -1,7 +1,7 @@
 import json
 import inspect
 
-from enum import Enum
+from enum import Enum, IntEnum
 from pprint import pformat
 from collections import OrderedDict
 from discord.abc import PrivateChannel
@@ -9,10 +9,94 @@ from discord.abc import PrivateChannel
 from jshbot import logger
 
 class ArgTypes(Enum):
+    """
+    These specify argument behavior for commands.
+
+    SINGLE -- Required single argument, separated by spaces, and grouped with quotes.
+        Template: SINGLE, SINGLE, SINGLE
+        Example: foo "bar biz" baz
+        Result: ['foo', 'bar biz', 'baz']
+    OPTIONAL -- Like SINGLE, but not required. Must be last.
+        Template: SINGLE, OPTIONAL
+        Example: foo
+        Result: ['foo', '']
+    SPLIT -- Required variable number of SINGLE arguments. At least one is required. Must be last.
+        Template: SINGLE, SPLIT
+        Example: foo "bar biz" baz flub
+        Result: ['foo', 'bar biz', 'baz', 'flub']
+    SPLIT_OPTIONAL -- Like SPLIT, but not required. Must be last.
+        Template: SINGLE, SPLIT_OPTIONAL
+        Example: foo
+        Result: ['foo', '']
+    MERGED -- Required argument that merges all text to the end of the message. Must be last.
+        Template: SINGLE, MERGED
+        Example: foo bar "biz baz"
+        Result: ['foo', 'bar "biz baz"']
+    MERGED_OPTIONAL -- Like MERGED, but not required. Must be last.
+        Template: MERGED_OPTIONAL
+        Example:
+        Result: ['']
+    """
     SINGLE, OPTIONAL, SPLIT, SPLIT_OPTIONAL, MERGED, MERGED_OPTIONAL = range(6)
 
 class MessageTypes(Enum):
+    """
+    These specify message behavior in the core whenever a command is issued,
+        or when a plugin uses the bot.handle_response method.
+
+    NORMAL -- Normal. The only message type where the issuing command can be edited.
+    PERMANENT -- Message is not added to the edit dictionary.
+    REPLACE -- Deletes the issuing command, effectively replacing it with the bot's response.
+        Configuration:
+            extra -- Number of seconds before issuing command is deleted. Defaults to 0.
+    ACTIVE -- The message reference is passed back to the plugin for processing.
+        Configuration:
+            extra_function -- The function to be called after the message is sent.
+                The function signature must be: (bot, context, response)
+                Arguments:
+                    bot -- Bot instance
+                    context -- bot.Context object
+                    response -- commands.Response object
+    INTERACTIVE -- Creates a message with clickable reaction buttons.
+        Configuration:
+            extra -- Dictionary containing fields for additional configuration:
+                kwargs -- Keyword arguments used in wait_for:
+                    timeout -- Number of seconds until the menu times out. Defaults to 300.
+                    check -- Function used to check whether or not a reaction is read.
+                buttons -- List of emojis to add as buttons (in order).
+                reactionlock -- Reads provided reactions only (no new reactions can be added).
+                    Defaults to True.
+                userlock -- Whether or not the menu only responds to the command author.
+                    Bot moderators bypass this. Defaults to True.
+                elevation -- commands.Elevation value. Defaults to subcommand elevation.
+            extra_function -- The function to be called on reaction button press.
+                The function signature must be: (bot, context, response, result, timed_out)
+                Arguments:
+                    bot -- Bot instance
+                    context -- bot.Context object
+                    response -- commands.Response object
+                    result -- (emoji, user) tuple
+                    timed_out -- Whether or not the menu timed out
+    WAIT -- Waits for events to happen.
+        Configuration:
+            extra -- Dictionary containing fields for additional configuration:
+                kwargs -- Keyword arguments used in wait_for. These two should be defined:
+                    timeout -- Number of seconds until the response times out. Defaults to 300.
+                    check -- Function that checks the validity of the event.
+                event -- Event to wait for.
+            extra_function -- The function to be called when the event is triggered.
+                The function signature must be: (bot, context, response, result)
+                Arguments:
+                    bot -- Bot instance
+                    context -- bot.Context object
+                    response -- commands.Response object
+                    result -- The result of wait_for
+    """
     NORMAL, PERMANENT, REPLACE, ACTIVE, INTERACTIVE, WAIT = range(6)
+
+class Elevation(IntEnum):
+    """Basic permission elevation levels."""
+    ALL, BOT_MODERATORS, GUILD_OWNERS, BOT_OWNERS = range(4)
 
 from jshbot import parser, utilities, data
 from jshbot.exceptions import BotException, ConfiguredBotException, ErrorTypes
@@ -20,6 +104,7 @@ from jshbot.exceptions import BotException, ConfiguredBotException, ErrorTypes
 CBException = ConfiguredBotException('Commands')
 
 ELEVATION = [
+    "all users",
     "bot moderators",
     "the server owner",
     "the bot owners"
@@ -74,8 +159,7 @@ class Response():
         if use_edit_kwargs:
             keywords = ['content', 'embed']
         else:
-            keywords = [
-                'content', 'tts', 'embed', 'file', 'files', 'delete_after', 'nonce']
+            keywords = ['content', 'tts', 'embed', 'file', 'files', 'delete_after', 'nonce']
         return dict((it, getattr(self, it)) for it in keywords)
 
     def is_empty(self):
@@ -201,9 +285,9 @@ class SubCommand():
             self.short_help_embed_fields.append(('Parameter details:', self.parameter_string))
 
         # Privilege warning
-        if self.elevated_level != 0:
+        if self.elevated_level != Elevation.ALL:
             elevation_string = 'This subcommand can only be used by {}.'.format(
-                ELEVATION[self.elevated_level - 1])
+                ELEVATION[self.elevated_level])
             self.quick_help += '\n\n**Privilege**:\n{}'.format(elevation_string)
             self.clean_quick_help += '\n\nPrivilege:\n{}'.format(elevation_string)
             self.help_embed_fields.append(('Privilege:', elevation_string))
@@ -233,13 +317,11 @@ class Command():
         shortcuts -- A list of Shortcut objects.
         function -- A custom function to call instead of get_response.
         hidden -- Prevents the command from showing up in the help menu.
-        elevated_level -- Limits usage to a certain permission level. 0 is
-            everybody, 1 is bot moderators, 2 is guild owners, and 3 is bot
-            owners. This is a hierarchy model.
+        elevated_level -- commands.Elevation value. Limits usage to a certain permission level.
         allow_direct -- Allows the command to be used in direct messages.
         strict_syntax -- Parameter order is strictly maintained.
         no_selfbot -- Disallows the command to be used in selfbot mode.
-        pre_check -- A function called with (bot, context) params before the execution.
+        pre_check -- An async function called with (bot, context) params before the execution.
         """
         self.base = base.lower().strip()
         if not subcommands:
@@ -320,9 +402,9 @@ class Command():
             self.help_embed_fields.append(('Other information:', self.other))
 
         # Privilege warning
-        if self.elevated_level != 0:
+        if self.elevated_level != Elevation.ALL:
             elevation_string = 'These commands can only be used by {}.'.format(
-                ELEVATION[self.elevated_level - 1])
+                ELEVATION[self.elevated_level])
             self.help_string += '\n\n**Privilege**:\n{}'.format(elevation_string)
             self.clean_help_string += '\n\nPrivilege:\n{}'.format(elevation_string)
             self.help_embed_fields.append(('Privilege:', elevation_string))
@@ -750,39 +832,41 @@ def usage_reminder(
     return response
 
 
-#async def execute(bot, message, subcommand, parsed_input, initial_data):
 async def execute(bot, context):
     """Calls get_response of the given plugin associated with the base."""
     subcommand = context.subcommand
-    elevation = context.elevation
+    elevation, level = context.elevation, subcommand.elevated_level
+
+    # TODO: Move preliminary checks to the core
 
     if bot.selfbot and subcommand.no_selfbot:
         raise CBException("This command cannot be used in selfbot mode.")
 
-    if elevation < 3 and subcommand.command.base in bot.locked_commands:
+    if elevation < Elevation.BOT_OWNERS and subcommand.command.base in bot.locked_commands:
         raise CBException("This command is locked by the bot owner.")
 
     if isinstance(context.message.channel, PrivateChannel):
         if not subcommand.allow_direct:
             raise CBException("This command cannot be used in a direct message.")
-        elif 0 < subcommand.elevated_level < 3:
+        elif Elevation.ALL < level < Elevation.BOT_OWNERS:
             raise CBException("Special permissions commands cannot be used in direct messages.")
         disabled_commands = []
     else:
         disabled_commands = data.get(
             bot, 'core', 'disabled', guild_id=context.guild.id, default=[])
 
-    if subcommand.elevated_level > 0:
-        if subcommand.elevated_level == 1 and elevation < 1:
+    if level > Elevation.ALL:
+        if level == Elevation.BOT_MODERATORS and elevation < Elevation.BOT_MODERATORS:
             raise CBException("Only bot moderators can use this command.")
-        elif subcommand.elevated_level == 2 and elevation < 2:
+        elif level == Elevation.GUILD_OWNERS and elevation < Elevation.GUILD_OWNERS:
             raise CBException("Only the server owner can use this command.")
-        elif subcommand.elevated_level >= 3 and elevation < 3:
+        elif level >= Elevation.BOT_OWNERS and elevation < Elevation.BOT_OWNERS:
             raise CBException("Only the bot owner(s) can use this command.")
 
     for disabled_base, disabled_index in disabled_commands:
         if (subcommand.command.base == disabled_base and
-                disabled_index in (-1, subcommand.index) and elevation < 1):
+                disabled_index in (-1, subcommand.index) and
+                elevation < Elevation.BOT_MODERATORS):
             raise CBException("This command is disabled on this server.")
 
     if subcommand.pre_check:
