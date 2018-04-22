@@ -714,7 +714,7 @@ async def _download_plugins(bot, progress_function, plugins_repo):
     except Exception as e:
         logger.warn("Failed to clear the update directory: %s", e)
     shutil.unpack_archive(archive_path, update_directory)
-    update_directory += 'JshBot-plugins-master'
+    update_directory += os.listdir(bot.path + '/temp/update/')[0]
     available_updates = []
     for entry in os.listdir(update_directory):
         if os.path.isdir('{}/{}'.format(update_directory, entry)):
@@ -729,7 +729,8 @@ async def _update_plugins(bot, plugin_list, progress_function):
         raise CBException("Dev bot - cancelled core update")
     await progress_function('Updating plugins...')
     config_changed = {}
-    update_directory = bot.path + '/temp/update/JshBot-plugins-master/'
+    update_name = os.listdir(bot.path + '/temp/update/')[0]
+    update_directory = bot.path + '/temp/update/{}/'.format(update_name)
     plugins_directory = bot.path + '/plugins/'
     config_directory = bot.path + '/config/'
     for plugin in plugin_list:
