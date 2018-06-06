@@ -69,6 +69,8 @@ class MessageTypes(Enum):
                 userlock -- Whether or not the menu only responds to the command author.
                     Bot moderators bypass this. Defaults to True.
                 elevation -- commands.Elevation value. Defaults to subcommand elevation.
+                autodelete -- If specified, deletes the message after this number
+                    of seconds has passed after the menu times out or ends.
             extra_function -- The function to be called on reaction button press.
                 The function signature must be: (bot, context, response, result, timed_out)
                 Arguments:
@@ -84,13 +86,14 @@ class MessageTypes(Enum):
                     timeout -- Number of seconds until the response times out. Defaults to 300.
                     check -- Function that checks the validity of the event.
                 event -- Event to wait for.
+                loop -- Whether or not the wait_for should be looped even after a result is given.
             extra_function -- The function to be called when the event is triggered.
                 The function signature must be: (bot, context, response, result)
                 Arguments:
                     bot -- Bot instance
                     context -- bot.Context object
                     response -- commands.Response object
-                    result -- The result of wait_for
+                    result -- The result of wait_for. If None, the wait call timed out.
     """
     NORMAL, PERMANENT, REPLACE, ACTIVE, INTERACTIVE, WAIT = range(6)
 
@@ -613,11 +616,11 @@ class Arg(Opt):
 
 
 class Attachment():
-    def __init__(self, name, optional=False, doc=None):
+    def __init__(self, name, optional=False, doc=None, group=None):
         self.name = name.strip()
         self.optional = optional
         self.doc = doc
-        self.group = None
+        self.group = group
         wrap = '_' if optional else '**'
         clean_wrap = ['[', ']'] if optional else ['', '']
         current = '{wrap}`[Attachment: `__`{name}`__`]`{wrap}'.format(wrap=wrap, name=name)
