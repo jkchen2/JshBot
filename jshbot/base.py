@@ -1327,7 +1327,9 @@ async def help_wrapper(bot, context):
 
 async def get_ping(bot, context):
     if context.arguments[0]:
-        return Response(content='Pong!\n{}'.format(context.arguments[0]))
+
+        return Response(content='Pong!\n{}'.format(
+            utilities.filter_everyone(context.arguments[0])))
     else:
         return Response(content='Pong! ({} ms)'.format(int(bot.latency * 1000)))
 

@@ -419,6 +419,11 @@ def clean_text(text, level=2, limit=200, custom=None, lowercase=True):
     return cleaned.lower() if lowercase else cleaned
 
 
+def filter_everyone(text):
+    """Removes mentionable instances of @everyone and @here."""
+    return text.replace('@everyone', '@\u200beveryone').replace('@here', '@\u200bhere')
+
+
 def get_player(bot, guild_id):
     """Gets the voice player on the given guild. None otherwise."""
     return data.get(bot, 'core', 'voice_player', guild_id=guild_id, volatile=True)
