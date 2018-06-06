@@ -206,7 +206,7 @@ def get_new_bot(client_type, path, debug, docker_mode):
             """Parses the command and builds a context."""
             subcommand, options, arguments = await parser.parse(self, command, parameters, message)
             context = self.Context(
-                message, base, subcommand, options, arguments,
+                message, command.base, subcommand, options, arguments,
                 subcommand.command.keywords, initial_data[0], elevation,
                 message.guild, message.channel, message.author, direct,
                 subcommand.index, subcommand.id, self)
