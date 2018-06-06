@@ -11,6 +11,8 @@ import time
 import os
 import io
 
+from urllib.parse import urlparse
+
 from jshbot import data, configurations, core, logger
 from jshbot.exceptions import BotException, ConfiguredBotException
 
@@ -264,6 +266,41 @@ def get_plugin_file(bot, filename, safe=True):
         return None
     else:
         raise CBException("Plugin file '{}' not found.".format(filename))
+
+
+def valid_url(url):
+    """Checks that the given URL is Discord embed friendly. Or at least, it tries."""
+
+    def _valid_string(segment, main=True):
+        if not len(segment):
+            return False
+        for c in [ord(it.lower()) for it in segment]:
+            if not (97 <= c <= 122 or (main and (48 <= c <= 57 or c == 45))):
+                return False
+        return True
+
+    test = urlparse(url)
+    if not (test.scheme and test.netloc and '.' in test.netloc):
+        return False
+
+    # Discord only accepts http or https
+    if test.scheme not in ('http', 'https'):
+        return False
+
+    # Test for valid netloc
+    netloc_split = test.netloc.split('.')
+    if (len(netloc_split) < 2):
+        return False  # http://foo
+    tld = test.netloc.split('.')[-1]
+    if not (len(tld) >= 2 and _valid_string(tld, main=False)):
+        return False  # http://foo.123
+    for segment in netloc_split[:-1]:
+        if not _valid_string(segment):
+            return False  # http://foo..bar or http://fo*o.bar
+    for c in url:
+        if not 33 <= ord(c) <= 126:
+            return False  # non-ASCII only URLs
+    return True
 
 
 async def get_url(bot, urls, headers={}, get_bytes=False):
