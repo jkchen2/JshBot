@@ -39,6 +39,8 @@ class ArgTypes(Enum):
     """
     SINGLE, OPTIONAL, SPLIT, SPLIT_OPTIONAL, MERGED, MERGED_OPTIONAL = range(6)
 
+OPTIONAL_TYPES = [ArgTypes.OPTIONAL, ArgTypes.SPLIT_OPTIONAL, ArgTypes.MERGED_OPTIONAL]
+
 class MessageTypes(Enum):
     """
     These specify message behavior in the core whenever a command is issued,
@@ -575,7 +577,8 @@ class Arg(Opt):
         self.additional = additional
         super().__init__(
             name, convert=convert, check=check, doc=doc, quotes_recommended=quotes_recommended,
-            convert_error=convert_error, check_error=check_error, default=default, group=group)
+            convert_error=convert_error, check_error=check_error, default=default, group=group,
+            optional=argtype in OPTIONAL_TYPES)
 
     def _build_help_string(self):
         if self.argtype in (ArgTypes.SPLIT, ArgTypes.MERGED, ArgTypes.SINGLE):

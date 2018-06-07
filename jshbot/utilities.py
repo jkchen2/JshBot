@@ -38,6 +38,12 @@ VOICE_REGIONS = {
     'vip-amsterdam': 2  # CEST
 }
 
+# Integer to emoji conversion
+NUMBER_EMOJIS = [
+    ':zero:', ':one:', ':two:', ':three:', ':four:', ':five:',
+    ':six:', ':seven:', ':eight:', ':nine:', ':keycap_ten:'
+]
+
 
 class BaseConverter():
     def __init__(self):
