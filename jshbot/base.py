@@ -9,10 +9,10 @@ import inspect
 import traceback
 import yaml
 import shutil
-import pip
 import os
 import re
 
+import pip._internal as pip  # pip 10 compat
 from logging.handlers import RotatingFileHandler
 
 from distutils.dir_util import copy_tree

@@ -313,7 +313,7 @@ async def get_url(bot, urls, headers={}, get_bytes=False):
     """Uses aiohttp to asynchronously get a url response, or multiple."""
     read_method = 'read' if get_bytes else 'text'
     try:
-        with aiohttp.ClientSession(headers=headers, loop=bot.loop) as session:
+        async with aiohttp.ClientSession(headers=headers, loop=bot.loop) as session:
 
             async def fetch(url, read_method='text'):
                 if not url:  # Why
