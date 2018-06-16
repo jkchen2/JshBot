@@ -1019,7 +1019,7 @@ async def _schedule_timer(bot, entry, delay):
     if deleted:
         try:
             logger.debug("_schedule_timer done sleeping for %s seconds!", delay)
-            function = getattr(bot.plugins[entry.plugin], entry.function_name)
+            function = getattr(bot.plugins[entry.plugin], entry.function)
             late = delay < -60
             asyncio.ensure_future(function(
                 bot, entry.time, entry.payload, entry.search,
