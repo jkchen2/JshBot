@@ -12,6 +12,7 @@ import os
 import io
 
 from urllib.parse import urlparse
+from psycopg2.extras import Json
 
 from jshbot import data, configurations, core, logger
 from jshbot.exceptions import BotException, ConfiguredBotException
@@ -873,15 +874,7 @@ def get_schedule_entries(
     cursor = data.db_select(
         bot, from_arg='schedule', where_arg=where_arg,
         additional='ORDER BY time ASC', input_args=input_args, safe=False)
-    entries = cursor.fetchall()
-    converted = []
-    for entry in entries:
-        if entry[3]:
-            payload = json.loads(entry[3])
-        else:
-            payload = entry[3]
-        converted.append(entry[:3] + (payload,) + entry[4:])
-    return converted
+    return cursor.fetchall()
 
 
 def remove_schedule_entries(
@@ -899,7 +892,7 @@ def remove_schedule_entries(
         if destination is not None:
             where_arg += ' AND destination = %s'
             input_args.append(destination)
-    data.db_delete(bot, 'schedule', where_arg=where_arg, input_args=input_args)
+    return data.db_delete(bot, 'schedule', where_arg=where_arg, input_args=input_args)
 
 
 def update_schedule_entries(
@@ -934,7 +927,7 @@ def update_schedule_entries(
         set_input_args.append(function.__name__)
     if payload:
         set_args.append('payload=%s')
-        set_input_args.append(json.dumps(payload))
+        set_input_args.append(Json(payload))
     if new_time is not None:
         set_args.append('time=%s')
         set_input_args.append(int(time))
@@ -954,7 +947,7 @@ def update_schedule_entries(
 
 
 def schedule(
-        bot, plugin_name, time, function, payload=None,
+        bot, plugin_name, scheduled_time, function, payload=None,
         search=None, destination=None, info=None):
     """Adds the entry to the schedule table and starts the timer.
 
@@ -969,19 +962,21 @@ def schedule(
     search -- Same as the keyword argument.
     destination -- Same as the keyword argument.
     late -- Whether or not the function was called late due to bot downtime.
+    info -- Same as the keyword argument.
+    id -- Unique ID assigned to the entry when it was created. Usually unused.
 
     Keyword arguments:
     payload -- Standard json-serializable dictionary
     search -- Used to assist in later deletion or modification
     destination -- Starts with either a 'c' or 'u', then the ID of the channel or user
         This is used to help determine what will need to be messaged.
-    info -- Currently not really used
+    info -- Used as a description for the scheduled event if `!base notifications` is used.
     """
     input_args = [
-        int(time),
+        int(scheduled_time),
         plugin_name,
         function.__name__,
-        json.dumps(payload) if payload else None,
+        Json(payload),
         search,
         destination,
         info
@@ -998,13 +993,13 @@ def get_messageable(bot, destination):
         elif destination[0] == 'c':  # Channel
             get = bot.get_channel
         else:
-            assert False
+            raise CBException("Must be either a user `u` or channel `c`.")
         return get(int(destination[1:]))
     except Exception as e:
         raise CBException("Invalid destination format.", e=e)
 
 
-async def _schedule_timer(bot, raw_entry, delay):
+async def _schedule_timer(bot, entry, delay):
     task_comparison = bot.schedule_timer
     await asyncio.sleep(0.5)
     logger.debug("_schedule_timer sleeping for %s seconds...", delay)
@@ -1012,24 +1007,23 @@ async def _schedule_timer(bot, raw_entry, delay):
     if task_comparison is not bot.schedule_timer:
         logger.debug("_schedule_timer was not cancelled! Cancelling this scheduler...")
         return
+    if int(time.time() + 1) < entry.time:
+        logger.warn("_schedule_timer was about to delete the entry early! Restarting loop...")
+        asyncio.ensure_future(_start_scheduler(bot))
+        return
     try:
-        cursor = data.db_select(bot, select_arg='min(time)', from_arg='schedule')
-        minimum_time = cursor.fetchone()[0]
         deleted = data.db_delete(
-            bot, 'schedule', where_arg='time=%s', input_args=[minimum_time], safe=False)
+            bot, 'schedule', where_arg='id=%s', input_args=[entry.id], safe=False)
     except Exception as e:
-        logger.warn("_schedule_timer failed to delete schedule entry. %s", e)
+        logger.warn("_schedule_timer failed to delete a schedule entry. %s", e)
     if deleted:
         try:
             logger.debug("_schedule_timer done sleeping for %s seconds!", delay)
-            scheduled_time, plugin, function_name, payload, search, destination, info = raw_entry
-            if payload:
-                payload = json.loads(payload)
-            plugin = bot.plugins[plugin]
-            function = getattr(plugin, function_name)
+            function = getattr(bot.plugins[entry.plugin], entry.function_name)
             late = delay < -60
-            asyncio.ensure_future(
-                function(bot, scheduled_time, payload, search, destination, late))
+            asyncio.ensure_future(function(
+                bot, entry.time, entry.payload, entry.search,
+                entry.destination, late, entry.info, entry.id))
         except Exception as e:
             logger.warn("Failed to execute scheduled function: %s", e)
     asyncio.ensure_future(_start_scheduler(bot))
@@ -1045,7 +1039,7 @@ async def _start_scheduler(bot):
         bot, from_arg='schedule', additional='ORDER BY time ASC', limit=1, safe=False)
     result = cursor.fetchone()
     if result:
-        delta = result[0] - time.time()
+        delta = result.time - time.time()
         logger.debug("_start_scheduler is starting a scheduled event.")
         bot.schedule_timer = asyncio.ensure_future(_schedule_timer(bot, result, delta))
     else:

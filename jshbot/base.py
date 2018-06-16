@@ -24,7 +24,7 @@ from jshbot.commands import (
     Command, SubCommand, Shortcut, ArgTypes, Arg, Opt, Attachment,
     MessageTypes, Response, Elevation)
 
-__version__ = '0.2.13'
+__version__ = '0.2.14'
 uses_configuration = False
 CBException = ConfiguredBotException('Base')
 global_dictionary = {}
@@ -268,10 +268,11 @@ def get_templates(bot):
         'schedule': ("time          bigint NOT NULL,"
                      "plugin        text NOT NULL,"
                      "function      text NOT NULL,"
-                     "payload       text,"
+                     "payload       json,"
                      "search        text,"
                      "destination   text,"
-                     "info          text")
+                     "info          text,"
+                     "id            serial")
     }
 
 @plugins.on_load
@@ -363,14 +364,13 @@ async def base_wrapper(bot, context):
         if notifications:
             results = ['Here is a list of pending notifications for {}:\n'.format(specifier)]
             for entry in notifications:
-                time_seconds, plugin, info = entry[0], entry[1], entry[6]
-                delta = utilities.get_time_string(time_seconds - time.time(), text=True)
+                delta = utilities.get_time_string(entry.time - time.time(), text=True)
                 offset, scheduled = utilities.get_timezone_offset(
                     bot, guild_id=guild_id, as_string=True,
-                    utc_dt=datetime.datetime.utcfromtimestamp(time_seconds))
+                    utc_dt=datetime.datetime.utcfromtimestamp(entry.time))
                 results.append('{} [{}] ({}) from plugin `{}`: {}'.format(
-                    scheduled, offset, delta, plugin,
-                    info if info else '(No description available)'))
+                    scheduled, offset, delta, entry.plugin,
+                    entry.info if entry.info else '(No description available)'))
             response.content = '\n'.join(results)
         else:
             response.content = "No pending notifications for {}.".format(specifier)
