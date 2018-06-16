@@ -223,6 +223,38 @@ def get_new_bot(client_type, path, debug, docker_mode):
                 response.content = '\u200b' + response.content
             return response
 
+        async def respond(self, message, context, response, replacement_message=None):
+            """Takes a response and sends a basic message. Returns message_reference."""
+            message_reference = None
+            send_arguments = response.get_send_kwargs(replacement_message)
+            try:
+
+                # Edit the replacement_message as the response
+                if replacement_message:
+                    try:
+                        await replacement_message.edit(**send_arguments)
+                        message_reference = replacement_message
+                    except discord.NotFound:  # Message deleted
+                        response = Response()
+                        message_reference = None
+
+                # Send a new message as the response
+                elif (not response.is_empty() and not
+                        (self.selfbot and response.message_type is MessageTypes.REPLACE)):
+                    destination = response.destination or message.channel
+                    message_reference = await destination.send(**send_arguments)
+
+                response.message = message_reference
+                plugins.broadcast_event(self, 'bot_on_response', response, context)
+
+            except Exception as e:
+                message_reference = await self.handle_error(
+                    e, message, context, response,
+                    edit=replacement_message, command_editable=True)
+
+            return message_reference
+
+
         async def on_message(self, message, replacement_message=None):
             # Ensure bot can respond properly
             try:
@@ -314,31 +346,8 @@ def get_new_bot(client_type, path, debug, docker_mode):
                     e, message, context, response, edit=replacement_message, command_editable=True)
 
             else:  # Attempt to respond
-                send_arguments = response.get_send_kwargs(replacement_message)
-                try:
-                    destination = response.destination if response.destination else message.channel
-                    message_reference = None
-
-                    # Edit the replacement_message as the response
-                    if replacement_message:
-                        try:
-                            await replacement_message.edit(**send_arguments)
-                            message_reference = replacement_message
-                        except discord.NotFound:  # Message deleted
-                            response = Response()
-                            message_reference = None
-
-                    # Send a new message as the response
-                    elif (not response.is_empty() and not (self.selfbot and
-                            response.message_type is MessageTypes.REPLACE)):
-                        message_reference = await destination.send(**send_arguments)
-
-                    response.message = message_reference
-                    plugins.broadcast_event(self, 'bot_on_response', response, context)
-                except Exception as e:
-                    message_reference = await self.handle_error(
-                        e, message, context, response,
-                        edit=replacement_message, command_editable=True)
+                message_reference = await self.respond(
+                    message, context, response, replacement_message=replacement_message)
 
             # Incremement the spam dictionary entry
             if author_id in self.spam_dictionary:
@@ -367,13 +376,17 @@ def get_new_bot(client_type, path, debug, docker_mode):
             message_reference -- The message that the bot sent in response to the user message.
             replacement_message -- The old message_reference that was replaced.
             context -- A built bot.Context object.
-            
+
             Response tuples contain a MessageTypes value.
             These specify what kind of behavior results from sending the message.
             See the commands module for documentation.
             """
+            # Respond because the bot hasn't yet
+            if not message_reference:
+                message_reference = await self.respond(
+                    message, context, response, replacement_message=replacement_message)
 
-            # Build partial context
+            # Build partial context if no context is given
             if context is None:
                 data_message = message_reference or message
                 context = self.Context(
@@ -381,17 +394,9 @@ def get_new_bot(client_type, path, debug, docker_mode):
                     data_message.guild, data_message.channel, data_message.author,
                     isinstance(data_message, PrivateChannel), None, None, self)
 
-            # Get permissions
-            response.message = message_reference
-            if message_reference and isinstance(message_reference.channel, PrivateChannel):
-                permissions = self.user.permissions_in(message_reference.channel)
-            elif message_reference:
-                permissions = message_reference.guild.me.permissions_in(message_reference.channel)
-            else:
-                permissions = None
-
             # Change behavior based on message type
             if response.message_type is MessageTypes.NORMAL and message_reference:
+
                 # Edited commands are handled in base.py
                 wait_time = self.edit_timeout
                 if wait_time:
@@ -439,6 +444,16 @@ def get_new_bot(client_type, path, debug, docker_mode):
                     self.last_response = message_reference
 
             elif response.message_type is MessageTypes.INTERACTIVE and message_reference:
+
+                # Get permissions
+                if message_reference and isinstance(message_reference.channel, PrivateChannel):
+                    permissions = self.user.permissions_in(message_reference.channel)
+                elif message_reference:
+                    permissions = message_reference.guild.me.permissions_in(
+                        message_reference.channel)
+                else:
+                    permissions = None
+
                 try:
                     buttons = response.extra['buttons']
                     kwargs = response.extra.get('kwargs', {})
@@ -569,10 +584,10 @@ def get_new_bot(client_type, path, debug, docker_mode):
             """Common error handler for sending responses."""
             send_function = edit.edit if edit else message.channel.send
             self.last_exception = error
-            if response.message:
+            if response.message and response.message.reactions:
                 try:
                     await response.message.clear_reactions()
-                except:
+                except:  # No permissions
                     pass
 
             if isinstance(error, BotException):
