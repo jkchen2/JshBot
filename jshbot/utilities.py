@@ -192,7 +192,9 @@ async def can_interact(bot, member, channel_id=None):
     return True
 
 
-async def download_url(bot, url, include_name=False, extension=None, filename=None, use_fp=False):
+async def download_url(
+        bot, url, headers={'User-Agent': 'Mozilla/5.0'},
+        include_name=False, extension=None, filename=None, use_fp=False):
     """Asynchronously downloads the given file to the temp folder.
 
     Returns the path of the downloaded file. If include_name is True, returns
@@ -207,8 +209,7 @@ async def download_url(bot, url, include_name=False, extension=None, filename=No
             filename = get_cleaned_filename(url, extension=extension)
         file_location = '{0}/temp/{1}'.format(bot.path, filename)
     try:
-        response_code, downloaded_bytes = await get_url(
-            bot, url, get_bytes=True, headers={'User-Agent': 'Mozilla/5.0'})
+        response_code, downloaded_bytes = await get_url(bot, url, get_bytes=True, headers=headers)
         if response_code != 200:
             raise CBException("Failed to download file.", response_code)
         if use_fp:
@@ -311,21 +312,20 @@ def valid_url(url):
 
 async def get_url(bot, urls, headers={}, get_bytes=False):
     """Uses aiohttp to asynchronously get a url response, or multiple."""
+
+    async def fetch(url, read_method='text'):
+        if not url:  # Why
+            return (None, None)
+        async with session.get(url) as response:
+            return (
+                response.status,
+                await getattr(response, read_method)())
+
     read_method = 'read' if get_bytes else 'text'
     try:
         async with aiohttp.ClientSession(headers=headers, loop=bot.loop) as session:
-
-            async def fetch(url, read_method='text'):
-                if not url:  # Why
-                    return (None, None)
-                async with session.get(url) as response:
-                    return (
-                        response.status,
-                        await getattr(response, read_method)())
-
             if isinstance(urls, (list, tuple)):
-                coroutines = [fetch(url, read_method) for url in urls]
-                result = await parallelize(coroutines)
+                result = await parallelize(fetch(url, read_method) for url in urls)
             else:
                 result = await fetch(urls, read_method)
             return result
@@ -558,7 +558,7 @@ async def stop_audio(bot, guild, member=None, safe=True, disconnect=True, force=
 
 async def play_and_leave(bot, guild, audio_source, delay=30):
     """Plays the audio source, and then leaves the voice channel.
-    
+
     If the delay is negative, the bot will not leave the voice channel.
     """
     voice_client = guild.voice_client
@@ -648,7 +648,6 @@ async def get_log_text(bot, channel, **log_arguments):
     return '\r\n\r\n'.join(get_formatted_message(message) for message in reversed(messages))
 
 
-# TODO: Look through experiments and tags for changes
 async def send_text_as_file(channel, text, filename, extra=None):
     """Sends the given text as a text file."""
     discord_file = discord.File(get_text_as_file(text), filename=filename + '.txt')
@@ -656,7 +655,6 @@ async def send_text_as_file(channel, text, filename, extra=None):
     return reference
 
 
-# TODO: Look through tags and playlist for changes
 def get_text_as_file(text):
     """Converts the text into a bytes object using BytesIO."""
     try:
