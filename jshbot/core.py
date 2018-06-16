@@ -327,7 +327,7 @@ def get_new_bot(client_type, path, debug, docker_mode):
                         return
 
                 # Parse command and reply
-                logger.debug(message.author.name + ': ' + message.content)
+                logger.debug('%s (%s): %s', message.author, message.author.id, message.content)
                 parse_command = self._parse_command(
                     message, command, parameters, initial_data, elevation, direct)
                 if replacement_message:
@@ -382,7 +382,9 @@ def get_new_bot(client_type, path, debug, docker_mode):
             See the commands module for documentation.
             """
             # Respond because the bot hasn't yet
-            if not message_reference:
+            if message_reference:
+                response.message = message_reference
+            else:
                 message_reference = await self.respond(
                     message, context, response, replacement_message=replacement_message)
 
@@ -825,6 +827,7 @@ def get_new_bot(client_type, path, debug, docker_mode):
                 self.loop.close()
             except:
                 pass
+            logging.shutdown()
             sys.exit()
 
     return Bot(path, debug, docker_mode)
@@ -833,12 +836,12 @@ def get_new_bot(client_type, path, debug, docker_mode):
 def start(start_file=None):
     if start_file:
         path = os.path.split(os.path.realpath(start_file))[0]
-        logger.debug("Setting directory to " + path)
+        logging.debug("Setting directory to " + path)
         docker_mode = False
     else:  # Use Docker setup
         path = '/external'
-        logger.info("Bot running in Docker mode.")
-        logger.debug("Using Docker setup path, " + path)
+        logging.info("Bot running in Docker mode.")
+        logging.debug("Using Docker setup path, " + path)
         docker_mode = True
 
     try:
@@ -847,25 +850,33 @@ def start(start_file=None):
             config = yaml.load(config_file)
             selfbot_mode, token, debug = config['selfbot_mode'], config['token'], config['debug']
     except Exception as e:
-        logger.error("Could not determine token /or selfbot mode.")
+        logging.error("Could not determine token /or selfbot mode.")
         raise e
 
     if selfbot_mode is True:  # Explicit, for YAML 1.2 vs 1.1
         client_type = discord.Client
-        logger.debug("Using standard client (selfbot enabled).")
+        logging.debug("Using standard client (selfbot enabled).")
     else:
         client_type = discord.AutoShardedClient
-        logger.debug("Using autosharded client (selfbot disabled).")
+        logging.debug("Using autosharded client (selfbot disabled).")
 
+    # Set debug logs
     if debug is True:
         log_file = '{}/temp/logs.txt'.format(path)
         if os.path.isfile(log_file):
             shutil.copy2(log_file, '{}/temp/last_logs.txt'.format(path))
         file_handler = RotatingFileHandler(log_file, maxBytes=5000000, backupCount=5)
-        file_handler.set_name('jb_debug')
+        file_handler.set_name('jb_debug_file')
         stream_handler = logging.StreamHandler()
-        stream_handler.set_name('jb_debug')
+        stream_handler.set_name('jb_debug_stream')
         logging.basicConfig(level=logging.DEBUG, handlers=[file_handler, stream_handler])
+
+    # Set regular logs
+    log_file = '{}/temp/command_logs.txt'.format(path)
+    file_handler = RotatingFileHandler(log_file, maxBytes=5000000, backupCount=5)
+    file_handler.setFormatter(logging.Formatter(
+        '[%(filename)s] %(asctime)s %(levelname)s: %(message)s'))
+    logger.addHandler(file_handler)
 
     def safe_exit():
         loop = asyncio.get_event_loop()
