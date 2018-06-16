@@ -24,7 +24,7 @@ from jshbot.commands import (
     Command, SubCommand, Shortcut, ArgTypes, Arg, Opt, Attachment,
     MessageTypes, Response, Elevation)
 
-__version__ = '0.2.12'
+__version__ = '0.2.13'
 uses_configuration = False
 CBException = ConfiguredBotException('Base')
 global_dictionary = {}
@@ -692,12 +692,14 @@ async def _update_core(bot, progress_function):
     changes = _compare_config(bot, 'core', update_directory + 'core-config.yaml')
     if changes:
         return changes
-    pip.main([
+    return_code = pip.main([
         'install',
         '--upgrade',
         '--force-reinstall',
         '--process-dependency-links',
         archive_path])
+    if return_code != 0:
+        return return_code
     await asyncio.sleep(1)
     await progress_function('Core updated.')
 
@@ -826,8 +828,12 @@ async def update_menu(bot, context, response, result, timed_out):
     tooltip = None
     if response.stage == 10:  # Core finished updating
         if changed:
-            title = 'Core config file issue(s) detected'
-            result = '\n'.join(changed)
+            if isinstance(changed, int):
+                title = 'A package failed to install'
+                result = 'Pip return code: {}\nCheck console output.'.format(changed)
+            else:
+                title = 'Core config file issue(s) detected'
+                result = '\n'.join(changed)
             response.embed.set_footer(text='Core update interrupted.')
         else:
             title = 'Core updated'
