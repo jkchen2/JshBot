@@ -492,3 +492,9 @@ def broadcast_event(bot, event, *args, **kwargs):
         except TypeError as e:
             logger.error("Bypassing event error: %s", e)
             logger.error(traceback.format_exc())
+    for function in bot.event_functions.get('all', []):
+        try:
+            asyncio.ensure_future(function(bot, event, *args, **kwargs))
+        except TypeError as e:
+            logger.error("Bypassing event error: %s", e)
+            logger.error(traceback.format_exc())
