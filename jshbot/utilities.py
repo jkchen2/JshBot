@@ -311,7 +311,7 @@ def valid_url(url):
     return True
 
 
-async def get_url(bot, urls, headers={}, get_bytes=False):
+async def get_url(bot, urls, headers={}, read_response=True, get_bytes=False):
     """Uses aiohttp to asynchronously get a url response, or multiple."""
 
     async def fetch(url, read_method='text'):
@@ -320,7 +320,7 @@ async def get_url(bot, urls, headers={}, get_bytes=False):
         async with session.get(url) as response:
             return (
                 response.status,
-                await getattr(response, read_method)())
+                (await getattr(response, read_method)()) if read_response else response)
 
     read_method = 'read' if get_bytes else 'text'
     try:
@@ -332,6 +332,13 @@ async def get_url(bot, urls, headers={}, get_bytes=False):
             return result
     except Exception as e:
         raise CBException("Failed to retrieve a URL.", e=e)
+
+
+async def request(bot, method, url, session_kwargs={}, method_kwargs={}):
+    """Wraps aiohttp methods for making a request."""
+    async with aiohttp.ClientSession(**session_kwargs) as session:
+        async with getattr(session, method)(url, **method_kwargs) as response:
+            return response
 
 
 async def upload_to_discord(bot, fp, filename=None, rewind=True, close=False):
