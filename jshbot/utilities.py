@@ -380,9 +380,9 @@ async def upload_to_discord(bot, fp, filename=None, rewind=True, close=False):
 
 async def upload_logs(bot):
     """Uploads any log files to the debug channel."""
-    log_zip_location = '{0}/temp/log_files.zip'.format(bot.path)
+    log_zip_location = '{0}/temp/debug_log_files.zip'.format(bot.path)
     log_zip_file = zipfile.ZipFile(log_zip_location, mode='w')
-    log_location = '{0}/temp/logs.txt'.format(bot.path)
+    log_location = '{0}/temp/debug_logs.txt'.format(bot.path)
     compression = zipfile.ZIP_DEFLATED
     if os.path.exists(log_location):
         log_zip_file.write(

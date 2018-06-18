@@ -1038,9 +1038,9 @@ async def debug_wrapper(bot, context):
             bot.debug = False
             response = 'Debug mode is now off.'
         else:  # Add handlers
-            log_file = '{}/temp/logs.txt'.format(bot.path)
+            log_file = '{}/temp/debug_logs.txt'.format(bot.path)
             if os.path.isfile(log_file):
-                shutil.copy2(log_file, '{}/temp/last_logs.txt'.format(bot.path))
+                shutil.copy2(log_file, '{}/temp/last_debug_logs.txt'.format(bot.path))
             file_handler = RotatingFileHandler(log_file, maxBytes=5000000, backupCount=5)
             file_handler.set_name('jb_debug')
             stream_handler = logging.StreamHandler()

@@ -862,9 +862,9 @@ def start(start_file=None):
 
     # Set debug logs
     if debug is True:
-        log_file = '{}/temp/logs.txt'.format(path)
+        log_file = '{}/temp/debug_logs.txt'.format(path)
         if os.path.isfile(log_file):
-            shutil.copy2(log_file, '{}/temp/last_logs.txt'.format(path))
+            shutil.copy2(log_file, '{}/temp/last_debug_logs.txt'.format(path))
         file_handler = RotatingFileHandler(log_file, maxBytes=5000000, backupCount=5)
         file_handler.set_name('jb_debug_file')
         stream_handler = logging.StreamHandler()
@@ -872,7 +872,7 @@ def start(start_file=None):
         logging.basicConfig(level=logging.DEBUG, handlers=[file_handler, stream_handler])
 
     # Set regular logs
-    log_file = '{}/temp/command_logs.txt'.format(path)
+    log_file = '{}/temp/logs.txt'.format(path)
     file_handler = RotatingFileHandler(log_file, maxBytes=5000000, backupCount=5)
     file_handler.setFormatter(logging.Formatter(
         '[%(filename)s] %(asctime)s %(levelname)s: %(message)s'))
