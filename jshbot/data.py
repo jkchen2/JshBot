@@ -387,12 +387,14 @@ def clean_data(bot):
 
 def add_custom_role(bot, plugin_name, role_name, role):
     """Adds the given role as a custom internal role used by the bot."""
-    roles = get(bot, plugin_name, 'custom_roles', guild_id=role.guild.id, create=True, default={})
+    roles = get(
+        bot, plugin_name, 'custom_roles',
+        guild_id=role.guild.id, create=True, default={}, save=True)
     roles[role_name] = role.id
 
 
 def remove_custom_role(bot, plugin_name, role_name, guild, safe=True):
-    roles = get(bot, plugin_name, 'custom_roles', guild_id=guild.id, default={})
+    roles = get(bot, plugin_name, 'custom_roles', guild_id=guild.id, default={}, save=True)
     try:
         return roles.pop(role_name)
     except KeyError:
@@ -964,13 +966,17 @@ def db_insert(
         raise CBException("Failed to insert into database.", e=e)
 
 
-def db_update(bot, table, table_suffix='', set_arg='', where_arg='', input_args=[], mark=True):
+def db_update(
+        bot, table, table_suffix='', set_arg='', where_arg='',
+        input_args=[], return_updated=True, mark=True):
     """Updates the given table, specified by SET and WHERE if given."""
     full_table = table + ('_{}'.format(table_suffix) if table_suffix else '')
     query = "UPDATE {} SET {}".format(full_table, set_arg)
     if where_arg:
         query += " WHERE {}".format(where_arg)
-    db_execute(bot, query, input_args=input_args, mark=full_table if mark else None)
+    if return_updated:
+        query += " RETURNING *"
+    return db_execute(bot, query, input_args=input_args, mark=full_table if mark else None)
 
 
 def db_delete(bot, table, table_suffix='', where_arg='', input_args=[], safe=True, mark=True):

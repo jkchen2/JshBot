@@ -334,11 +334,13 @@ async def get_url(bot, urls, headers={}, read_response=True, get_bytes=False):
         raise CBException("Failed to retrieve a URL.", e=e)
 
 
-async def request(bot, method, url, session_kwargs={}, method_kwargs={}):
+async def request(
+        bot, method, url, session_kwargs={}, method_kwargs={},
+        response_method='text', response_method_kwargs={}):
     """Wraps aiohttp methods for making a request."""
     async with aiohttp.ClientSession(**session_kwargs) as session:
         async with getattr(session, method)(url, **method_kwargs) as response:
-            return response
+            return (response, await getattr(response, response_method)(**response_method_kwargs))
 
 
 async def upload_to_discord(bot, fp, filename=None, rewind=True, close=False):
@@ -656,9 +658,10 @@ async def get_log_text(bot, channel, **log_arguments):
     return '\r\n\r\n'.join(get_formatted_message(message) for message in reversed(messages))
 
 
-async def send_text_as_file(channel, text, filename, extra=None):
+async def send_text_as_file(channel, text, filename, extra=None, extension='txt'):
     """Sends the given text as a text file."""
-    discord_file = discord.File(get_text_as_file(text), filename=filename + '.txt')
+    discord_file = discord.File(
+        get_text_as_file(text), filename='{}.{}'.format(filename, extension))
     reference = await channel.send(content=extra, file=discord_file)
     return reference
 
