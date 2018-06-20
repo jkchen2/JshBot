@@ -5,6 +5,9 @@
 # If enabled, writes all logging messages to a file.
 debug: off
 
+# If enabled, shows debug level log messages in console output
+use_verbose_output: off
+
 # If enabled, the owners list must consist of just yourself
 selfbot_mode: off
 

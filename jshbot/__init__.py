@@ -1,13 +1,14 @@
 core_version = '0.4.0-rewrite'
-core_date = 'June 19th, 2018'
+core_date = 'June 20th, 2018'
 
 # Create logger
 import logging
 logger = logging.getLogger(__name__)
-logger.setLevel(logging.INFO)
+logger.setLevel(logging.DEBUG)
 handler = logging.StreamHandler()
 handler.setFormatter(logging.Formatter('[%(filename)s] %(asctime)s %(levelname)s: %(message)s'))
 handler.setLevel(logging.DEBUG)
+handler.set_name('jb_log_stream')
 logger.addHandler(handler)
 logger.propagate = False
 

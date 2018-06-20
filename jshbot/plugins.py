@@ -74,7 +74,7 @@ def load_plugin(bot, plugin_name):
             callback_info = task._repr_info()[1]
             plugin_name_test = pattern.search(callback_info).group(0)
             if plugin_name_test == plugin_name:
-                logger.debug("Canceling task: {}".format(task))
+                logger.debug("Canceling task: %s",task)
                 task.cancel()
 
         # Remove plugin functions that are registered to events
@@ -97,7 +97,7 @@ def load_plugin(bot, plugin_name):
         del module
 
     else:
-        logger.debug("Loading plugin %s...", plugin_name)
+        logger.debug("Loading %s...", plugin_name)
 
     try:
         spec = importlib.util.spec_from_file_location(
@@ -140,7 +140,6 @@ def load_plugin(bot, plugin_name):
             utilities.add_bot_permissions(bot, plugin_name, **function(bot))
     except Exception as e:
         raise CBException("Failed to initialize external plugin.", plugin_name, e=e)
-    logger.debug("Plugin {} loaded.".format(plugin_name))
 
 
 def add_plugins(bot):
@@ -152,7 +151,6 @@ def add_plugins(bot):
     directory = '{}/plugins'.format(bot.path)
     data_directory = '{}/plugins/plugin_data'.format(bot.path)
     if os.path.isdir(data_directory):
-        logger.debug("Setting plugin_data as plugin import path.")
         sys.path.append(data_directory)
     try:
         plugins_list = os.listdir(directory)
@@ -198,7 +196,7 @@ def add_plugins(bot):
                 "Failed to import external plugin on startup.", e=e, error_type=ErrorTypes.STARTUP)
 
     if len(bot.plugins) - 1:
-        logger.debug("Loaded {} plugin(s)".format(len(bot.plugins) - 1))
+        logger.debug("Loaded %s plugin(s)", len(bot.plugins) - 1)
 
 
 def add_commands(bot, new_commands, plugin):
@@ -248,7 +246,6 @@ def add_manual(bot, clean_name, plugin_name):
         with open(directory + clean_name + '-manual.yaml', 'rb') as manual_file:
             raw_manual = yaml.load(manual_file)
     except FileNotFoundError:
-        logger.debug("No manual found for {}.".format(plugin_name))
         return
     except yaml.YAMLError as e:  # TODO: Change
         raise CBException("Failed to parse the manual for {}.".format(plugin_name), e=e)

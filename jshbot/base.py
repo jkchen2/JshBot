@@ -1030,7 +1030,7 @@ async def debug_wrapper(bot, context):
         if bot.debug:  # Remove handlers
             to_remove = []
             for handler in logging.root.handlers:
-                if handler.get_name() == 'jb_debug':
+                if 'jb_debug' in handler.get_name():
                     to_remove.append(handler)
             for handler in to_remove:
                 logging.root.removeHandler(handler)
@@ -1042,9 +1042,9 @@ async def debug_wrapper(bot, context):
             if os.path.isfile(log_file):
                 shutil.copy2(log_file, '{}/temp/last_debug_logs.txt'.format(bot.path))
             file_handler = RotatingFileHandler(log_file, maxBytes=5000000, backupCount=5)
-            file_handler.set_name('jb_debug')
+            file_handler.set_name('jb_debug_file')
             stream_handler = logging.StreamHandler()
-            stream_handler.set_name('jb_debug')
+            stream_handler.set_name('jb_debug_stream')
             logging.basicConfig(level=logging.DEBUG, handlers=[file_handler, stream_handler])
             bot.debug = True
             response = 'Debug mode is now on.'
@@ -1437,8 +1437,10 @@ def setup_permissions(bot):
 async def setup_debug_environment(bot):
     """Sets up the debug environment (and logger for the dev bot)."""
     _setup_debug_environment(bot)
-    if bot.user.id == DEV_BOT_ID:  # Set debugging mode only for the dev bot
-        logger.setLevel(logging.DEBUG)
+    if not bot.use_verbose_output:
+        for handler in logger.handlers:
+            if handler.get_name() == 'jb_log_stream':
+                handler.setLevel(logging.INFO)
 
 
 @plugins.listen_for('on_guild_join')

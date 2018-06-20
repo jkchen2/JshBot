@@ -1012,7 +1012,7 @@ def get_messageable(bot, destination):
 async def _schedule_timer(bot, entry, delay):
     task_comparison = bot.schedule_timer
     await asyncio.sleep(0.5)
-    logger.debug("_schedule_timer sleeping for %s seconds...", delay)
+    logger.debug("Scheduler sleeping for %s seconds...", delay)
     await asyncio.sleep(delay)
     if task_comparison is not bot.schedule_timer:
         logger.debug("_schedule_timer was not cancelled! Cancelling this scheduler...")
@@ -1050,7 +1050,7 @@ async def _start_scheduler(bot):
     result = cursor.fetchone()
     if result:
         delta = result.time - time.time()
-        logger.debug("_start_scheduler is starting a scheduled event.")
+        logger.debug("Starting scheduled event %s", result.id)
         bot.schedule_timer = asyncio.ensure_future(_schedule_timer(bot, result, delta))
     else:
-        logger.debug("_start_scheduler could not find a pending scheduled event.")
+        logger.debug("No pending scheduled event available.")

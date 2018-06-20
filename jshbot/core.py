@@ -78,6 +78,7 @@ def get_new_bot(client_type, path, debug, docker_mode):
             self.spam_dictionary = {}
             self.spam_limit = config['command_limit']
             self.spam_timeout = config['command_limit_timeout']
+            self.use_verbose_output = config['use_verbose_output']
             self.exception_messages = config['exception_messages']
             self.command_invokers = config['command_invokers']
             self.locked_commands = config['locked_commands']
@@ -872,11 +873,15 @@ def start(start_file=None):
         logging.basicConfig(level=logging.DEBUG, handlers=[file_handler, stream_handler])
 
     # Set regular logs
-    log_file = '{}/temp/logs.txt'.format(path)
-    file_handler = RotatingFileHandler(log_file, maxBytes=5000000, backupCount=5)
-    file_handler.setFormatter(logging.Formatter(
-        '[%(filename)s] %(asctime)s %(levelname)s: %(message)s'))
-    logger.addHandler(file_handler)
+    else:
+        log_file = '{}/temp/logs.txt'.format(path)
+        file_handler = RotatingFileHandler(log_file, maxBytes=5000000, backupCount=5)
+        file_handler.setFormatter(logging.Formatter(
+            '[%(filename)s] %(asctime)s %(levelname)s: %(message)s'))
+        file_handler.setLevel(logging.DEBUG)
+        file_handler.set_name('jb_log_file')
+        logger.addHandler(file_handler)
+        logger.setLevel(logging.DEBUG)
 
     def safe_exit():
         loop = asyncio.get_event_loop()
