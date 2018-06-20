@@ -73,6 +73,7 @@ class MessageTypes(Enum):
                 elevation -- commands.Elevation value. Defaults to subcommand elevation.
                 autodelete -- If specified, deletes the message after this number
                     of seconds has passed after the menu times out or ends.
+                raw -- Listens for raw reaction adds/removes. You may need to change the check.
             extra_function -- The function to be called on reaction button press.
                 The function signature must be: (bot, context, response, result, timed_out)
                 Arguments:

@@ -460,11 +460,21 @@ def get_new_bot(client_type, path, debug, docker_mode):
                 try:
                     buttons = response.extra['buttons']
                     kwargs = response.extra.get('kwargs', {})
+                    use_raw = response.extra.get('raw', False)
+                    events = ['reaction_add', 'reaction_remove']
+                    if use_raw:
+                        events = [('raw_' + it) for it in events]
                     if 'timeout' not in kwargs:
                         kwargs['timeout'] = 300
                     if 'check' not in kwargs:
-                        kwargs['check'] = (
-                            lambda r, u: r.message.id == message_reference.id and not u.bot)
+                        if use_raw:
+                            kwargs['check'] = (
+                                lambda p: (
+                                    p.message_id == message_reference.id and not
+                                    data.get_member(self, p.user_id, attribute='bot', safe=True)))
+                        else:
+                            kwargs['check'] = (
+                                lambda r, u: r.message.id == message_reference.id and not u.bot)
                     level = context.subcommand.elevated_level if context.subcommand else None
                     level = response.extra.get('elevation', level or Elevation.ALL)
                     for button in buttons:
@@ -489,15 +499,26 @@ def get_new_bot(client_type, path, debug, docker_mode):
                         try:
                             # Read reaction additions (or removals)
                             if permissions.manage_messages:  # Can remove reactions
-                                result = await self.wait_for('reaction_add', **kwargs)
-                                if result[1] != self.user:
-                                    asyncio.ensure_future(
-                                        message_reference.remove_reaction(*result))
+                                result = await self.wait_for(events[0], **kwargs)
+                                if use_raw:
+                                    if result.user_id != self.user.id:
+                                        member = data.get_member(
+                                            self, result.user_id, guild=message_reference.guild)
+                                        asyncio.ensure_future(
+                                            message_reference.remove_reaction(
+                                                result.emoji, member))
+                                    else:
+                                        continue
+                                    pass
                                 else:
-                                    continue
+                                    if result[1] != self.user:
+                                        asyncio.ensure_future(
+                                            message_reference.remove_reaction(*result))
+                                    else:
+                                        continue
                             else:  # Cannot remove reactions
-                                add_task = self.wait_for('reaction_add', **kwargs)
-                                remove_task = self.wait_for('reaction_remove', **kwargs)
+                                add_task = self.wait_for(events[0], **kwargs)
+                                remove_task = self.wait_for(events[1], **kwargs)
                                 done, pending = await asyncio.wait(
                                     [add_task, remove_task], return_when=FIRST_COMPLETED)
                                 result = next(iter(done)).result()
@@ -505,22 +526,45 @@ def get_new_bot(client_type, path, debug, docker_mode):
                                     future.cancel()
 
                             # Check reaction validity
-                            user_elevation = data.get_elevation(self, member=result[1])
-                            is_mod = user_elevation > Elevation.ALL
-                            # User cannot interact
-                            if not await utilities.can_interact(
-                                    self, result[1], channel_id=message.channel.id):
-                                continue
-                            # Custom reactions disabled
-                            if response.extra.get('reactionlock', True) and not result[0].me:
-                                continue
-                            # User lock check
-                            if (response.extra.get('userlock', True) and
-                                    not (result[1] == message.author or is_mod)):
-                                continue
-                            # Command permissions check
-                            if user_elevation < level:
-                                continue
+                            if use_raw:
+                                member = data.get_member(
+                                    self, result.user_id, guild=message_reference.guild)
+                                user_elevation = data.get_elevation(self, member=member)
+                                is_mod = user_elevation > Elevation.ALL
+                                # User cannot interact
+                                if not await utilities.can_interact(
+                                        self, member, channel_id=message.channel.id):
+                                    continue
+                                # Custom reactions disabled
+                                button_strings = [str(it) for it in buttons]
+                                check_emojis = [it.emoji for it in message_reference.reactions]
+                                if (response.extra.get('reactionlock', True) and
+                                        str(result.emoji) not in button_strings):
+                                    continue
+                                # User lock check
+                                if (response.extra.get('userlock', True) and
+                                        not (member == message.author or is_mod)):
+                                    continue
+                                # Command permissions check
+                                if user_elevation < level:
+                                    continue
+                            else:
+                                user_elevation = data.get_elevation(self, member=result[1])
+                                is_mod = user_elevation > Elevation.ALL
+                                # User cannot interact
+                                if not await utilities.can_interact(
+                                        self, result[1], channel_id=message.channel.id):
+                                    continue
+                                # Custom reactions disabled
+                                if response.extra.get('reactionlock', True) and not result[0].me:
+                                    continue
+                                # User lock check
+                                if (response.extra.get('userlock', True) and
+                                        not (result[1] == message.author or is_mod)):
+                                    continue
+                                # Command permissions check
+                                if user_elevation < level:
+                                    continue
                         except (asyncio.futures.TimeoutError, asyncio.TimeoutError):
                             # Notify plugin that the menu timed out
                             await response.extra_function(self, context, response, None, True)
