@@ -1235,6 +1235,8 @@ async def help_wrapper(bot, context):
     invoker = utilities.get_invoker(bot, guild=invoker_guild)
 
     if subcommand.index == 0:  # Manual
+        if not bot.manuals:
+            raise CBException("There are no manual entries.")
         if arguments[0]:  # Load from given state
             try:
                 subject_test = int(arguments[0]) - 1
