@@ -940,7 +940,7 @@ def update_schedule_entries(
         set_input_args.append(Json(payload))
     if new_time is not None:
         set_args.append('time=%s')
-        set_input_args.append(int(time))
+        set_input_args.append(int(new_time))
     if new_search is not None:
         set_args.append('search=%s')
         set_input_args.append(new_search)
