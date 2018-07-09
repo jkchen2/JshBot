@@ -705,7 +705,7 @@ async def notify_owners(bot, message, user_id=None):
     blacklist.
     """
     if bot.selfbot:
-        logger.info("Notification:\n{}".format(message))
+        logger.info("Owner notification:\n{}".format(message))
     else:
         if user_id:
             blacklist = data.get(bot, 'core', 'blacklist', default=[])
@@ -713,11 +713,14 @@ async def notify_owners(bot, message, user_id=None):
                 await asyncio.sleep(0.5)
                 return
         for owner in bot.owners:
-            member = data.get_member(bot, owner)
-            if len(message) > 1998:
-                await send_text_as_file(member, message, 'notification')
-            else:
-                await member.send(message)
+            try:
+                member = data.get_member(bot, owner)
+                if len(message) > 1990:
+                    await send_text_as_file(member, message, 'notification')
+                else:
+                    await member.send(message)
+            except Exception as e:
+                logger.error("Failed to notify owner %s: %s", owner, e)
 
 
 def docker_send_command(command):
