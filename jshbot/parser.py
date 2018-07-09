@@ -291,7 +291,7 @@ async def fill_shortcut(bot, shortcut, parameters, message):
         if arg.argtype is ArgTypes.OPTIONAL:
             while (arg and arg.argtype is ArgTypes.OPTIONAL and
                     current_index < len(shortcut.args)):
-                arguments.append('' if arg.default is None else arg.default)
+                arguments_dictionary[arg.name] = '' if arg.default is None else arg.default
                 current_index += 1
                 try:
                     arg = shortcut.args[current_index]
