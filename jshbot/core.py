@@ -16,8 +16,8 @@ from collections import namedtuple, deque, OrderedDict
 from discord.abc import PrivateChannel
 
 from jshbot import (
-        configurations, plugins, commands, parser, data, utilities,
-        base, logger, core_version, core_date)
+    plugins, commands, parser, data, utilities,
+    base, logger, core_version, core_date)
 from jshbot.exceptions import BotException, ConfiguredBotException, ErrorTypes
 from jshbot.commands import Response, MessageTypes, Elevation
 
@@ -255,7 +255,6 @@ def get_new_bot(client_type, path, debug, docker_mode):
 
             return message_reference
 
-
         async def on_message(self, message, replacement_message=None):
             # Ensure bot can respond properly
             try:
@@ -342,7 +341,6 @@ def get_new_bot(client_type, path, debug, docker_mode):
 
             except Exception as e:  # General error
                 response = Response()
-                destination = message.channel
                 message_reference = await self.handle_error(
                     e, message, context, response, edit=replacement_message, command_editable=True)
 
@@ -411,7 +409,7 @@ def get_new_bot(client_type, path, debug, docker_mode):
                         # Check for bot error - remove footer notification
                         if message_reference.embeds:
                             embed = message_reference.embeds[0]
-                            if embed.footer.text and embed.footer.text.startswith('\u200b'*3):
+                            if embed.footer.text and embed.footer.text.startswith('\u200b' * 3):
                                 embed.set_footer()
                                 try:
                                     await message_reference.edit(embed=embed)
@@ -537,7 +535,6 @@ def get_new_bot(client_type, path, debug, docker_mode):
                                     continue
                                 # Custom reactions disabled
                                 button_strings = [str(it) for it in buttons]
-                                check_emojis = [it.emoji for it in message_reference.reactions]
                                 if (response.extra.get('reactionlock', True) and
                                         str(result.emoji) not in button_strings):
                                     continue
@@ -950,10 +947,10 @@ def start(start_file=None):
             traceback_text = ''.join(traceback.format_tb(e.__traceback__))
         else:
             traceback_text = traceback.format_exc()
-            if not traceback_text:
-                traceback_text = '(No traceback available)'
+        if not traceback_text:
+            traceback_text = '(No traceback available)'
         error_message = '{}\n{}'.format(e, traceback_text)
-        logger.error("An uncaught exception occurred.\n" + error_message)
+        logger.error("An uncaught exception occurred.\n%s", error_message)
         with open(path + '/temp/error.txt', 'w') as error_file:
             error_file.write(error_message)
         logger.error("Error file written.")

@@ -12,7 +12,10 @@ import shutil
 import os
 import re
 
-import pip._internal as pip  # pip 10 compat
+try:
+    import pip._internal as pip  # pip 10 compat
+except:
+    import pip
 from logging.handlers import RotatingFileHandler
 
 from distutils.dir_util import copy_tree
