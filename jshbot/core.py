@@ -480,7 +480,7 @@ def get_new_bot(client_type, path, debug, docker_mode):
 
                     # Ensure reactions are valid
                     channel = message_reference.channel
-                    reaction_check = await channel.get_message(message_reference.id)
+                    reaction_check = await channel.fetch_message(message_reference.id)
                     for reaction in reaction_check.reactions:
                         if not reaction.me or reaction.count > 1:
                             async for user in reaction.users():
