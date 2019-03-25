@@ -889,7 +889,7 @@ def start(start_file=None):
     try:
         config_file_location = path + '/config/core-config.yaml'
         with open(config_file_location, 'rb') as config_file:
-            config = yaml.load(config_file)
+            config = yaml.safe_load(config_file)
             selfbot_mode, token, debug = config['selfbot_mode'], config['token'], config['debug']
     except Exception as e:
         logging.error("Could not determine token /or selfbot mode.")

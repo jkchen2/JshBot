@@ -227,7 +227,7 @@ def add_configuration(bot, clean_name, plugin_name, plugin):
     directory = '{}/config/'.format(bot.path)
     try:
         with open(directory + clean_name + '-config.yaml', 'rb') as config_file:
-            bot.configurations[plugin_name] = yaml.load(config_file)
+            bot.configurations[plugin_name] = yaml.safe_load(config_file)
     except FileNotFoundError:
         if getattr(plugin, 'uses_configuration', False):
             raise CBException(
@@ -244,7 +244,7 @@ def add_manual(bot, clean_name, plugin_name):
     directory = bot.path + '/config/'
     try:
         with open(directory + clean_name + '-manual.yaml', 'rb') as manual_file:
-            raw_manual = yaml.load(manual_file)
+            raw_manual = yaml.safe_load(manual_file)
     except FileNotFoundError:
         return
     except yaml.YAMLError as e:  # TODO: Change

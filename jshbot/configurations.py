@@ -34,7 +34,7 @@ def get(bot, plugin_name, key=None, extra=None, extension='yaml'):
             if extension.lower() == 'json':
                 return json.load(config_file)
             elif extension.lower() == 'yaml':
-                return yaml.load(config_file)
+                return yaml.safe_load(config_file)
             else:
                 return config_file.read()
     except FileNotFoundError:

@@ -665,9 +665,9 @@ def _compare_config(bot, plugin, file_path):
     except:
         logger.warn("Configuration file for plugin %s exists, but is not loaded.", plugin)
         with open('{}/config/{}-config.yaml'.format(bot.path, plugin[:-3]), 'rb') as config_file:
-            comparison = yaml.load(config_file)
+            comparison = yaml.safe_load(config_file)
     with open(file_path, 'rb') as config_file:
-        test_config = yaml.load(config_file)
+        test_config = yaml.safe_load(config_file)
     changes = []
     for key, value in test_config.items():
         if key not in comparison:
