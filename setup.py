@@ -18,6 +18,6 @@ setup(
     install_requires=[
         'discord.py[voice]>0.9',
         'pyyaml',
-        'psycopg2'
+        'psycopg2-binary'
     ]
 )
