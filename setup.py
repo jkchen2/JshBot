@@ -13,11 +13,11 @@ setup(
     packages=find_packages(),
     license='MIT',
     dependency_links=[
-        'https://github.com/Rapptz/discord.py/archive/rewrite.zip#egg=discord.py-10'
+        'https://github.com/Rapptz/discord.py/archive/master.zip#egg=discord.py-10'
     ],
     install_requires=[
         'discord.py[voice]>0.9',
         'pyyaml',
-        'psycopg2'
+        'psycopg2-binary'
     ]
 )
