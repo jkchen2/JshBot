@@ -317,7 +317,7 @@ async def get_url(bot, urls, headers={}, read_response=True, get_bytes=False):
     async def fetch(url, read_method='text'):
         if not url:  # Why
             return (None, None)
-        async with session.get(url) as response:
+        async with session.get(str(url)) as response:
             return (
                 response.status,
                 (await getattr(response, read_method)()) if read_response else response)
