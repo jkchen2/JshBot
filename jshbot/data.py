@@ -492,9 +492,9 @@ def is_mod(bot, guild=None, user_id=None, strict=False, member=None):
 def is_admin(bot, guild, user_id, strict=False):
     """Checks that the user is an admin or higher."""
     if strict:
-        return guild and user_id == guild.owner.id
+        return guild and user_id == guild.owner_id
     else:
-        return (guild and user_id == guild.owner.id) or is_owner(bot, user_id)
+        return (guild and user_id == guild.owner_id) or is_owner(bot, user_id)
 
 
 def is_owner(bot, user_id):
@@ -502,8 +502,9 @@ def is_owner(bot, user_id):
     return user_id in bot.owners
 
 
-def is_blocked(bot, guild, user_id, strict=False):
+def is_blocked(bot, member, strict=False):
     """Checks that the user is blocked in the given guild."""
+    guild, user_id = getattr(member, 'guild', None), member.id
     if guild:
         blocked_list = get(bot, 'core', 'blocked', guild_id=guild.id, default=[])
     else:
@@ -511,7 +512,7 @@ def is_blocked(bot, guild, user_id, strict=False):
     if strict:
         return user_id in blocked_list
     else:
-        return user_id in blocked_list and not is_mod(bot, guild, user_id)
+        return user_id in blocked_list and not is_mod(bot, member=member)
 
 
 def _get_attribute(result, attribute, safe):
@@ -583,6 +584,89 @@ def get_member(bot, identity, guild=None, attribute=None, safe=False, strict=Fal
         return _get_attribute(result, attribute, safe)
     elif not strict and guild:  # Search again using all members
         return get_member(
+            bot, identity, guild=None, attribute=attribute, safe=safe, strict=False)
+    elif safe:
+        return None
+    else:
+        raise CBException("User '{}' not found.".format(identity), identity)
+
+
+async def fetch_member(
+    bot, identity, guild=None, attribute=None, safe=False, strict=False, search=None
+):
+    """Gets a member given the identity, with more coverage.
+
+    Keyword arguments:
+    guild -- if specified, will look here for identity first.
+    attribute -- gets the member's attribute instead of the member itself.
+    safe -- returns None if not found instead of raising an exception.
+    strict -- will look only in the specified guild.
+    search -- list of members to search (overrides guild member list).
+    """
+    if strict and guild is None:
+        raise CBException("No guild specified for strict member search.")
+
+    used_id = isinstance(identity, int)
+    identity = str(identity)
+    if not used_id and identity.startswith('<@') and identity.endswith('>'):
+        identity = identity.strip('<@!>')
+        used_id = True
+    else:
+        used_id = False
+
+    # Check for name + discriminator first if we're not using an ID
+    split = identity.split('#')
+    if not used_id and len(split) >= 2 and len(split[-1]) == 4 and split[-1].isnumeric():
+        guilds = [guild] if guild else bot.guilds
+        for it in guilds:
+            result = it.get_member_named(identity)
+            if result:
+                return result
+
+    tests = []
+    try:  # Double check used_id in case we're given "<@123foo456>"
+        tests.append(('id', int(identity)))
+        used_id = True
+    except:
+        used_id = False
+
+    result = None
+    if guild:
+        if used_id:
+            if search:
+                result = discord.utils.get(search, id=int(identity))
+            else:
+                try:
+                    result = await guild.fetch_member(int(identity))
+                except discord.NotFound:
+                    pass
+            tests = []
+            used_id = False
+        if not result:
+            members = search or await guild.fetch_members(limit=None).flatten()
+            tests.extend([('name', identity), ('nick', identity)])
+            for test_key, test_value in tests:
+                results = [it for it in members if getattr(it, test_key) == test_value]
+                if len(results) > 1:
+                    raise CBException("Duplicate user found. Use a mention.")
+                if results:
+                    result = results[0]
+                    break
+
+    else:
+        if used_id:
+            if search:
+                result = discord.utils.get(search, id=int(identity))
+            else:
+                try:
+                    result = await bot.fetch_user(int(identity))
+                except discord.NotFound:
+                    pass
+
+    if result:
+        return _get_attribute(result, attribute, safe)
+    elif not strict and guild:  # Search again using all members
+        return await fetch_member(
             bot, identity, guild=None, attribute=attribute, safe=safe, strict=False)
     elif safe:
         return None

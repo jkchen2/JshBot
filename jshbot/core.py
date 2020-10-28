@@ -50,6 +50,9 @@ def get_new_bot(client_type, path, debug, docker_mode):
             logger.info("=== {0: ^40} ===".format("Starting up JshBot " + self.version))
             logger.info("=== {0: ^40} ===".format(self.readable_time))
 
+            # _intents = discord.Intents.default()
+            # _intents.members = True
+            # super().__init__(chunk_guilds_at_startup=True, intents=_intents)
             super().__init__()
 
             self.configurations = {}
@@ -183,7 +186,7 @@ def get_new_bot(client_type, path, debug, docker_mode):
             # Get user bot permissions
             modrole_id = data.get(self, 'core', 'modrole', guild_id=message.guild.id)
             is_mod = (
-                author.guild_permissions.administrator or
+                author.permissions_in(message.channel).administrator or
                 modrole_id in [it.id for it in author.roles])
             is_admin = author == message.guild.owner
             result = [content, is_mod, is_admin, is_owner]
@@ -469,7 +472,7 @@ def get_new_bot(client_type, path, debug, docker_mode):
                             kwargs['check'] = (
                                 lambda p: (
                                     p.message_id == message_reference.id and not
-                                    data.get_member(self, p.user_id, attribute='bot', safe=True)))
+                                    (p.member.bot if p.member else False)))
                         else:
                             kwargs['check'] = (
                                 lambda r, u: r.message.id == message_reference.id and not u.bot)
@@ -500,11 +503,9 @@ def get_new_bot(client_type, path, debug, docker_mode):
                                 result = await self.wait_for(events[0], **kwargs)
                                 if use_raw:
                                     if result.user_id != self.user.id:
-                                        member = data.get_member(
-                                            self, result.user_id, guild=message_reference.guild)
                                         asyncio.ensure_future(
                                             message_reference.remove_reaction(
-                                                result.emoji, member))
+                                                result.emoji, result.member))
                                     else:
                                         continue
                                     pass
@@ -525,13 +526,12 @@ def get_new_bot(client_type, path, debug, docker_mode):
 
                             # Check reaction validity
                             if use_raw:
-                                member = data.get_member(
-                                    self, result.user_id, guild=message_reference.guild)
-                                user_elevation = data.get_elevation(self, member=member)
+                                ## NOTE: May be problematic
+                                user_elevation = data.get_elevation(self, member=result.member)
                                 is_mod = user_elevation > Elevation.ALL
                                 # User cannot interact
                                 if not await utilities.can_interact(
-                                        self, member, channel_id=message.channel.id):
+                                        self, result.member, channel_id=message.channel.id):
                                     continue
                                 # Custom reactions disabled
                                 button_strings = [str(it) for it in buttons]
@@ -540,7 +540,7 @@ def get_new_bot(client_type, path, debug, docker_mode):
                                     continue
                                 # User lock check
                                 if (response.extra.get('userlock', True) and
-                                        not (member == message.author or is_mod)):
+                                        not (result.member == message.author or is_mod)):
                                     continue
                                 # Command permissions check
                                 if user_elevation < level:

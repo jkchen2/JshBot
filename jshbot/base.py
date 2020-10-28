@@ -59,7 +59,7 @@ def get_commands(bot):
             SubCommand(Opt('source'), doc='Gets the source of the bot.'),
             SubCommand(Opt('uptime'), doc='Gets the uptime of the bot.'),
             SubCommand(
-                Opt('announcement'), doc='Gets the current announceent set by the bot owners.'),
+                Opt('announcement'), doc='Gets the current announcement set by the bot owners.'),
             SubCommand(
                 Opt('invite'),
                 Opt('details', optional=True,
@@ -386,7 +386,7 @@ async def base_wrapper(bot, context):
             if subcommand.index == 6:
                 await utilities.join_and_ready(
                     bot, voice_channel, reconnect=True, is_mod=data.is_mod(
-                        bot, message.guild, message.author.id))
+                        bot, member=message.author))
                 response.content = "Joined {}.".format(voice_channel.name)
             else:
                 await utilities.stop_audio(
@@ -429,7 +429,7 @@ async def mod_wrapper(bot, context):
             '```\n'
             'Information for server {0}\n'
             'ID: {0.id}\n'
-            'Owner: {0.owner.id}\n'
+            'Owner: {0.owner_id}\n'
             'Bot moderator role: {1}\n'
             'Blocked users: {2}\n'
             'Muted: {3}\n'
@@ -483,8 +483,8 @@ async def mod_wrapper(bot, context):
         block = subcommand.index == 2
         mod_action = 'Blocked {}' if block else 'Unblocked {}'
         mod_action = mod_action.format('{0} ({0.id})'.format(user))
-        blocked = data.is_blocked(bot, message.guild, user.id, strict=True)
-        mod = data.is_mod(bot, message.guild, user.id)
+        blocked = data.is_blocked(bot, member=user, strict=True)
+        mod = data.is_mod(bot, member=user)
         if mod:
             raise CBException("Cannot block or unblock a moderator.")
         elif block:
@@ -601,8 +601,9 @@ async def mod_wrapper(bot, context):
                         '{2}').format(message.author, timestamp, mod_action)
         logs = await utilities.get_log_text(bot, message.channel, limit=20, before=message)
         logs += '\n{}'.format(utilities.get_formatted_message(message))
-        await message.guild.owner.send(notification)
-        await utilities.send_text_as_file(message.guild.owner, logs, 'context')
+        guild_owner = await data.fetch_member(bot, message.guild.owner_id, guild=message.guild)
+        await guild_owner.send(notification)
+        await utilities.send_text_as_file(guild_owner, logs, 'context')
 
     return Response(content=response)
 
@@ -652,7 +653,8 @@ async def owner_wrapper(bot, context):
             message.author, timestamp, mod_action)
         logs = await utilities.get_log_text(bot, message.channel, limit=20, before=message)
         logs += '\n{}'.format(utilities.get_formatted_message(message))
-        await message.guild.owner.send(content=notification)
+        guild_owner = await data.fetch_member(bot, message.guild.owner_id, guild=message.guild)
+        await guild_owner.send(content=notification)
         await utilities.send_text_as_file(message.guild.owner, logs, 'context')
 
     return Response(content=response)
@@ -931,13 +933,13 @@ async def botowner_wrapper(bot, context):
             blacklist = data.get(bot, 'core', 'blacklist')
             if not blacklist:
                 raise CBException("The blacklist is empty.")
-            converted_members = [data.get_member(bot, it, safe=True) for it in blacklist]
+            converted_users = [await data.fetch_member(bot, it, safe=True) for it in blacklist]
             readable_list = []
-            for member in converted_members:
-                if member:
-                    text = '{0.mention} ({0})'.format(member)
+            for user in converted_users:
+                if user:
+                    text = '{0.mention} ({0})'.format(user)
                 else:
-                    text = '{} [Not found]'.format(member)
+                    text = '{} [Not found]'.format(user)
                 readable_list.append(text)
             response.embed = discord.Embed(
                 color=discord.Color(0xdd2e44), title='Blacklisted users',
@@ -1474,7 +1476,8 @@ async def notify_server_owners(bot, guild):
         "please refer to the manual, or send the bot owners a message using "
         "`{1}owner feedback <message>`.\n\nCheck out the Wiki for more: "
         "https://github.com/jkchen2/JshBot/wiki").format(guild, invoker)
-    await guild.owner.send(text)
+    guild_owner = await data.fetch_member(bot, guild.owner_id, guild=guild)
+    await guild_owner.send(text)
 
 
 @plugins.listen_for('on_message_edit')

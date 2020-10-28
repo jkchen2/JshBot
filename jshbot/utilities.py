@@ -59,12 +59,12 @@ class MemberConverter(BaseConverter):
         self.live_check = live_check
         self.attribute = attribute
         super().__init__()
-    def __call__(self, bot, message, value, *a):
+    async def __call__(self, bot, message, value, *a):
         if self.live_check:
             self.server_only = self.live_check(bot, message, value, *a)
         guild = message.guild if self.server_only else None
         try:
-            return data.get_member(
+            return await data.fetch_member(
                 bot, value, guild=guild, strict=self.server_only, attribute=self.attribute)
         except BotException as e:
             self.set_error_reason(e, 'member')
@@ -73,7 +73,7 @@ class MemberConverter(BaseConverter):
             pre_format = "Duplicate {}s found.".format(convert_type)
         else:
             pre_format = "{} '{}' not found.".format(convert_type.title(), error.other_details)
-        self.error_reason = pre_format + ' Please use a mention.'
+        self.error_reason = pre_format + ' Please use a mention or raw user ID.'
         assert False  # To trigger the conversion error
 
 
@@ -714,11 +714,11 @@ async def notify_owners(bot, message, user_id=None):
                 return
         for owner in bot.owners:
             try:
-                member = data.get_member(bot, owner)
+                user = await bot.fetch_user(owner)
                 if len(message) > 1990:
-                    await send_text_as_file(member, message, 'notification')
+                    await send_text_as_file(user, message, 'notification')
                 else:
-                    await member.send(message)
+                    await user.send(message)
             except Exception as e:
                 logger.error("Failed to notify owner %s: %s", owner, e)
 
