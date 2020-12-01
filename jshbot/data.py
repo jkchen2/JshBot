@@ -645,7 +645,7 @@ async def fetch_member(
         if not result:
             try:
                 members = search or await guild.fetch_members(limit=None).flatten()
-            except discord.errors.Forbidden:
+            except (discord.errors.Forbidden, discord.errors.ClientException):
                 members = list()
 
             if not members:
