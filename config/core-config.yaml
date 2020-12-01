@@ -24,6 +24,12 @@ debug_channel: 000
 # Used for user uploads (like W|A queries and playlist files)
 upload_channel: 000
 
+# Extra intents for better plugin support
+# For example, to enable the privileged members intents, use this:
+# extra_intents:
+#     members: true
+extra_intents: {}
+
 # (minutes) How frequently in-memory data should be written to disk
 save_interval: 1800
 

@@ -1,12 +1,9 @@
-import json
 import inspect
 
 from enum import Enum, IntEnum
 from pprint import pformat
 from collections import OrderedDict
 from discord.abc import PrivateChannel
-
-from jshbot import logger
 
 class ArgTypes(Enum):
     """

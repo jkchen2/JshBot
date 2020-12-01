@@ -1,21 +1,22 @@
-import discord
 import asyncio
-import aiohttp
+import datetime
 import functools
-import zipfile
+import io
+import os
 import shutil
 import socket
-import datetime
-import json
 import time
-import os
-import io
+import zipfile
+
+import aiohttp
+import discord
 
 from urllib.parse import urlparse
 from psycopg2.extras import Json
 
 from jshbot import data, configurations, core, logger
 from jshbot.exceptions import BotException, ConfiguredBotException
+
 
 CBException = ConfiguredBotException('Utilities')
 
@@ -48,7 +49,7 @@ NUMBER_EMOJIS = [
 
 class BaseConverter():
     def __init__(self):
-        self.error_reason = None
+        self.error_reason = "Unknown conversion error"
     def get_convert_error(self, *args):
         return self.error_reason
 

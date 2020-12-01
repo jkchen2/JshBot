@@ -50,13 +50,15 @@ def get_new_bot(client_type, path, debug, docker_mode):
             logger.info("=== {0: ^40} ===".format("Starting up JshBot " + self.version))
             logger.info("=== {0: ^40} ===".format(self.readable_time))
 
-            # _intents = discord.Intents.default()
-            # _intents.members = True
-            # super().__init__(chunk_guilds_at_startup=True, intents=_intents)
-            super().__init__()
-
             self.configurations = {}
             plugins.add_configuration(self, 'core', 'core', base)
+            config = self.configurations['core']
+
+            _intents = discord.Intents.default()
+            for k, v in config.get("extra_intents", dict()).items():
+                setattr(_intents, k, v)
+            super().__init__(intents=_intents)
+
             data.check_folders(self)
 
             logger.debug("Connecting to database...")
@@ -76,7 +78,6 @@ def get_new_bot(client_type, path, debug, docker_mode):
             self.event_functions = {}
             plugins.add_plugins(self)
 
-            config = self.configurations['core']
             self.edit_dictionary = {}
             self.spam_dictionary = {}
             self.spam_limit = config['command_limit']

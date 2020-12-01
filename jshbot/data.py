@@ -604,7 +604,7 @@ async def fetch_member(
     search -- list of members to search (overrides guild member list).
     """
     if strict and guild is None:
-        raise CBException("No guild specified for strict member search.")
+        raise CBException("No guild specified for strict member search.", identity)
 
     used_id = isinstance(identity, int)
     identity = str(identity)
@@ -643,12 +643,19 @@ async def fetch_member(
             tests = []
             used_id = False
         if not result:
-            members = search or await guild.fetch_members(limit=None).flatten()
+            try:
+                members = search or await guild.fetch_members(limit=None).flatten()
+            except discord.errors.Forbidden:
+                members = list()
+
+            if not members:
+                raise CBException("Cannot find user by name. Please use a mention.", identity)
+
             tests.extend([('name', identity), ('nick', identity)])
             for test_key, test_value in tests:
                 results = [it for it in members if getattr(it, test_key) == test_value]
                 if len(results) > 1:
-                    raise CBException("Duplicate user found. Use a mention.")
+                    raise CBException("Duplicate user found. Please use a mention.", identity)
                 if results:
                     result = results[0]
                     break
