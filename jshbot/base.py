@@ -27,7 +27,7 @@ from jshbot.commands import (
     Command, SubCommand, Shortcut, ArgTypes, Arg, Opt, Attachment,
     MessageTypes, Response, Elevation)
 
-__version__ = '0.2.14'
+__version__ = '0.2.15'
 uses_configuration = False
 CBException = ConfiguredBotException('Base')
 global_dictionary = {}
@@ -925,7 +925,8 @@ async def botowner_wrapper(bot, context):
                 bot, message.attachments[0].url, filename='db_dump')
         except Exception as e:
             raise CBException("Failed to download the file.", e=e)
-        exit_code = utilities.restore_db_backup(bot, tables=context.arguments)
+        tables = context.arguments if context.arguments[0] else list()
+        exit_code = utilities.restore_db_backup(bot, tables=tables)
         response.content = "Restore exit code: `{}`".format(exit_code)
 
     elif subcommand.index == 6:  # Blacklist
