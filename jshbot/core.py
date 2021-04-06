@@ -563,7 +563,7 @@ def get_new_bot(client_type, path, debug, docker_mode):
                                 # Command permissions check
                                 if user_elevation < level:
                                     continue
-                        except (asyncio.futures.TimeoutError, asyncio.TimeoutError):
+                        except asyncio.TimeoutError:
                             # Notify plugin that the menu timed out
                             await response.extra_function(self, context, response, None, True)
                             process_result = False
