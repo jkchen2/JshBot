@@ -649,16 +649,19 @@ async def fetch_member(
                 members = list()
 
             if not members:
-                raise CBException("Cannot find user by name. Please use a mention.", identity)
-
-            tests.extend([('name', identity), ('nick', identity)])
-            for test_key, test_value in tests:
-                results = [it for it in members if getattr(it, test_key) == test_value]
-                if len(results) > 1:
-                    raise CBException("Duplicate user found. Please use a mention.", identity)
-                if results:
-                    result = results[0]
-                    break
+                if not safe:
+                    raise CBException("Cannot find user by name. Please use a mention.", identity)
+            else:
+                tests.extend([('name', identity), ('nick', identity)])
+                for test_key, test_value in tests:
+                    results = [it for it in members if getattr(it, test_key) == test_value]
+                    if len(results) > 1:
+                        if safe:
+                            break
+                        raise CBException("Duplicate user found. Please use a mention.", identity)
+                    if results:
+                        result = results[0]
+                        break
 
     else:
         if used_id:
