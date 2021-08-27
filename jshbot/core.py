@@ -237,8 +237,12 @@ def get_new_bot(client_type, path, debug, docker_mode):
                 # Edit the replacement_message as the response
                 if replacement_message:
                     try:
-                        await replacement_message.edit(**send_arguments)
-                        message_reference = replacement_message
+                        if response.is_empty():
+                            await replacement_message.delete()
+                            message_reference = None
+                        else:
+                            await replacement_message.edit(**send_arguments)
+                            message_reference = replacement_message
                     except discord.NotFound:  # Message deleted
                         response = Response()
                         message_reference = None
